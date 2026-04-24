@@ -1,0 +1,38 @@
+# secrets — NEVER commit (repo is public)
+.env
+.env.*
+*.env
+# allow-list: template with op:// references only, no values
+!.env.example
+!.env.op
+*.pem
+*.key
+*secrets*
+# allow-list: script consumes secrets via `op run`, no values baked in
+!scripts/push-secrets.sh
+*credentials*
+.hcloud*
+.resend*
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# node / build
+node_modules/
+dist/
+build/
+.next/
+coverage/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# logs
+*.log
