@@ -1,8 +1,8 @@
 {
   "slug": "willbuy",
   "phase": "draft",
-  "round_index": 0,
-  "version": "0.1.0",
+  "round_index": 1,
+  "version": "0.2.0",
   "persona": {
     "skill": "conversion research & LLM-simulated user testing",
     "accepted": true
@@ -15,7 +15,7 @@
   "round_state": "committed",
   "exit": null,
   "created_at": "2026-04-24T19:08:15.754Z",
-  "updated_at": "2026-04-24T19:08:15.754Z",
+  "updated_at": "2026-04-24T19:24:22.833Z",
   "input": {
     "idea": "willbuy.dev — synthetic visitor panel for conversion pages (pricing, landing, checkout). Paste URL(s), pick or author an ICP, get N independent fresh-context LLM 'visitors' returning structured will-to-buy / questions / blockers / next_action. Paired A/B (same backstory, both variants, independent fresh context) is the technical wedge. Self-serve, Stripe-billed, self-hosted Supabase backend, Cloudflare DNS/SSL. v0.1 = 2-minute URL→report loop."
   }
