@@ -2,93 +2,111 @@
 
 ## summary
 
-The spec is much stronger than a typical AI-product draft, but the remaining gaps are concentrated at the real trust boundaries: untrusted-browser isolation, ambiguous egress policy, unsafe click automation, private/session URL handling, bearer-token/report hardening, and backup-aware deletion. The current v0.1 scope also adds preview-environment complexity before the sensitive-data model is actually closed.
+The spec is strongest on sandbox language but weakest on actual data-flow minimization. The main problems are over-broad outbound browser behavior, weak controls around what customer-third-party data leaves the system and gets stored, and too much privileged infra/surface area for a first launch. Cut risky conveniences, narrow data retention, and make provider/backups/report-sharing constraints explicit before treating this as launch-ready.
 
 ## missing-risk
 
-- (major) The capture boundary is underspecified: the untrusted browser/page renderer appears to run in the same sandboxed worker that also needs job/object-store credentials. Without a broker/sidecar that holds creds and mediates uploads/downloads, a browser escape becomes a direct credential-exfiltration event.
-- (major) The data-leak model is too optimistic for checkout/authenticated URLs. Regex redaction of high-entropy strings, JWTs, and emails will miss names, addresses, phones, order IDs, hidden form values, shorter session/CSRF tokens, query params, and screenshot-visible PII, yet the spec still stores artifacts and sends captures to third-party providers.
-- (major) The capture-authorization checkbox is not a real control for private or session-bound URLs. As written, any user can submit a tokenized checkout link or customer-specific page and cause its contents to be stored, analyzed, and shared with providers; v0.1 should either restrict to public pages only or require proof of control for non-public targets.
-- (major) Share-link hardening is incomplete. If bearer tokens live in URLs and report pages load any external asset, the token can leak via `Referer`, logs, browser history, or CDN cache; the spec needs explicit `Referrer-Policy`, `Cache-Control: no-store/private`, same-origin asset rules, and a clear token placement strategy.
-- (major) The report surface treats hostile text as data but never defines output sanitization. Captured page text, LLM reasoning, cluster labels, and objections can echo attacker-controlled HTML/JS; without mandatory escaping/sanitization and a restrictive CSP, this is a stored-XSS path on private and shared reports.
-- (major) Deletion promises are not backup-safe. 'Delete now' and 'purge within 7 days' are misleading unless the spec defines backup retention, replica/snapshot handling, preview-environment data policy, and whether restored backups may temporarily resurrect supposedly deleted captures/transcripts.
-- (major) Credit reservation is based on estimated cost, but actual spend can rise to the per-visit cap across retries plus aggregation/label calls. That under-collateralizes studies and turns retry storms or provider misbehavior into direct margin loss and account-cap bypass pressure.
+- (major) The capture network boundary is under-specified. Allowlisting resolved IPs plus "third-party subresources" does not constrain Chrome-originated fetch/XHR/WebSocket/WebRTC/service-worker traffic, and IP-only allowlists are unsafe on shared CDN IPs without host/SNI/certificate enforcement. v0.1 needs an explicit request-mediation layer that enforces scheme, method, host, redirect policy, and resource type, and blocks service workers, WebRTC, downloads, and non-HTTP(S) schemes.
+- (major) The capture-authorization checkbox is not a real control against data exfiltration. Users can submit signed URLs, magic links, password-reset links, staging URLs with query tokens, or URLs with embedded credentials, and the system will replay them server-side and forward the resulting content to model providers. Reject credential-bearing URLs and common auth-token patterns in v0.1 instead of relying on user attestation.
+- (major) The spec never requires zero-retention/no-training modes, DPAs, or regional data-handling guarantees from the chat and embedding providers. Merely surfacing the provider choice to the user is not a control when customer-third-party page content is being sent to one or two external vendors. v0.1 needs explicit provider data-handling requirements and a hard block on providers that cannot meet them.
+- (major) Redaction only happens before model submission; there is no output-side scrub before persisting or rendering free-form fields like reasoning, questions, or transcripts. If the model echoes sensitive source text, that leak is stored for 30 days and can propagate into reports and share links. Add post-generation DLP/redaction or remove the free-form reasoning field from v0.1.
+- (major) Bearer share tokens in the URL path are only safe if private-report routes are stripped of third-party assets and protected with strict Referrer-Policy/CSP. The spec does not say that, and automatic default token issuance increases accidental exposure through logs, browser history, screenshots, forwarded email, and analytics. Authenticated owner access should be the default; share links should be minted only on explicit request.
+- (major) The deletion and retention promises are operationally incomplete because backups are mentioned only as restore drills. If Postgres or object-store backups preserve raw captures/transcripts past the 30-day TTL or 7-day account-delete window, the stated purge guarantees are false. v0.1 needs backup retention and delete-from-backups language, or much weaker user-facing deletion claims.
+- (minor) Per-account and per-domain budgets do not stop multi-account abuse where the service is used to hit arbitrary third-party sites or burn capture/model spend. v0.1 needs global domain budgets, complaint-driven denylisting, stronger account trust gates than email alone, and an operator kill-switch for abuse incidents.
 
 ## weak-implementation
 
-- (major) The egress rule is internally inconsistent. 'Only target origin IPs' conflicts with 'target origin and its third-party subresources reachable'; without a precise per-request hostname allowlist and public-IP revalidation for every subresource, you either break modern pages or leave an SSRF/evasion hole through third-party assets, CNAME chains, and DNS changes.
-- (major) Cookie-banner auto-dismiss is an unsafe generic clicker and contradicts the 'no follow-on clicks' boundary. On pricing/checkout pages it can trigger form submits, cart mutations, or consent side effects unless reduced to a tiny audited selector allowlist with no-navigation/no-submit guards.
-- (major) The lease model lacks fencing. Heartbeats and visibility timeouts alone do not stop split-brain after pauses or partial failures; reclaimed jobs and zombie workers can both call providers or write terminal state unless every side effect is guarded by a lease-owner token or monotonic attempt number.
+- (major) Cookie-banner auto-dismiss is an interaction engine on arbitrary third-party pages. On pricing and checkout flows it can mutate carts, accept upsells, submit forms, or trigger non-idempotent JS while still staying within "navigation depth ≤ 1." v0.1 needs a hard interaction policy (consent-close only, no POST/form submit/downloads, kill on unexpected navigation/state change) or this feature should be cut.
+- (major) The redaction design is too weak for the claimed safety envelope. Regexes for high-entropy strings, JWTs, AWS keys, and emails will miss ordinary but sensitive content in a11y trees and screenshots such as names, addresses, order details, support tickets, contract terms, and app-specific identifiers, and v0.1 even allows redaction to be disabled per study. This creates false confidence around third-party data handling.
+- (major) Attempt idempotency is not strong enough under ambiguous provider outcomes. A timeout after provider accept but before DB write can produce both orphan spend and replayed requests; a daily reconciliation job only detects damage after the fact. You need an explicit attempt state machine persisted before submit, after provider accept, and after response, plus a policy for accepted-but-unknown calls that forbids blind replay.
 
 ## unnecessary-scope
 
-- (major) Preview environment per PR is high-risk, low-value scope for a v0.1 system handling third-party captures. It multiplies secret sprawl and configuration drift, and the spec does not define synthetic-only data, blocked prod-provider access, or KMS/DB isolation for previews.
+- (major) Persisting raw a11y dumps, screenshots, and full LLM transcripts for every run is unnecessary high-risk scope for v0.1. Those artifacts dominate breach impact, backup surface, and deletion complexity, while the product value is in aggregates. Raw artifacts should be opt-in debug data at most, ideally only for failed runs and only with explicit owner action.
+- (major) Preview environment per PR is avoidable high-risk scope for a product that holds capture data, billing state, KMS-wrapped objects, and model-provider credentials. The spec does not forbid prod/live secrets in previews or address untrusted fork PRs. Either cut previews from v0.1 or make them UI-only with stub providers and zero privileged secrets.
+- (major) Self-hosted Supabase, envelope-encrypted object storage, custom leases/DLQ, Stripe credits, Cloudflare WAF tuning, preview envs, and sandboxed browsing is too much privileged infrastructure for a benchmark-first launch. This is classic unnecessary scope that will consume the exact ops budget needed for sandbox hardening, deletion correctness, and abuse handling. Use managed auth/db/storage unless a concrete compliance requirement forces self-hosting.
+- (minor) Decoupling the embedding provider from the chat provider in v0.1 doubles the external data-processor surface and legal/incident complexity for limited launch value. Unless the benchmark proves a material quality gain, keep embeddings local or on the same zero-retention provider for the first release.
 
 ## suggested-next-version
 
-Cut preview-env-per-PR and non-public URL support from launch; require a brokered capture architecture with no credentials in the renderer sandbox, explicit subresource egress rules, no-mutation cookie handling, output sanitization plus CSP/referrer/cache controls on report pages, fenced leases, and backup-aware deletion semantics before calling the system production-ready.
+Reduce the next version to a security-first core: single-URL capture, managed auth/db/storage, no default share links, no default transcript retention, one zero-retention provider path, non-disableable redaction plus output scrub, explicit backup-deletion semantics, and a proxy-enforced capture sandbox with no clicks except tightly-vetted consent-close behavior. Add A/B, preview envs, extra providers, and richer sharing only after those controls are proven.
 
 <!-- samospec:critique v1 -->
 {
   "findings": [
     {
       "category": "missing-risk",
-      "text": "The capture boundary is underspecified: the untrusted browser/page renderer appears to run in the same sandboxed worker that also needs job/object-store credentials. Without a broker/sidecar that holds creds and mediates uploads/downloads, a browser escape becomes a direct credential-exfiltration event.",
+      "text": "The capture network boundary is under-specified. Allowlisting resolved IPs plus \"third-party subresources\" does not constrain Chrome-originated fetch/XHR/WebSocket/WebRTC/service-worker traffic, and IP-only allowlists are unsafe on shared CDN IPs without host/SNI/certificate enforcement. v0.1 needs an explicit request-mediation layer that enforces scheme, method, host, redirect policy, and resource type, and blocks service workers, WebRTC, downloads, and non-HTTP(S) schemes.",
       "severity": "major"
     },
     {
       "category": "weak-implementation",
-      "text": "The egress rule is internally inconsistent. 'Only target origin IPs' conflicts with 'target origin and its third-party subresources reachable'; without a precise per-request hostname allowlist and public-IP revalidation for every subresource, you either break modern pages or leave an SSRF/evasion hole through third-party assets, CNAME chains, and DNS changes.",
+      "text": "Cookie-banner auto-dismiss is an interaction engine on arbitrary third-party pages. On pricing and checkout flows it can mutate carts, accept upsells, submit forms, or trigger non-idempotent JS while still staying within \"navigation depth ≤ 1.\" v0.1 needs a hard interaction policy (consent-close only, no POST/form submit/downloads, kill on unexpected navigation/state change) or this feature should be cut.",
+      "severity": "major"
+    },
+    {
+      "category": "missing-risk",
+      "text": "The capture-authorization checkbox is not a real control against data exfiltration. Users can submit signed URLs, magic links, password-reset links, staging URLs with query tokens, or URLs with embedded credentials, and the system will replay them server-side and forward the resulting content to model providers. Reject credential-bearing URLs and common auth-token patterns in v0.1 instead of relying on user attestation.",
       "severity": "major"
     },
     {
       "category": "weak-implementation",
-      "text": "Cookie-banner auto-dismiss is an unsafe generic clicker and contradicts the 'no follow-on clicks' boundary. On pricing/checkout pages it can trigger form submits, cart mutations, or consent side effects unless reduced to a tiny audited selector allowlist with no-navigation/no-submit guards.",
+      "text": "The redaction design is too weak for the claimed safety envelope. Regexes for high-entropy strings, JWTs, AWS keys, and emails will miss ordinary but sensitive content in a11y trees and screenshots such as names, addresses, order details, support tickets, contract terms, and app-specific identifiers, and v0.1 even allows redaction to be disabled per study. This creates false confidence around third-party data handling.",
       "severity": "major"
     },
     {
       "category": "missing-risk",
-      "text": "The data-leak model is too optimistic for checkout/authenticated URLs. Regex redaction of high-entropy strings, JWTs, and emails will miss names, addresses, phones, order IDs, hidden form values, shorter session/CSRF tokens, query params, and screenshot-visible PII, yet the spec still stores artifacts and sends captures to third-party providers.",
+      "text": "The spec never requires zero-retention/no-training modes, DPAs, or regional data-handling guarantees from the chat and embedding providers. Merely surfacing the provider choice to the user is not a control when customer-third-party page content is being sent to one or two external vendors. v0.1 needs explicit provider data-handling requirements and a hard block on providers that cannot meet them.",
       "severity": "major"
     },
     {
       "category": "missing-risk",
-      "text": "The capture-authorization checkbox is not a real control for private or session-bound URLs. As written, any user can submit a tokenized checkout link or customer-specific page and cause its contents to be stored, analyzed, and shared with providers; v0.1 should either restrict to public pages only or require proof of control for non-public targets.",
-      "severity": "major"
-    },
-    {
-      "category": "missing-risk",
-      "text": "Share-link hardening is incomplete. If bearer tokens live in URLs and report pages load any external asset, the token can leak via `Referer`, logs, browser history, or CDN cache; the spec needs explicit `Referrer-Policy`, `Cache-Control: no-store/private`, same-origin asset rules, and a clear token placement strategy.",
-      "severity": "major"
-    },
-    {
-      "category": "missing-risk",
-      "text": "The report surface treats hostile text as data but never defines output sanitization. Captured page text, LLM reasoning, cluster labels, and objections can echo attacker-controlled HTML/JS; without mandatory escaping/sanitization and a restrictive CSP, this is a stored-XSS path on private and shared reports.",
-      "severity": "major"
-    },
-    {
-      "category": "missing-risk",
-      "text": "Deletion promises are not backup-safe. 'Delete now' and 'purge within 7 days' are misleading unless the spec defines backup retention, replica/snapshot handling, preview-environment data policy, and whether restored backups may temporarily resurrect supposedly deleted captures/transcripts.",
+      "text": "Redaction only happens before model submission; there is no output-side scrub before persisting or rendering free-form fields like reasoning, questions, or transcripts. If the model echoes sensitive source text, that leak is stored for 30 days and can propagate into reports and share links. Add post-generation DLP/redaction or remove the free-form reasoning field from v0.1.",
       "severity": "major"
     },
     {
       "category": "unnecessary-scope",
-      "text": "Preview environment per PR is high-risk, low-value scope for a v0.1 system handling third-party captures. It multiplies secret sprawl and configuration drift, and the spec does not define synthetic-only data, blocked prod-provider access, or KMS/DB isolation for previews.",
-      "severity": "major"
-    },
-    {
-      "category": "weak-implementation",
-      "text": "The lease model lacks fencing. Heartbeats and visibility timeouts alone do not stop split-brain after pauses or partial failures; reclaimed jobs and zombie workers can both call providers or write terminal state unless every side effect is guarded by a lease-owner token or monotonic attempt number.",
+      "text": "Persisting raw a11y dumps, screenshots, and full LLM transcripts for every run is unnecessary high-risk scope for v0.1. Those artifacts dominate breach impact, backup surface, and deletion complexity, while the product value is in aggregates. Raw artifacts should be opt-in debug data at most, ideally only for failed runs and only with explicit owner action.",
       "severity": "major"
     },
     {
       "category": "missing-risk",
-      "text": "Credit reservation is based on estimated cost, but actual spend can rise to the per-visit cap across retries plus aggregation/label calls. That under-collateralizes studies and turns retry storms or provider misbehavior into direct margin loss and account-cap bypass pressure.",
+      "text": "Bearer share tokens in the URL path are only safe if private-report routes are stripped of third-party assets and protected with strict Referrer-Policy/CSP. The spec does not say that, and automatic default token issuance increases accidental exposure through logs, browser history, screenshots, forwarded email, and analytics. Authenticated owner access should be the default; share links should be minted only on explicit request.",
       "severity": "major"
+    },
+    {
+      "category": "missing-risk",
+      "text": "The deletion and retention promises are operationally incomplete because backups are mentioned only as restore drills. If Postgres or object-store backups preserve raw captures/transcripts past the 30-day TTL or 7-day account-delete window, the stated purge guarantees are false. v0.1 needs backup retention and delete-from-backups language, or much weaker user-facing deletion claims.",
+      "severity": "major"
+    },
+    {
+      "category": "unnecessary-scope",
+      "text": "Preview environment per PR is avoidable high-risk scope for a product that holds capture data, billing state, KMS-wrapped objects, and model-provider credentials. The spec does not forbid prod/live secrets in previews or address untrusted fork PRs. Either cut previews from v0.1 or make them UI-only with stub providers and zero privileged secrets.",
+      "severity": "major"
+    },
+    {
+      "category": "unnecessary-scope",
+      "text": "Self-hosted Supabase, envelope-encrypted object storage, custom leases/DLQ, Stripe credits, Cloudflare WAF tuning, preview envs, and sandboxed browsing is too much privileged infrastructure for a benchmark-first launch. This is classic unnecessary scope that will consume the exact ops budget needed for sandbox hardening, deletion correctness, and abuse handling. Use managed auth/db/storage unless a concrete compliance requirement forces self-hosting.",
+      "severity": "major"
+    },
+    {
+      "category": "weak-implementation",
+      "text": "Attempt idempotency is not strong enough under ambiguous provider outcomes. A timeout after provider accept but before DB write can produce both orphan spend and replayed requests; a daily reconciliation job only detects damage after the fact. You need an explicit attempt state machine persisted before submit, after provider accept, and after response, plus a policy for accepted-but-unknown calls that forbids blind replay.",
+      "severity": "major"
+    },
+    {
+      "category": "missing-risk",
+      "text": "Per-account and per-domain budgets do not stop multi-account abuse where the service is used to hit arbitrary third-party sites or burn capture/model spend. v0.1 needs global domain budgets, complaint-driven denylisting, stronger account trust gates than email alone, and an operator kill-switch for abuse incidents.",
+      "severity": "minor"
+    },
+    {
+      "category": "unnecessary-scope",
+      "text": "Decoupling the embedding provider from the chat provider in v0.1 doubles the external data-processor surface and legal/incident complexity for limited launch value. Unless the benchmark proves a material quality gain, keep embeddings local or on the same zero-retention provider for the first release.",
+      "severity": "minor"
     }
   ],
-  "summary": "The spec is much stronger than a typical AI-product draft, but the remaining gaps are concentrated at the real trust boundaries: untrusted-browser isolation, ambiguous egress policy, unsafe click automation, private/session URL handling, bearer-token/report hardening, and backup-aware deletion. The current v0.1 scope also adds preview-environment complexity before the sensitive-data model is actually closed.",
-  "suggested_next_version": "Cut preview-env-per-PR and non-public URL support from launch; require a brokered capture architecture with no credentials in the renderer sandbox, explicit subresource egress rules, no-mutation cookie handling, output sanitization plus CSP/referrer/cache controls on report pages, fenced leases, and backup-aware deletion semantics before calling the system production-ready.",
+  "summary": "The spec is strongest on sandbox language but weakest on actual data-flow minimization. The main problems are over-broad outbound browser behavior, weak controls around what customer-third-party data leaves the system and gets stored, and too much privileged infra/surface area for a first launch. Cut risky conveniences, narrow data retention, and make provider/backups/report-sharing constraints explicit before treating this as launch-ready.",
+  "suggested_next_version": "Reduce the next version to a security-first core: single-URL capture, managed auth/db/storage, no default share links, no default transcript retention, one zero-retention provider path, non-disableable redaction plus output scrub, explicit backup-deletion semantics, and a proxy-enforced capture sandbox with no clicks except tightly-vetted consent-close behavior. Add A/B, preview envs, extra providers, and richer sharing only after those controls are proven.",
   "usage": null,
   "effort_used": "max"
 }

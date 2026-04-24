@@ -2,41 +2,38 @@
 
 ## summary
 
-Spec v0.2 is materially stronger than v0.1 on security, isolation, and ledger semantics, but ships with one self-contradicting promise (the changelog claims an architecture diagram that is still an empty placeholder) and several scaling ambiguities that block implementation: min_ok_visits is only defined for N=30, the credits→cents mapping is missing, the daily spend-cap default is unset, and the schema-repair vs transient-retry budget composition is undefined. Capture timing contradicts itself between §2 (45s) and §6.3 (30s assertion). Testing has gaps where it most matters for the wedge: paired-A/B isolation is verified only against a stub, the LLM adapter has no contract suite, sandbox containment omits IPv6 and GCP/Azure metadata even though §2 names them, and the semantic-stability check is excluded from CI gating. The 5-page human benchmark threshold is permissive enough that a slop-prone build could pass.
+v0.2 is a strong, broadly unambiguous revision that addresses the major round-1 themes (sandbox/SSRF, ledger semantics, paired-A/B isolation, retention, rate-limits, two-annotator benchmark, fresh-context schema repair). All nine mandatory sections are present, though the architecture section's diagram block is an empty placeholder. Remaining issues cluster around (a) internal version labels — the 'v0.2 vs v0.2-followup' muddle around chat-provider fallback, (b) unset numeric defaults — daily spend cap has no dollar value, and min_ok_visits=20 is incompatible with the stated N≥5 floor, (c) timeout/threshold alignment (30s navigation vs 45s wall-clock), and (d) a handful of weak-test gaps around share-token lifecycle, API-key rotation, DLQ alerting, cost-ceiling retry interaction, and concurrency-ceiling enforcement. None are architectural dealbreakers; all are tractable copy/test edits for v0.3.
 
 ## missing-requirement
 
-- (major) §4 Architecture: the architecture diagram block is an empty placeholder — `(architecture not yet specified)` between the `<!-- architecture:begin -->` / `<!-- architecture:end -->` markers. The mandatory baseline requires an architecture section, and §4.1/§4.2/§4.3 give component lists but no system-level diagram showing dataflow between Web, API, capture worker, visitor worker, aggregator, queue, Postgres, object store, Stripe, and Postmark.
+- (major) §4 Architecture diagram is an empty placeholder: the ```text block between `<!-- architecture:begin -->` and `<!-- architecture:end -->` contains only '(architecture not yet specified)'. The mandatory architecture section exists in prose (§4.1 Components, §4.2 Boundaries, §4.3 Abstractions), but the visual/structural diagram promised by the placeholder is missing. Either fill the diagram (component + data-flow ASCII or mermaid) or delete the placeholder scaffold and state explicitly that prose replaces the diagram.
 
 ## contradiction
 
-- (major) §10 Changelog claims the v0.2 pass `Filled architecture diagram`, but the §4 architecture block is still the empty `(architecture not yet specified)` placeholder. Either the diagram was not actually filled, or the changelog overstates the work — these cannot both be true.
-- (major) Capture wall-clock budget contradiction. §2 #2 sets the capture ceiling at `wall-clock ≤ 45 s`, but §6.3 'Perf regression' asserts `per-stage budget asserted (capture ≤ 30 s, per-visit p95 ≤ 5 s, aggregation ≤ 20 s)`. A capture that legitimately uses up to 45 s under §2 #2 will fail the §6.3 CI assertion. Pick one ceiling or define both (hard cap vs. perf target) explicitly.
-- (minor) §7 calls out 'Veteran payments engineer (Stripe credits / ledger) (0.5)' and notes 'Can be one of the TS engineers if skill overlap is real', but §8 Sprint 1 already assigns 'Stripe Checkout + webhook (test mode), Postmark integration' to TS engineer B without naming the payments engineer in any sprint. Either remove the payments role and absorb it into TS engineer B explicitly, or add the 0.5 payments engineer to the sprint plan. As written, the team count and the sprint plan disagree.
+- (major) Study success threshold contradicts minimum N. §5.2 states 'Default N is 30; minimum 5, maximum 100 in v0.1.' §5.4 defines `partial_finalize` with 'min_ok_visits, default 20/30' and §5.5 says 'Study finishes `ready` if ≥ `min_ok_visits`; otherwise `failed`, full reserve refunded.' With N=5–19, min_ok_visits=20 is unreachable, so every small study would auto-fail and refund regardless of result quality. Define min_ok_visits as a ratio (e.g., ≥ ⌈0.66·N⌉) or a ceiling (min(20, N)), or raise the N floor to 20.
 
 ## ambiguity
 
-- (major) §5.4 defines `partial_finalize` with `min_ok_visits, default 20/30`, and §5.5 reuses `min_ok_visits` as the ready/failed gate. §2 says N can range 5–100, but the spec never says whether `min_ok_visits` is a fixed 20, a fixed 2/3 ratio of N, or only defined for N=30. For N=5 the 20/30 default is impossible to satisfy; for N=100 the threshold is unspecified. Define the function `min_ok_visits(N)`.
-- (major) Credits-to-money mapping is undefined. §5.4 ledger semantics work in `cents` (`reserve(...cents)`, `commit(...cents)`), but §5.6 prices packs as `$29 (1,000 credits ≈ 285 visits)`, implying 1 credit ≠ 1 cent (1000 credits / $29 ≈ 3.45¢ per credit) and a markup over the 3.5¢ visit cost. Spec must state (a) the credit→cent conversion rate, (b) whether reservations debit credits or cents, and (c) how the markup is reconciled against `llm_spend_daily(cents)` so the cap and reconciliation jobs are unambiguous.
-- (major) Retry budget composition is unclear. §2 #9 allows up to 2 schema-repair retries and §2 #10 allows up to 3 transient retries with the per-visit 5¢ cap as the only joint bound, but the spec never says (a) whether '3 attempts' in §2 #10 includes the first call or is 3 retries on top, (b) whether transient retries reset the schema-repair counter or vice-versa, or (c) the ordering when both error classes occur in one visit. §6.1 promises 'retry-budget boundaries' tests but cannot test boundaries that aren't specified.
-- (major) §2 #20 mandates a 'Hard daily LLM-spend cap per account', §5.5 enforces it, and §6.2 tests boundaries at 49.9/50.0/99.9/100.0%, but the actual default cap value is never given. New accounts therefore have no defined initial cap, and §5.6 cost-pack tiers cannot be reasoned about against it.
-- (minor) §7 lists exactly 2 conversion-research experts, but §6.3 says 'if [κ] below [0.6], a third reviewer adjudicates'. The third reviewer is unsourced — not in the team list, no role assignment, no budget. Either pre-name the third reviewer (e.g., the LLM expert acting as adjudicator with a defined rubric), or require a 3rd contracted CRO from the start.
-- (minor) §5.1 step 4 says when a backstory's other variant is in flight, 'the job is requeued with backoff'. The backoff policy (initial delay, growth, jitter, max) is unspecified, distinct from the §2 #10 transient-error backoff. Under contention this is the difference between a study finishing in 2 min vs. spinning. Specify the per-backstory-lease backoff.
-- (minor) §5.1 step 4 sets 'concurrency limit (default 20)' without scope qualifier — per worker process, per study, per account, or global? §2 #18 already defines 'concurrent in-flight studies per account ≤ 5' and §2 #24 defines per-domain concurrency, but per-visitor-worker concurrency is the one most relevant to the 2-min budget and is the one left ambiguous.
-- (minor) §2 #5 allows custom-ICP authoring, and §5.7 'Backstory sampling' defines categorical distributions only for the 5 preset archetypes. How a custom ICP — which is partly free-text — is converted into the categorical distributions that `sampleBackstory` requires is unspecified. The §6.1 reproducibility test ('same seed + idx → identical backstory') cannot apply to custom ICPs without this.
-- (minor) §2 #11 says clustering operates on '`objections[]` / `confusions[]` / `unanswered_blockers[]` across visitors' but does not say whether the three lists are pooled into one HDBSCAN run or clustered independently per category. The report UX implication (one cluster table vs. three) and the `min_cluster_size=3` semantics differ materially between the two interpretations.
-- (minor) §6.3 lists 'willbuy.dev's own [pricing page]' as one of the 5 benchmark pages, but Sprint 3 dogfooding *creates and iterates on* willbuy.dev's pricing page in the same sprint as the benchmark gate. Sequence-of-events is unclear: is willbuy's own page a 5th data point in the κ ≥ 0.6 calculation (in which case the experts review a page that's still being iterated), or is it scored separately? The interaction between dogfood iteration and benchmark gating needs to be ordered.
-- (minor) §2 #2 'navigation depth ≤ 1 (no follow-on clicks in v0.1)' contradicts §2 #1 'auto-dismiss cookie banners' implicitly — banner dismissal is a click. Either reword to 'no follow-on navigations beyond the initial URL' (treating banner dismissal as a same-page interaction), or carve out cookie-banner dismissal as the single permitted click and bound it (one click only, on a banner-classified element).
+- (major) 'v0.2' is overloaded and self-contradicting. The spec header is 'SPEC v0.2', yet §2 #10 says 'Provider-fallback is **deferred to v0.2**' and §2 #21 says 'Adding the second wired backend with automatic fallback is **v0.2**' — implying fallback ships in THIS version. The changelog clarifies 'chat-provider fallback moved to v0.2-followup' but 'v0.2-followup' appears nowhere else and is not in the 'Out of scope' list. Readers cannot tell whether fallback is in the current v0.2 scope, a future v0.2.x, or a v0.3 milestone. Introduce a clear product-version axis (e.g., product-v0.1 / product-v0.2) distinct from the spec-doc version, and reconcile all three passages.
+- (major) Daily LLM-spend cap has no numeric default. §2 #20 mandates 'Hard daily LLM-spend cap per account with a 50%-of-cap warning email' and §5.5 references `daily_cap` in comparisons, but no dollar figure is set anywhere. §6.1 tests boundary behavior at 49.9/50/99.9/100% of cap without a defined cap value. Pick a v0.1 default (e.g., $20/day) and state it in §2 #20 and §5.5 — otherwise the ledger, tests, and ops runbook are under-specified.
+- (major) Capture timeouts are inconsistent. §2 #2 sets wall-clock ≤ 45 s for capture. §2 #22 classifies as `blocked` when 'navigation timed out at >30 s on first paint.' These two thresholds can race: a slow-but-legitimate page that renders at 35 s would be recorded as `blocked` (triggering a refund) before the wall-clock ceiling fires as a breach. Clarify: is 30 s a first-paint timeout (distinct signal) or should it align with the 45 s wall-clock? Document priority order when multiple ceilings are approached.
+- (minor) Semantic-stability metric is not operationally defined. §6.2 nightly check: 'cluster-label match ≥ 80% across two real-provider runs at temperature=0; per-backstory delta within ±0.5.' 'Cluster-label match' is not defined — is it token overlap, embedding cosine, bipartite matching on cluster centroids, or human adjudication? An 80% threshold on an undefined metric is ungameable only by accident. Define the matching function (e.g., 'bipartite max-cosine match on cluster centroids, threshold 0.7 per pair') and what '80%' measures over (pairs matched / total clusters in smaller run).
+- (minor) Credit-to-dollar mapping is implicit and dual-valued. §5.6 says '$29 (1,000 credits ≈ 285 visits)'. Back-solving: 285 visits × 3.5¢ ≈ $10 of LLM cost, so internally 1 credit ≈ 1¢ of provider cost, but to the user 1 credit costs $0.029 (≈ 2.9× markup). The spec never states 'credits are denominated in LLM-cost cents with a fixed pack markup' or similar. Billing, ledger math, and ops-side reconciliation all ride on this mapping. State it explicitly in §5.4 or §5.6.
+- (minor) HDBSCAN behavior on sparse findings is unspecified. §2 #11 fixes `min_cluster_size=3`. A study with N=5 may produce <3 findings in a category, or all findings may be noise points — HDBSCAN then returns zero clusters. §6.2 has no fixture for the 'no clusters emit' case. Document expected report behavior ('no clusters, show raw findings list') and add a test.
+- (minor) Paired-A/B requeue backoff is unspecified. §5.1 step 4: 'if the other variant's visit for this backstory is in flight, the job is requeued with backoff.' No backoff curve (constant? exponential?), no maximum wait, no interaction with the 10-min lease. Under heavy contention a backstory could ping-pong on the queue indefinitely. Specify a backoff (e.g., 0.5 s jittered, capped at lease_until).
+- (minor) Aggregator 3-minute hard timeout behavior is undefined. §5.1 step 6: 'When all 60 visits reach terminal state (or 3-min hard timeout).' What happens at timeout — does the aggregator run on whatever visits have landed (partial report with n_ok<N)? Does the study transition to `failed`? How does the credit-ledger `partial_finalize` behave when some visits are still `leased` (not terminal)? Document the timeout's terminal effect and ledger interaction.
+- (minor) Truncation strategy is under-specified. §5.7: 'A11y-tree serialization ordered: pricing rows → above-fold CTAs → remaining reading order. Greedy truncate to 30k tokens.' 'Greedy' is ambiguous — does this mean 'append items in priority order until the budget is hit, then cut the next item mid-token,' or 'drop trailing items whole once the budget is exceeded'? How is 'pricing row' identified in the a11y tree (DOM heuristic? ARIA landmark?)? Specify or add a test fixture that locks the expected truncation behavior on a known page.
+- (minor) v0.1-wired chat and embedding providers are not named. §2 #11 says 'a small dedicated embedding model from a provider with a public embeddings API' (unnamed) and §2 #21 says 'one wired chat backend' (unnamed). §5.9 says 'providers are recorded per study and surfaced to the user before submission,' which presupposes a concrete provider. Procurement, pricing (§5.6 derives 3.5¢/visit from 'the chosen v0.1 chat model'), and legal/data-processing agreements all depend on this choice. Name the v0.1 chat provider and embedding provider (or state explicitly: 'selection deferred; cost-model defaults assume a GPT-4o-class chat + small OSS-embedding tier').
+- (minor) Share-token delivery mechanism is unspecified. §2 #14 and §5.8 describe '22-char unguessable share token' required to load `/r/<slug>`, but not how it is presented: path segment (`/r/<slug>/<token>`), query param (`?t=...`), cookie, or header. This matters for link-sharing ergonomics, referrer-leak exposure, and noindex behavior. Specify the wire format.
+- (minor) §5.6 reference-run cost range is unjustified. User story #2 narration: 'Total spend ~$3 (60 visits across both runs at the v0.1 cost-model defaults; see §5.6).' §5.6 says 'doubled for re-run ≈ $2.10–$3 including embeddings and cluster labels.' Doubling $1.06 gives $2.12; the upper end $3 is ~41% above that with no explanation (retry budget? variance? embedding overage?). Either tighten the range to $2.10–$2.30 or document the variance source.
 
 ## weak-testing
 
-- (major) §6.2 'Sandbox containment' tests `169.254.169.254`, `127.0.0.1`, RFC1918, and one internal hostname, but §2 #1 explicitly enumerates 'no IPv6 ULA' and 'no link-local' as required egress denies. Add IPv6 ULA (fc00::/7), IPv6 link-local (fe80::/10), IPv6 loopback (::1), and the GCP/Azure metadata endpoints (`metadata.google.internal`, `169.254.169.254` IMDSv1+v2, Azure IMDS) to the assertion set, since these are explicit promises in §2.
-- (major) Semantic-stability regression check is excluded from CI gating ('runs nightly, NOT in CI gating'). A prompt-template change or model-version drift that silently degrades cluster-label match below 80% or pushes per-backstory delta variance above ±0.5 can land on `main` and reach prod between nightly runs. At minimum, gate merges on the most recent nightly result; better, run a fast subset (e.g., 1 fixture page, N=5 paired) inline.
-- (major) §6.1 makes `LLMProvider` and `EmbeddingProvider` adapters core to the architecture but lists no test-first contract suite for the adapter interface itself: surfaced error classes (transient vs schema vs cap-exceeded vs auth), idempotency-key honoring, structured-output `response_format` round-trip, and per-attempt cost accounting. Without a contract test, the v0.2 'second wired backend' work has no fixture to satisfy.
-- (major) Paired-A/B isolation tests in §6.2 run against a stub provider only. The wedge claim is real-provider isolation (no shared KV cache, no session id reuse). Add at least one nightly real-provider isolation check that asserts (a) the provider's request-id and conversation handle (where exposed) differ across the A and B calls for the same backstory, and (b) the idempotency key per attempt is unique. Without this, the technical wedge is enforced only against a stub.
-- (major) §6.3 5-page benchmark sample (n=5) and pass criterion (top-3 covers ≥2 of the union of expert top-3, with 0 obvious false positives) is a thin ship gate for a 'plausible-slop' product. With 2 experts the union may be 3–6 issues, so 2/6 = 33% recall passes. Either raise the threshold (e.g., ≥ 3 of the union, or ≥ 2 of the *intersection*), grow the page count to 10, or add per-page minimum recall AND a per-page false-positive budget rather than 'obvious'.
-- (minor) §6.3 'Restart-during-run drill' is 'one successful run' on staging — single trial of a recovery path. Resumability under partial failure is exactly the kind of behavior that fails 1-in-N times. Make it ≥3 trials, with at least one trial killing workers during the *aggregation* stage (not just visit-fan-out) and one trial killing the capture worker mid-capture, since §5.3 implies different reclaim semantics per job kind.
-- (minor) §6.2 'Reproducibility (pure layers only)' covers backstory sampling and aggregator-on-fixtured-LLM-output, but does not test the truncation algorithm in §5.7 (priority-ordered greedy to 30k tokens). Truncation determines what the model actually sees and is the most pricing-relevant code path; add golden-file tests for ordering (pricing → above-fold → reading order) and boundary (just under / just over 30k tokens).
+- (major) No test asserts the per-visit cost ceiling actually caps total spend across retries. §2 #10 and §5.6 both call out the '5¢ per-visit hard ceiling caps total spend across all retries.' §6.1 tests 'retry-budget boundaries' but does not fixture the scenario where 2 schema-repair retries + 3 transient retries accumulate cost up to the ceiling and the final attempt is cut off. Add: 'retry storm reaches per-visit ceiling on attempt k, visit transitions to failed:cap_exceeded, attempt k+1 is never issued, refund fires.'
+- (minor) Share-token lifecycle is under-tested. §5.8 says 'expired tokens 410 Gone' and §2 #14 allows revoke/expiry. §6 has no test for: (a) expired-token returns 410 not 404, (b) revoked-token behavior, (c) default 90-day expiry actually applied at token mint, (d) opt-in indexable vs default noindex meta-tag on report HTML. Add unit/integration coverage for each.
+- (minor) API key rotation is under-tested. §2 #15 and §5.8 require ≤2 active keys, immediate revoke, `last_used_at`, optional `expires_at`. §6 does not test: (a) attempting to create a 3rd active key is rejected, (b) a revoked key authenticates 401, (c) `last_used_at` is updated on auth, (d) expired key 401s. Add tests.
+- (minor) DLQ and alerting path is not test-covered. §5.3 says jobs exceeding `max_attempts` (default 5) move to DLQ 'for operator review.' §6 does not test: DLQ row creation on exhausted attempts, operator-facing alert/notification firing, replay semantics (can a DLQ'd job be resurrected?). Add an integration test fixture that forces 5 failed visit attempts and asserts DLQ row + alert.
+- (minor) No load test covers the concurrent-study ceiling. §2 #18 sets 'concurrent in-flight studies per account ≤ 5' and §2 #24 adds per-domain concurrency budgets. §6.2 integration targets N=5 in <30 s and perf-regression runs a single N=30 study. Nothing asserts that the 6th concurrent study from one account is rejected (and with what error), nor that the per-domain budget actually gates a burst. Add a targeted integration test.
 
 ## suggested-next-version
 
@@ -47,116 +44,101 @@ v0.3
   "findings": [
     {
       "category": "missing-requirement",
-      "text": "§4 Architecture: the architecture diagram block is an empty placeholder — `(architecture not yet specified)` between the `<!-- architecture:begin -->` / `<!-- architecture:end -->` markers. The mandatory baseline requires an architecture section, and §4.1/§4.2/§4.3 give component lists but no system-level diagram showing dataflow between Web, API, capture worker, visitor worker, aggregator, queue, Postgres, object store, Stripe, and Postmark.",
+      "text": "§4 Architecture diagram is an empty placeholder: the ```text block between `<!-- architecture:begin -->` and `<!-- architecture:end -->` contains only '(architecture not yet specified)'. The mandatory architecture section exists in prose (§4.1 Components, §4.2 Boundaries, §4.3 Abstractions), but the visual/structural diagram promised by the placeholder is missing. Either fill the diagram (component + data-flow ASCII or mermaid) or delete the placeholder scaffold and state explicitly that prose replaces the diagram.",
       "severity": "major"
     },
     {
       "category": "contradiction",
-      "text": "§10 Changelog claims the v0.2 pass `Filled architecture diagram`, but the §4 architecture block is still the empty `(architecture not yet specified)` placeholder. Either the diagram was not actually filled, or the changelog overstates the work — these cannot both be true.",
-      "severity": "major"
-    },
-    {
-      "category": "contradiction",
-      "text": "Capture wall-clock budget contradiction. §2 #2 sets the capture ceiling at `wall-clock ≤ 45 s`, but §6.3 'Perf regression' asserts `per-stage budget asserted (capture ≤ 30 s, per-visit p95 ≤ 5 s, aggregation ≤ 20 s)`. A capture that legitimately uses up to 45 s under §2 #2 will fail the §6.3 CI assertion. Pick one ceiling or define both (hard cap vs. perf target) explicitly.",
+      "text": "Study success threshold contradicts minimum N. §5.2 states 'Default N is 30; minimum 5, maximum 100 in v0.1.' §5.4 defines `partial_finalize` with 'min_ok_visits, default 20/30' and §5.5 says 'Study finishes `ready` if ≥ `min_ok_visits`; otherwise `failed`, full reserve refunded.' With N=5–19, min_ok_visits=20 is unreachable, so every small study would auto-fail and refund regardless of result quality. Define min_ok_visits as a ratio (e.g., ≥ ⌈0.66·N⌉) or a ceiling (min(20, N)), or raise the N floor to 20.",
       "severity": "major"
     },
     {
       "category": "ambiguity",
-      "text": "§5.4 defines `partial_finalize` with `min_ok_visits, default 20/30`, and §5.5 reuses `min_ok_visits` as the ready/failed gate. §2 says N can range 5–100, but the spec never says whether `min_ok_visits` is a fixed 20, a fixed 2/3 ratio of N, or only defined for N=30. For N=5 the 20/30 default is impossible to satisfy; for N=100 the threshold is unspecified. Define the function `min_ok_visits(N)`.",
+      "text": "'v0.2' is overloaded and self-contradicting. The spec header is 'SPEC v0.2', yet §2 #10 says 'Provider-fallback is **deferred to v0.2**' and §2 #21 says 'Adding the second wired backend with automatic fallback is **v0.2**' — implying fallback ships in THIS version. The changelog clarifies 'chat-provider fallback moved to v0.2-followup' but 'v0.2-followup' appears nowhere else and is not in the 'Out of scope' list. Readers cannot tell whether fallback is in the current v0.2 scope, a future v0.2.x, or a v0.3 milestone. Introduce a clear product-version axis (e.g., product-v0.1 / product-v0.2) distinct from the spec-doc version, and reconcile all three passages.",
       "severity": "major"
     },
     {
       "category": "ambiguity",
-      "text": "Credits-to-money mapping is undefined. §5.4 ledger semantics work in `cents` (`reserve(...cents)`, `commit(...cents)`), but §5.6 prices packs as `$29 (1,000 credits ≈ 285 visits)`, implying 1 credit ≠ 1 cent (1000 credits / $29 ≈ 3.45¢ per credit) and a markup over the 3.5¢ visit cost. Spec must state (a) the credit→cent conversion rate, (b) whether reservations debit credits or cents, and (c) how the markup is reconciled against `llm_spend_daily(cents)` so the cap and reconciliation jobs are unambiguous.",
+      "text": "Daily LLM-spend cap has no numeric default. §2 #20 mandates 'Hard daily LLM-spend cap per account with a 50%-of-cap warning email' and §5.5 references `daily_cap` in comparisons, but no dollar figure is set anywhere. §6.1 tests boundary behavior at 49.9/50/99.9/100% of cap without a defined cap value. Pick a v0.1 default (e.g., $20/day) and state it in §2 #20 and §5.5 — otherwise the ledger, tests, and ops runbook are under-specified.",
       "severity": "major"
     },
     {
       "category": "ambiguity",
-      "text": "Retry budget composition is unclear. §2 #9 allows up to 2 schema-repair retries and §2 #10 allows up to 3 transient retries with the per-visit 5¢ cap as the only joint bound, but the spec never says (a) whether '3 attempts' in §2 #10 includes the first call or is 3 retries on top, (b) whether transient retries reset the schema-repair counter or vice-versa, or (c) the ordering when both error classes occur in one visit. §6.1 promises 'retry-budget boundaries' tests but cannot test boundaries that aren't specified.",
-      "severity": "major"
-    },
-    {
-      "category": "ambiguity",
-      "text": "§2 #20 mandates a 'Hard daily LLM-spend cap per account', §5.5 enforces it, and §6.2 tests boundaries at 49.9/50.0/99.9/100.0%, but the actual default cap value is never given. New accounts therefore have no defined initial cap, and §5.6 cost-pack tiers cannot be reasoned about against it.",
-      "severity": "major"
-    },
-    {
-      "category": "ambiguity",
-      "text": "§7 lists exactly 2 conversion-research experts, but §6.3 says 'if [κ] below [0.6], a third reviewer adjudicates'. The third reviewer is unsourced — not in the team list, no role assignment, no budget. Either pre-name the third reviewer (e.g., the LLM expert acting as adjudicator with a defined rubric), or require a 3rd contracted CRO from the start.",
-      "severity": "minor"
-    },
-    {
-      "category": "ambiguity",
-      "text": "§5.1 step 4 says when a backstory's other variant is in flight, 'the job is requeued with backoff'. The backoff policy (initial delay, growth, jitter, max) is unspecified, distinct from the §2 #10 transient-error backoff. Under contention this is the difference between a study finishing in 2 min vs. spinning. Specify the per-backstory-lease backoff.",
-      "severity": "minor"
-    },
-    {
-      "category": "ambiguity",
-      "text": "§5.1 step 4 sets 'concurrency limit (default 20)' without scope qualifier — per worker process, per study, per account, or global? §2 #18 already defines 'concurrent in-flight studies per account ≤ 5' and §2 #24 defines per-domain concurrency, but per-visitor-worker concurrency is the one most relevant to the 2-min budget and is the one left ambiguous.",
-      "severity": "minor"
-    },
-    {
-      "category": "ambiguity",
-      "text": "§2 #5 allows custom-ICP authoring, and §5.7 'Backstory sampling' defines categorical distributions only for the 5 preset archetypes. How a custom ICP — which is partly free-text — is converted into the categorical distributions that `sampleBackstory` requires is unspecified. The §6.1 reproducibility test ('same seed + idx → identical backstory') cannot apply to custom ICPs without this.",
-      "severity": "minor"
-    },
-    {
-      "category": "ambiguity",
-      "text": "§2 #11 says clustering operates on '`objections[]` / `confusions[]` / `unanswered_blockers[]` across visitors' but does not say whether the three lists are pooled into one HDBSCAN run or clustered independently per category. The report UX implication (one cluster table vs. three) and the `min_cluster_size=3` semantics differ materially between the two interpretations.",
-      "severity": "minor"
-    },
-    {
-      "category": "weak-testing",
-      "text": "§6.2 'Sandbox containment' tests `169.254.169.254`, `127.0.0.1`, RFC1918, and one internal hostname, but §2 #1 explicitly enumerates 'no IPv6 ULA' and 'no link-local' as required egress denies. Add IPv6 ULA (fc00::/7), IPv6 link-local (fe80::/10), IPv6 loopback (::1), and the GCP/Azure metadata endpoints (`metadata.google.internal`, `169.254.169.254` IMDSv1+v2, Azure IMDS) to the assertion set, since these are explicit promises in §2.",
+      "text": "Capture timeouts are inconsistent. §2 #2 sets wall-clock ≤ 45 s for capture. §2 #22 classifies as `blocked` when 'navigation timed out at >30 s on first paint.' These two thresholds can race: a slow-but-legitimate page that renders at 35 s would be recorded as `blocked` (triggering a refund) before the wall-clock ceiling fires as a breach. Clarify: is 30 s a first-paint timeout (distinct signal) or should it align with the 45 s wall-clock? Document priority order when multiple ceilings are approached.",
       "severity": "major"
     },
     {
       "category": "weak-testing",
-      "text": "Semantic-stability regression check is excluded from CI gating ('runs nightly, NOT in CI gating'). A prompt-template change or model-version drift that silently degrades cluster-label match below 80% or pushes per-backstory delta variance above ±0.5 can land on `main` and reach prod between nightly runs. At minimum, gate merges on the most recent nightly result; better, run a fast subset (e.g., 1 fixture page, N=5 paired) inline.",
+      "text": "No test asserts the per-visit cost ceiling actually caps total spend across retries. §2 #10 and §5.6 both call out the '5¢ per-visit hard ceiling caps total spend across all retries.' §6.1 tests 'retry-budget boundaries' but does not fixture the scenario where 2 schema-repair retries + 3 transient retries accumulate cost up to the ceiling and the final attempt is cut off. Add: 'retry storm reaches per-visit ceiling on attempt k, visit transitions to failed:cap_exceeded, attempt k+1 is never issued, refund fires.'",
       "severity": "major"
     },
     {
-      "category": "weak-testing",
-      "text": "§6.1 makes `LLMProvider` and `EmbeddingProvider` adapters core to the architecture but lists no test-first contract suite for the adapter interface itself: surfaced error classes (transient vs schema vs cap-exceeded vs auth), idempotency-key honoring, structured-output `response_format` round-trip, and per-attempt cost accounting. Without a contract test, the v0.2 'second wired backend' work has no fixture to satisfy.",
-      "severity": "major"
-    },
-    {
-      "category": "weak-testing",
-      "text": "Paired-A/B isolation tests in §6.2 run against a stub provider only. The wedge claim is real-provider isolation (no shared KV cache, no session id reuse). Add at least one nightly real-provider isolation check that asserts (a) the provider's request-id and conversation handle (where exposed) differ across the A and B calls for the same backstory, and (b) the idempotency key per attempt is unique. Without this, the technical wedge is enforced only against a stub.",
-      "severity": "major"
-    },
-    {
-      "category": "weak-testing",
-      "text": "§6.3 5-page benchmark sample (n=5) and pass criterion (top-3 covers ≥2 of the union of expert top-3, with 0 obvious false positives) is a thin ship gate for a 'plausible-slop' product. With 2 experts the union may be 3–6 issues, so 2/6 = 33% recall passes. Either raise the threshold (e.g., ≥ 3 of the union, or ≥ 2 of the *intersection*), grow the page count to 10, or add per-page minimum recall AND a per-page false-positive budget rather than 'obvious'.",
-      "severity": "major"
-    },
-    {
-      "category": "weak-testing",
-      "text": "§6.3 'Restart-during-run drill' is 'one successful run' on staging — single trial of a recovery path. Resumability under partial failure is exactly the kind of behavior that fails 1-in-N times. Make it ≥3 trials, with at least one trial killing workers during the *aggregation* stage (not just visit-fan-out) and one trial killing the capture worker mid-capture, since §5.3 implies different reclaim semantics per job kind.",
-      "severity": "minor"
-    },
-    {
-      "category": "weak-testing",
-      "text": "§6.2 'Reproducibility (pure layers only)' covers backstory sampling and aggregator-on-fixtured-LLM-output, but does not test the truncation algorithm in §5.7 (priority-ordered greedy to 30k tokens). Truncation determines what the model actually sees and is the most pricing-relevant code path; add golden-file tests for ordering (pricing → above-fold → reading order) and boundary (just under / just over 30k tokens).",
-      "severity": "minor"
-    },
-    {
-      "category": "contradiction",
-      "text": "§7 calls out 'Veteran payments engineer (Stripe credits / ledger) (0.5)' and notes 'Can be one of the TS engineers if skill overlap is real', but §8 Sprint 1 already assigns 'Stripe Checkout + webhook (test mode), Postmark integration' to TS engineer B without naming the payments engineer in any sprint. Either remove the payments role and absorb it into TS engineer B explicitly, or add the 0.5 payments engineer to the sprint plan. As written, the team count and the sprint plan disagree.",
+      "category": "ambiguity",
+      "text": "Semantic-stability metric is not operationally defined. §6.2 nightly check: 'cluster-label match ≥ 80% across two real-provider runs at temperature=0; per-backstory delta within ±0.5.' 'Cluster-label match' is not defined — is it token overlap, embedding cosine, bipartite matching on cluster centroids, or human adjudication? An 80% threshold on an undefined metric is ungameable only by accident. Define the matching function (e.g., 'bipartite max-cosine match on cluster centroids, threshold 0.7 per pair') and what '80%' measures over (pairs matched / total clusters in smaller run).",
       "severity": "minor"
     },
     {
       "category": "ambiguity",
-      "text": "§6.3 lists 'willbuy.dev's own [pricing page]' as one of the 5 benchmark pages, but Sprint 3 dogfooding *creates and iterates on* willbuy.dev's pricing page in the same sprint as the benchmark gate. Sequence-of-events is unclear: is willbuy's own page a 5th data point in the κ ≥ 0.6 calculation (in which case the experts review a page that's still being iterated), or is it scored separately? The interaction between dogfood iteration and benchmark gating needs to be ordered.",
+      "text": "Credit-to-dollar mapping is implicit and dual-valued. §5.6 says '$29 (1,000 credits ≈ 285 visits)'. Back-solving: 285 visits × 3.5¢ ≈ $10 of LLM cost, so internally 1 credit ≈ 1¢ of provider cost, but to the user 1 credit costs $0.029 (≈ 2.9× markup). The spec never states 'credits are denominated in LLM-cost cents with a fixed pack markup' or similar. Billing, ledger math, and ops-side reconciliation all ride on this mapping. State it explicitly in §5.4 or §5.6.",
       "severity": "minor"
     },
     {
       "category": "ambiguity",
-      "text": "§2 #2 'navigation depth ≤ 1 (no follow-on clicks in v0.1)' contradicts §2 #1 'auto-dismiss cookie banners' implicitly — banner dismissal is a click. Either reword to 'no follow-on navigations beyond the initial URL' (treating banner dismissal as a same-page interaction), or carve out cookie-banner dismissal as the single permitted click and bound it (one click only, on a banner-classified element).",
+      "text": "HDBSCAN behavior on sparse findings is unspecified. §2 #11 fixes `min_cluster_size=3`. A study with N=5 may produce <3 findings in a category, or all findings may be noise points — HDBSCAN then returns zero clusters. §6.2 has no fixture for the 'no clusters emit' case. Document expected report behavior ('no clusters, show raw findings list') and add a test.",
+      "severity": "minor"
+    },
+    {
+      "category": "ambiguity",
+      "text": "Paired-A/B requeue backoff is unspecified. §5.1 step 4: 'if the other variant's visit for this backstory is in flight, the job is requeued with backoff.' No backoff curve (constant? exponential?), no maximum wait, no interaction with the 10-min lease. Under heavy contention a backstory could ping-pong on the queue indefinitely. Specify a backoff (e.g., 0.5 s jittered, capped at lease_until).",
+      "severity": "minor"
+    },
+    {
+      "category": "ambiguity",
+      "text": "Aggregator 3-minute hard timeout behavior is undefined. §5.1 step 6: 'When all 60 visits reach terminal state (or 3-min hard timeout).' What happens at timeout — does the aggregator run on whatever visits have landed (partial report with n_ok<N)? Does the study transition to `failed`? How does the credit-ledger `partial_finalize` behave when some visits are still `leased` (not terminal)? Document the timeout's terminal effect and ledger interaction.",
+      "severity": "minor"
+    },
+    {
+      "category": "weak-testing",
+      "text": "Share-token lifecycle is under-tested. §5.8 says 'expired tokens 410 Gone' and §2 #14 allows revoke/expiry. §6 has no test for: (a) expired-token returns 410 not 404, (b) revoked-token behavior, (c) default 90-day expiry actually applied at token mint, (d) opt-in indexable vs default noindex meta-tag on report HTML. Add unit/integration coverage for each.",
+      "severity": "minor"
+    },
+    {
+      "category": "weak-testing",
+      "text": "API key rotation is under-tested. §2 #15 and §5.8 require ≤2 active keys, immediate revoke, `last_used_at`, optional `expires_at`. §6 does not test: (a) attempting to create a 3rd active key is rejected, (b) a revoked key authenticates 401, (c) `last_used_at` is updated on auth, (d) expired key 401s. Add tests.",
+      "severity": "minor"
+    },
+    {
+      "category": "ambiguity",
+      "text": "Truncation strategy is under-specified. §5.7: 'A11y-tree serialization ordered: pricing rows → above-fold CTAs → remaining reading order. Greedy truncate to 30k tokens.' 'Greedy' is ambiguous — does this mean 'append items in priority order until the budget is hit, then cut the next item mid-token,' or 'drop trailing items whole once the budget is exceeded'? How is 'pricing row' identified in the a11y tree (DOM heuristic? ARIA landmark?)? Specify or add a test fixture that locks the expected truncation behavior on a known page.",
+      "severity": "minor"
+    },
+    {
+      "category": "ambiguity",
+      "text": "v0.1-wired chat and embedding providers are not named. §2 #11 says 'a small dedicated embedding model from a provider with a public embeddings API' (unnamed) and §2 #21 says 'one wired chat backend' (unnamed). §5.9 says 'providers are recorded per study and surfaced to the user before submission,' which presupposes a concrete provider. Procurement, pricing (§5.6 derives 3.5¢/visit from 'the chosen v0.1 chat model'), and legal/data-processing agreements all depend on this choice. Name the v0.1 chat provider and embedding provider (or state explicitly: 'selection deferred; cost-model defaults assume a GPT-4o-class chat + small OSS-embedding tier').",
+      "severity": "minor"
+    },
+    {
+      "category": "weak-testing",
+      "text": "DLQ and alerting path is not test-covered. §5.3 says jobs exceeding `max_attempts` (default 5) move to DLQ 'for operator review.' §6 does not test: DLQ row creation on exhausted attempts, operator-facing alert/notification firing, replay semantics (can a DLQ'd job be resurrected?). Add an integration test fixture that forces 5 failed visit attempts and asserts DLQ row + alert.",
+      "severity": "minor"
+    },
+    {
+      "category": "weak-testing",
+      "text": "No load test covers the concurrent-study ceiling. §2 #18 sets 'concurrent in-flight studies per account ≤ 5' and §2 #24 adds per-domain concurrency budgets. §6.2 integration targets N=5 in <30 s and perf-regression runs a single N=30 study. Nothing asserts that the 6th concurrent study from one account is rejected (and with what error), nor that the per-domain budget actually gates a burst. Add a targeted integration test.",
+      "severity": "minor"
+    },
+    {
+      "category": "ambiguity",
+      "text": "Share-token delivery mechanism is unspecified. §2 #14 and §5.8 describe '22-char unguessable share token' required to load `/r/<slug>`, but not how it is presented: path segment (`/r/<slug>/<token>`), query param (`?t=...`), cookie, or header. This matters for link-sharing ergonomics, referrer-leak exposure, and noindex behavior. Specify the wire format.",
+      "severity": "minor"
+    },
+    {
+      "category": "ambiguity",
+      "text": "§5.6 reference-run cost range is unjustified. User story #2 narration: 'Total spend ~$3 (60 visits across both runs at the v0.1 cost-model defaults; see §5.6).' §5.6 says 'doubled for re-run ≈ $2.10–$3 including embeddings and cluster labels.' Doubling $1.06 gives $2.12; the upper end $3 is ~41% above that with no explanation (retry budget? variance? embedding overage?). Either tighten the range to $2.10–$2.30 or document the variance source.",
       "severity": "minor"
     }
   ],
-  "summary": "Spec v0.2 is materially stronger than v0.1 on security, isolation, and ledger semantics, but ships with one self-contradicting promise (the changelog claims an architecture diagram that is still an empty placeholder) and several scaling ambiguities that block implementation: min_ok_visits is only defined for N=30, the credits→cents mapping is missing, the daily spend-cap default is unset, and the schema-repair vs transient-retry budget composition is undefined. Capture timing contradicts itself between §2 (45s) and §6.3 (30s assertion). Testing has gaps where it most matters for the wedge: paired-A/B isolation is verified only against a stub, the LLM adapter has no contract suite, sandbox containment omits IPv6 and GCP/Azure metadata even though §2 names them, and the semantic-stability check is excluded from CI gating. The 5-page human benchmark threshold is permissive enough that a slop-prone build could pass.",
+  "summary": "v0.2 is a strong, broadly unambiguous revision that addresses the major round-1 themes (sandbox/SSRF, ledger semantics, paired-A/B isolation, retention, rate-limits, two-annotator benchmark, fresh-context schema repair). All nine mandatory sections are present, though the architecture section's diagram block is an empty placeholder. Remaining issues cluster around (a) internal version labels — the 'v0.2 vs v0.2-followup' muddle around chat-provider fallback, (b) unset numeric defaults — daily spend cap has no dollar value, and min_ok_visits=20 is incompatible with the stated N≥5 floor, (c) timeout/threshold alignment (30s navigation vs 45s wall-clock), and (d) a handful of weak-test gaps around share-token lifecycle, API-key rotation, DLQ alerting, cost-ceiling retry interaction, and concurrency-ceiling enforcement. None are architectural dealbreakers; all are tractable copy/test edits for v0.3.",
   "suggested_next_version": "v0.3",
   "usage": null,
   "effort_used": "max"
