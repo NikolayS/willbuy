@@ -53,5 +53,17 @@
   },
   "publish_lint": {
     "allowed_commands": []
+  },
+  "calibration": {
+    "sample_count": 1,
+    "tokens_per_round": [
+      0
+    ],
+    "rounds_to_converge": [
+      0
+    ],
+    "cost_per_run_usd": [
+      0
+    ]
   }
 }

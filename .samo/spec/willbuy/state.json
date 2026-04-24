@@ -12,12 +12,8 @@
   "remote_stale": false,
   "coupled_fallback": false,
   "head_sha": "f351c6829fe6c71e846ef123139ef324bc5dd9b2",
-  "round_state": "lead_terminal",
-  "exit": {
-    "code": 4,
-    "reason": "lead-terminal:revise_timeout",
-    "round_index": 2
-  },
+  "round_state": "committed",
+  "exit": null,
   "created_at": "2026-04-24T19:08:15.754Z",
   "updated_at": "2026-04-24T20:03:01.146Z",
   "input": {
