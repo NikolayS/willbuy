@@ -20,4 +20,4 @@ See SPEC.md for the full goal statement.
 
 ## Next action
 
-`samospec iterate willbuy`
+`samospec publish willbuy`
