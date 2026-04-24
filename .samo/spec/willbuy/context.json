@@ -1,0 +1,43 @@
+{
+  "phase": "draft",
+  "files": [
+    {
+      "path": ".samo/.gitignore",
+      "bytes": 69,
+      "tokens": 17,
+      "blob": "d9950aaaf117f8af431711029ca05e8e264a6edf",
+      "included": true,
+      "risk_flags": []
+    },
+    {
+      "path": ".samo/config.json",
+      "bytes": 1160,
+      "tokens": 290,
+      "blob": "94bea6c478dcd113d8a5aafd3d2f186f7d57b81f",
+      "included": true,
+      "risk_flags": []
+    },
+    {
+      "path": ".samo/spec/willbuy.archived-2026-04-24T190815Z/state.json",
+      "bytes": 1195,
+      "tokens": 298,
+      "blob": "67b842ddec0e56bac96e7c6efd257c291bc2b744",
+      "included": true,
+      "risk_flags": []
+    },
+    {
+      "path": ".samo/spec/willbuy/state.json",
+      "bytes": 931,
+      "tokens": 232,
+      "blob": "87cf3d0228a51e33c02cc064943e8e46b727a1f4",
+      "included": true,
+      "risk_flags": []
+    }
+  ],
+  "risk_flags": [],
+  "budget": {
+    "phase": "draft",
+    "tokens_used": 837,
+    "tokens_budget": 30000
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "slug": "willbuy",
+  "persona": "Veteran \"conversion research & LLM-simulated user testing\" expert",
+  "generated_at": "2026-04-24T19:08:15.754Z",
+  "questions": [
+    {
+      "id": "language",
+      "text": "Which primary implementation language should the v0.1 prototype use, given the brief leaves this open?",
+      "options": [
+        "Python (fastest for LLM orchestration, pandas analysis, Jupyter-style iteration)",
+        "TypeScript/Node.js (best if a web UI or Next.js dashboard is likely)",
+        "Go (if concurrency at scale and single-binary deploy matter most)",
+        "Rust (only if performance-critical simulation loops are anticipated)",
+        "No preference — you pick the default and justify",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    },
+    {
+      "id": "core_artifact",
+      "text": "What is the single most important output v0.1 must produce to prove value?",
+      "options": [
+        "A simulated-user test report (qualitative transcripts + friction findings) for a given landing page URL or mock",
+        "A quantitative conversion-barrier scorecard ranking issues by predicted lift",
+        "A prioritized A/B test hypothesis backlog with expected impact estimates",
+        "Persona-conditioned heuristic/usability audits (Nielsen + JTBD + objection mapping)",
+        "A copy/messaging rewrite diff with before/after variants",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    },
+    {
+      "id": "input_surface",
+      "text": "What input does the user supply to kick off a study, and how rich is it?",
+      "options": [
+        "Just a live URL (tool scrapes/renders it)",
+        "URL + screenshot(s) + brand/ICP context pasted in",
+        "Figma/Framer design file or uploaded HTML",
+        "Full funnel spec: landing + pricing + checkout pages plus analytics CSV",
+        "Product description only — no page yet (pre-launch validation)",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    },
+    {
+      "id": "persona_fidelity",
+      "text": "How should the LLM-simulated users be grounded so findings feel credible rather than generic?",
+      "options": [
+        "Lightweight personas authored inline by the user (name, JTBD, objections)",
+        "Persona library seeded from user's ICP doc + interview transcripts they upload",
+        "Retrieval-grounded personas built from public reviews/Reddit/G2 scraped per category",
+        "Hybrid: user-authored skeletons auto-enriched with retrieved voice-of-customer quotes",
+        "Panel of archetypes (skeptic, bargain-hunter, expert, first-timer, mobile-skimmer) applied uniformly",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    },
+    {
+      "id": "validation_loop",
+      "text": "How will v0.1 demonstrate that simulated findings actually correlate with real user behavior?",
+      "options": [
+        "Bring-your-own benchmark: user pastes prior real user-test findings and we show overlap",
+        "Ship with 3–5 canned case studies (known pages + known A/B results) as regression fixtures",
+        "Defer validation — v0.1 is a directional ideation tool, not a predictive one",
+        "Expert-rater rubric: CRO practitioners score outputs for plausibility/actionability",
+        "Integrate with an analytics/experimentation tool (GA4, PostHog, VWO) to backtest",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    }
+  ],
+  "answers": [
+    {
+      "id": "language",
+      "choice": "custom",
+      "custom": "Target users are indie hackers, startup PMM/marketing/founders, and ecommerce growth teams iterating on conversion pages — pricing pages, landing pages, checkout flows — before they have enough live traffic for statistically meaningful A/B tests. They are technical or semi-technical, comfortable pasting URLs and reading structured reports. They do NOT want sales calls; they want self-serve credit-card checkout. Secondary users are CRO consultants who want to ship audit reports faster. Out-of-scope users in v0.1: enterprise teams that need SSO/teams/compliance tooling, agencies that need white-label, and anyone who wants the tool to act on real shipped traffic data (that is v0.3 calibration scope)."
+    },
+    {
+      "id": "core_artifact",
+      "choice": "custom",
+      "custom": "Primary outcome v0.1: a working URL→report loop in under 2 minutes for N=30 visitors, paired-A/B capable, that catches at least 2 of 3 expert-flagged issues per page on a 5-real-pricing-page benchmark and surfaces no obvious false positives. Secondary outcome: 10 paying beta users at $29-99/mo within 4 weeks of public launch on willbuy.dev. Tertiary outcome: dogfood our own pricing page with the tool before public launch and act on its top blockers. Long-term outcome (v1, 2026 H2): $5–10k MRR self-serve at $29 / $99 / $299 tiers, no sales touch, no enterprise contracts."
+    },
+    {
+      "id": "input_surface",
+      "choice": "custom",
+      "custom": "In scope for v0.1: (1) URL capture using headless Chromium accessibility tree (alt text, ARIA, button labels, pricing/numeric content, reading order — NOT plain text); (2) Library of 5 preset ICP archetypes (SaaS-founder pre-PMF, SaaS-founder post-PMF, Shopify-merchant, dev-tools engineer, fintech-operations buyer) plus a custom-ICP authoring form; (3) Backstory sampling from ICP distribution (stage / team-size / stack / pain / entry-point / budget-authority); (4) Paired A/B mode where the SAME sampled backstory visits both URL variants in independent fresh-context sessions; (5) Strict JSON-schema visitor output (first_impression, will_to_buy 0-10, questions[], confusions[], objections[], unanswered_blockers[], next_action enum, confidence 0-10, reasoning), validated with retry-on-violation; (6) Embedding-based clustering of objections/confusions/blockers across visitors; (7) Conversion-weighted scoring (purchase=1.0, contact_sales=0.6, signup_free=0.15, bookmark=0.1, browse_more=0.05, leave=0.0); (8) Paired-delta computation per backstory with paired-t / McNemar's confidence; (9) Permanent shareable report URL; (10) Single-user API-key auth; (11) Stripe checkout for credits, no subscriptions yet; (12) Self-hosted Supabase (Postgres + storage + auth) for backend; (13) Cloudflare DNS/SSL/CDN; (14) Preview environment per pull request. Out of scope for v0.1: team accounts/SSO, Stripe subscriptions/portal/dunning, calibration against real analytics (GA/Amplitude/PostHog — that is v0.3), persistent dashboards beyond a 'my past runs' list, sharing/collab, custom output schema, more than 2 URLs per A/B, mobile UI, internationalization."
+    },
+    {
+      "id": "persona_fidelity",
+      "choice": "custom",
+      "custom": "Must-have constraints: (a) End-to-end URL→report under 2 min for N=30 with default concurrency; (b) Paired A/B uses identical backstory across both variants in fresh context — never let backstories leak between visits; (c) Page capture goes through headless Chromium and emits an accessibility-tree-rich serialization, with a screenshot stored as a debug artifact; (d) Strict JSON-schema validation per visitor with up to 2 retries before marking the visit failed (do not silently drop); (e) Runs survive server restart — half-finished batches resume; (f) Each report has a permanent shareable URL; (g) Bot-detection failures (Cloudflare/DataDome/PerimeterX) error gracefully with a clear message — full stealth bypass is v0.2; (h) Hard daily LLM-spend cap per account with a 50%-of-cap warning; (i) The LLM provider is pluggable from day 1 — never bake in a single backend; (j) Accessibility-tree extraction must handle SPAs, lazy-loaded images, and common cookie banners (auto-dismiss); (k) Truncate page content to ~30k tokens with priority to above-fold + primary CTAs + pricing sections."
+    },
+    {
+      "id": "validation_loop",
+      "choice": "custom",
+      "custom": "Success criteria for v0.1, in order of priority: (1) Run on 5 real public pricing pages including willbuy.dev's own — for each, the tool's top-3 unanswered_blockers must include at least 2 of what an independent human CRO expert would flag, with zero obvious false positives; (2) End-to-end run completes URL→report under 2 minutes for N=30 paired (60 visits) at default concurrency; (3) Paired-delta math is reproducible: same idea + same seed + same pages produces identical per-backstory deltas; (4) 10 paying beta users at $29-99/mo within 4 weeks of public launch; (5) Self-served signups complete payment-to-first-report in under 5 minutes; (6) No production incidents traceable to LLM cost overruns (daily caps must hold). Anything beyond — scale, multi-tier billing, team accounts, real-analytics calibration — is explicitly v0.2+ and must NOT block v0.1 ship."
+    }
+  ]
+}
