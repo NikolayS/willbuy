@@ -1,0 +1,19 @@
+{
+  "slug": "willbuy",
+  "phase": "persona",
+  "round_index": 0,
+  "version": "0.0.0",
+  "persona": null,
+  "push_consent": null,
+  "calibration": null,
+  "remote_stale": false,
+  "coupled_fallback": false,
+  "head_sha": null,
+  "round_state": "lead_terminal",
+  "exit": null,
+  "created_at": "2026-04-24T19:06:50.152Z",
+  "updated_at": "2026-04-24T19:06:50.152Z",
+  "input": {
+    "idea": "willbuy.dev — a synthetic visitor panel for pricing pages, landing pages, and checkout flows. Users paste a URL (or two for paired A/B), pick or author an ICP, and the service runs N independent LLM-based 'visitors' against the page. Each visitor returns structured feedback (will-to-buy, questions, confusions, objections, unanswered blockers, next action). Results aggregate into a conversion-weighted report. Differentiator: paired A/B design — same backstory visits both variants in independent fresh-context sessions, isolating page effect from persona variance. ICP: SaaS / ecommerce marketers and founders iterating on conversion pages before they have enough traffic for live A/B tests. Stack: Stripe billing, self-hosted Supabase, Cloudflare for DNS/SSL, preview environments per PR."
+  }
+}
