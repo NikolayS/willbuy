@@ -12,12 +12,8 @@
   "remote_stale": false,
   "coupled_fallback": false,
   "head_sha": "a3555071973e3c4b2601a560feb0c216b2ec0d22",
-  "round_state": "lead_terminal",
-  "exit": {
-    "code": 4,
-    "reason": "lead-terminal:wall_clock",
-    "round_index": 2
-  },
+  "round_state": "committed",
+  "exit": null,
   "created_at": "2026-04-24T19:08:15.754Z",
   "updated_at": "2026-04-24T19:34:59.301Z",
   "input": {
