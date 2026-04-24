@@ -21,3 +21,6 @@
 - user-edit before round 3
 
 - user-edit before round 3
+## v0.4 — 2026-04-24T21:06:28.272Z
+
+- Round 3 reviews applied (decisions — accepted: 28, rejected: 0, deferred: 0).
