@@ -33,3 +33,38 @@
 - accepted missing-requirement#4: Postmark named as the transactional email backend for cap warnings and product notifications; Supabase Auth retained for magic-link auth emails only; Sprint 1 assigns the integration to TS engineer B.
 - accepted ambiguity#8: Cloudflare WAF limits quantified in §2 #18: 60 RPM/IP anon, 600 RPM/key, study-create 10/min and 100/day per account, ≤5 concurrent studies per account.
 - accepted ambiguity#9: Added §5.2 single-URL data flow as a sibling section, explicitly stating capture count, default N (30, range 5–100), and which aggregation steps are skipped (paired-delta, McNemar).
+
+## Round 2 — 2026-04-24T20:04:04.935Z
+
+- accepted missing-risk#1: Replaced the checkbox with verified-domain (DNS/well-known/meta) OR public_declared + automated probe + signed-preview/staging blocklist (§2 #1).
+- accepted missing-risk#2: Added explicit no-side-effects browser policy blocking non-GETs, forms, downloads, service workers, popups, permissions, and switched to DOM-removal for banners instead of clicking (§2 #4).
+- accepted weak-implementation#1: Replaced check-then-act with a single atomic conditional-increment SQL reservation before any outbound call, plus a 40-concurrent-writer CI test (§5.5, §6.1).
+- accepted weak-implementation#2: Added explicit provider idempotency capability flag and `maybe_executed`/`indeterminate` state with pessimistic local debit and daily reconciliation (§2 #13, §5.4).
+- accepted weak-implementation#3: Tightened egress: ≤ 50 distinct hosts, per-request DNS pinning, cross-eTLD+1 redirect re-check, HTTPS→HTTP blocked (§2 #3).
+- accepted missing-risk#3: Added Cache-Control: no-store, Referrer-Policy: no-referrer, CDN cache bypass, revoke-purges-cache, and token-stripping log middleware for `/r/*` (§2 #17, §5.10, §5.12).
+- accepted missing-risk#4: Added explicit render boundary: React auto-escaping, `react/no-danger` lint, markdown allow-list, strict CSP, nosniff, permissions-policy, captured URLs as code text (§5.10).
+- accepted missing-risk#5: Extended retention to backups (tombstone replay), worker logs, traces, Cloudflare logs, Postmark archive, and LLM provider zero-retention endpoints (§2 #29, §5.12).
+- accepted missing-risk#6: Made redaction default-on redact-before-persist AND before-submission, plus a second scrub on `/r/*` strings, with labeled-context rule to prevent benign false-positives (§2 #28, §5.9).
+- accepted weak-implementation#4: Picked Firecracker microVM in v0.1 and explicitly rejected gVisor; this is no longer a week-1 spike decision (§2 #2).
+- rejected unnecessary-scope#1: Authoritative project idea mandates self-hosted Supabase; removed Cloudflare is also explicit. Preview-env-per-PR is retained but hardened with secret isolation rather than dropped.
+- accepted missing-risk#7: Added preview-env secret isolation: dedicated Supabase/Stripe/Postmark per PR, fork PRs receive stubs only, $5/day LLM sub-key, distinct KMS root (§2 #22).
+- accepted weak-implementation#5: Added single-writer finalize with SELECT FOR UPDATE + UNIQUE(reports.study_id) + `late_arrivals` table; 3-min timeout anchored to studies.created_at (§5.11).
+- accepted missing-risk#8: Added field-level logging policy: URL hashing, token stripping, encrypted `error_events` with matching TTL, weekly audit as ship gate (§5.12, §6.3).
+- accepted missing-requirement#1: Filled the §4 architecture diagram with a full data/control-flow graph and trust-boundary annotations.
+- accepted contradiction#1: Resolved the v0.2 vs v0.2-followup contradiction: chat-provider fallback is consistently labeled v0.3 across §§2 #24, 4.1, 9, 10.
+- accepted weak-testing#1: Replaced check-then-act with atomic conditional increment and added a 40-concurrent-writer CI test at 99.9% of cap (§5.5, §6.1, §6.2).
+- accepted ambiguity#1: Tightened `__cf_bm` rule — it is a block signal only combined with DOM text < 200 chars + CTA absent + 4xx/5xx; added a CF-fronted false-positive fixture suite (§2 #25, §6.1, §6.2).
+- accepted weak-testing#2: Redactor scoped to labeled-context for generic high-entropy tokens; added false-positive fixtures for asset hashes, CSP nonces, SKUs, commit SHAs, cache-busted URLs (§2 #28, §6.1).
+- accepted ambiguity#2: Named v0.1 chat model (claude-haiku-4-5) and embedding model (voyage-3-lite) by exact ID with price snapshot (§1, §2 #24, §5.6).
+- accepted ambiguity#3: Defined `min_ok_visits(n) = max(5, ceil(0.67·n))` and enumerated values for n ∈ {5,10,20,30,50,100} (§5.4).
+- accepted weak-testing#3: Wrote the adapter contract as an invariant (no conversation/session/thread/previous-response/cached-prompt identifiers) and added a grep-lint CI rule to enforce it (§2 #10, §6.1, §6.2).
+- accepted ambiguity#4: Spelled out the ship-gate matcher: a blinded third-party human adjudicator with a pre-registered four-verdict rubric (exact-match / paraphrase / partial-overlap-covers / not-covered); embedding similarity is advisory only (§6.3).
+- accepted ambiguity#5: Third-reviewer procedure: independent labeling, then majority rule (2-of-3) per-issue; matcher adjudicator is distinct from the three labelers (§6.3).
+- accepted ambiguity#6: Pinned the chat-provider's own tokenizer (library version locked) for the 30k-token truncation and added a CI test against the provider's per-request ceiling (§2 #6).
+- accepted ambiguity#7: Added per-field length caps to the output schema and `max_tokens=800` on the provider call; validator triggers schema-repair on over-cap strings (§2 #11).
+- accepted ambiguity#8: Specified per-backstory-lease contention backoff: 100 ms → 400 ms → 1.6 s jittered, unlimited retries until visit-job lease expires (§5.1 step 5).
+- accepted ambiguity#9: 3-min aggregate timeout is now explicitly measured from `studies.created_at`; late-arriving visits route to `late_arrivals` and do not mutate the report (§5.11).
+- accepted ambiguity#10: Clarified that the default concurrency limit (20) is per-account (§2 #27).
+- accepted ambiguity#11: KMS operators are a procedural requirement maintained in the ops runbook `RUN-KMS-OPERATORS.md` and reviewed quarterly (§2 #20).
+- accepted weak-testing#4: HDBSCAN determinism: sort + lowercase + whitespace-normalize inputs, L2-normalize embeddings, fixed `random_state`, `approx_min_span_tree=False`, ties by sorted order (§2 #14, §5.7).
+- accepted ambiguity#12: Per-backstory lease is a separate row in `backstory_leases` (NOT the visit job lease), with 120 s `lease_until` and 15 s heartbeat, released on visit terminal commit or on expiry (§2 #10, §5.11).
