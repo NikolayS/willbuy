@@ -1,0 +1,10 @@
+{
+  "round": 2,
+  "status": "complete",
+  "seats": {
+    "reviewer_a": "ok",
+    "reviewer_b": "ok"
+  },
+  "started_at": "2026-04-24T19:24:59.337Z",
+  "completed_at": "2026-04-24T19:28:42.144Z"
+}
