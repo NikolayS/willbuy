@@ -11,11 +11,11 @@
   "calibration": null,
   "remote_stale": false,
   "coupled_fallback": false,
-  "head_sha": null,
+  "head_sha": "a3555071973e3c4b2601a560feb0c216b2ec0d22",
   "round_state": "committed",
   "exit": null,
   "created_at": "2026-04-24T19:08:15.754Z",
-  "updated_at": "2026-04-24T19:24:22.833Z",
+  "updated_at": "2026-04-24T19:24:22.902Z",
   "input": {
     "idea": "willbuy.dev — synthetic visitor panel for conversion pages (pricing, landing, checkout). Paste URL(s), pick or author an ICP, get N independent fresh-context LLM 'visitors' returning structured will-to-buy / questions / blockers / next_action. Paired A/B (same backstory, both variants, independent fresh context) is the technical wedge. Self-serve, Stripe-billed, self-hosted Supabase backend, Cloudflare DNS/SSL. v0.1 = 2-minute URL→report loop."
   }
