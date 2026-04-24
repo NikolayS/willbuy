@@ -4,6 +4,12 @@ Minimal infrastructure state. Secrets live ONLY on the server at `/etc/willbuy/s
 
 ## Active resources
 
+### Cloudflare — PostgresAI account
+
+| Resource | Identifier                           | Notes                                                       |
+|----------|--------------------------------------|-------------------------------------------------------------|
+| Zone     | `willbuy.dev` · id `723d583d49c6ab84c134b8e814b942e5` | Active. Free plan. API token scoped to this zone only (DNS / DNS Settings / Zone Settings / SSL and Certificates — Edit). |
+
 ### Hetzner Cloud — project `SAMO` (TODO: move to dedicated `willbuy` project post-launch)
 
 | Resource | ID         | Name            | Notes                                                  |

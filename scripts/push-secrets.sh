@@ -18,6 +18,7 @@ set -euo pipefail
 
 : "${RESEND_API_KEY:?RESEND_API_KEY not set — run via op run --env-file=.env.op}"
 : "${HCLOUD_TOKEN:?HCLOUD_TOKEN not set — run via op run --env-file=.env.op}"
+: "${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN not set — run via op run --env-file=.env.op}"
 
 SERVER_NAME="${WILLBUY_SERVER_NAME:-willbuy-v01}"
 SERVER_USER="${WILLBUY_USER:-root}"
@@ -38,6 +39,7 @@ ssh -o StrictHostKeyChecking=accept-new "$TARGET" \
 # Do NOT edit by hand; re-run scripts/push-secrets.sh to refresh.
 RESEND_API_KEY=${RESEND_API_KEY}
 HCLOUD_TOKEN=${HCLOUD_TOKEN}
+CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
 EOF
 
 echo "secrets pushed to $TARGET:/etc/willbuy/secrets.env"
