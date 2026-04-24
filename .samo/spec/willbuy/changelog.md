@@ -17,3 +17,5 @@
 
 - Round 2 reviews applied (decisions — accepted: 31, rejected: 1, deferred: 0).
 - lead revise retried after timeout (#92)
+
+- user-edit before round 3
