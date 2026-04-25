@@ -250,3 +250,37 @@ Datasets:
 **Constraints.** Adding more provider adapters in the future (e.g. a hypothetical OpenAI HTTP adapter) MUST live in `packages/llm-adapter/` and inherit the same `eslint-rule.js` Set. If a separate provider package is ever needed, the `eslint-rule.js` Set should be extracted to a shared module first.
 
 **Tracking.** PR #N (set on merge), issue #20.
+
+### **2026-04-25 follow-on (A6 method-name addendum):**
+
+The spec §2 #12 sentence that defines the LLMProvider contract reads `LLMProvider.complete(request)`. The merged Sprint 1 implementation (PR #19) named the method **`chat(opts)`** instead, with the same typed-request contract. Sprint 2 confirmed this name everywhere via §5.16 AST lint. The rename is deliberate: the method's job is a chat-completion call (input messages + output assistant message), and `chat` is the verb the rest of our code, the Anthropic Messages API, and the Vercel AI SDK all use. `complete` was a Sprint 0 placeholder.
+
+**Implementation:** `packages/llm-adapter/src/index.ts:LLMProvider.chat(opts: LLMChatOptions)`. The opts type is the typed request shape §2 #12 specifies. No semantic change.
+
+**What is NOT changed.** The forbidden-identifiers list (still 9 entries), the §2 #14 schema-repair retry semantics, the §2 #15 idempotency contract, the §5.15 logical-request-key formula, the §5.16 AST lint scope.
+
+**Tracking.** Sprint 1 PR #19 (the original rename), this amendment for retroactive recording.
+
+---
+
+## 2026-04-25 — A7: credit-pack tier names (`starter` / `growth` / `scale`) standardize §5.6's three pack tiers
+
+**Affects:** §5.6 (Credit-pack tiers — spec lists three tiers by dollar amount + credit count, no names).
+
+**Driver:** PR #71 / issue #36. The §5.6 spec wording is `Credit-pack tiers: $29 (1,000 credits), $99 (4,000 credits), $299 (15,000 credits)`. Stripe Checkout requires named price IDs and the dashboard UI surfaces a tier name to the buyer (e.g. on the BuyCredits CTA, in Stripe receipts, in our `credit_ledger.kind='top_up'` reconciliation logs). Implementation chose `starter` / `growth` / `scale` to match common SaaS pricing-tier conventions and to leave room for future tiers (`team`, `enterprise`).
+
+**Amendment.** The three v0.1 credit packs from §5.6 are canonically identified as:
+
+| `pack_id`  | USD     | Credits (`pack.cents` field) | Stripe price-id env var      |
+| ---------- | ------- | ---------------------------- | ---------------------------- |
+| `starter`  | $29     | 2900                         | `STRIPE_PRICE_ID_STARTER`    |
+| `growth`   | $99     | 9900                         | `STRIPE_PRICE_ID_GROWTH`     |
+| `scale`    | $299    | 29900                        | `STRIPE_PRICE_ID_SCALE`      |
+
+The spec's `(1,000 credits)` / `(4,000 credits)` / `(15,000 credits)` parenthetical was a marketing-display label (1 display-credit ≈ 2.9¢ at starter, ≈ 2.475¢ at growth, ≈ 2¢ at scale — bulk discount on display credits, not on real spend). The `credit_ledger.cents` column is dollar-cents 1:1 with the spend kind (5¢/visit per §5.5), so the ledger receives `pack.cents` (= dollar-cents from Stripe) directly. The display-credit count (1000/4000/15000) is a UI label only; it does NOT flow into the ledger.
+
+**What is NOT changed.** Pricing in USD ($29/$99/$299), the `credit_ledger` schema, idempotency on `event.id` per §16, the §5.5 spend-cap semantics, the §5.6 cap-warning email rule.
+
+**Constraints.** (a) Three names are stable for v0.1; new tiers go through a fresh amendment + Stripe dashboard update. (b) The display-credit-count label is the only place the user sees a non-monetary number — keep that math consistent in `BuyCredits.tsx` (currently a known minor display bug per issue #73). (c) Stripe price IDs are environment-specific (test-mode vs live-mode); `STRIPE_PRICE_ID_*` env vars are sourced via `op inject` from the `willbuy` 1Password vault.
+
+**Tracking.** PR #71 (issue #36 close).
