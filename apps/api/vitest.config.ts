@@ -4,9 +4,10 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
     environment: 'node',
-    testTimeout: 30_000,
-    // Run test files sequentially to avoid Docker port collisions between
-    // integration test suites that each spin up their own Postgres container.
+    testTimeout: 60_000,
+    // Integration test suites each spin up their own Docker-backed Postgres
+    // container. Run files sequentially to avoid Docker port collisions and
+    // resource contention on CI and local machines.
     fileParallelism: false,
   },
 });
