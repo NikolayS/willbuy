@@ -49,3 +49,49 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  # Issue #33 / spec §5.13 + §2 #5 — capture egress isolation acceptance
+  # tests. These exercise real Linux network namespaces + iptables rules and
+  # therefore need NET_ADMIN. The default `ubuntu-latest` runner runs jobs
+  # as a passwordless-sudoer user, which gives us the capability we need
+  # without `--privileged` containers.
+  #
+  # Local reproduction:
+  #   sudo WILLBUY_PRIVILEGED=1 infra/capture/test/privileged.test.sh
+  #
+  # Why this is a separate job (not folded into `build`):
+  #  - it runs as root (via sudo) and we don't want to run the rest of the
+  #    test suite with elevated privileges,
+  #  - it must be Linux (the suite skips itself on macOS / Windows),
+  #  - it has narrow OS-package prerequisites (`iproute2`, `iptables`,
+  #    `conntrack-tools`, `netcat-openbsd`, `python3`) that the rest of the
+  #    suite does not need.
+  egress-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install netns + iptables prereqs
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            iproute2 iptables conntrack netcat-openbsd python3
+
+      - name: Verify ip / iptables / ip6tables / conntrack / nc
+        run: |
+          which ip && ip -V
+          which iptables && sudo iptables -V
+          which ip6tables && sudo ip6tables -V
+          which conntrack && sudo conntrack -V
+          which nc
+
+      - name: Run dry-run shell suites (no NET_ADMIN required)
+        run: |
+          bash infra/capture/test/dryrun.test.sh
+          bash infra/capture/test/cidr.test.sh
+          bash infra/capture/test/redirect.test.sh
+
+      - name: Run privileged netns + iptables acceptance suite
+        run: sudo WILLBUY_PRIVILEGED=1 bash infra/capture/test/privileged.test.sh

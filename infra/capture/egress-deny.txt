@@ -1,0 +1,46 @@
+# Canonical default-deny CIDR list for the capture network namespace.
+# Source: SPEC.md §2 #5 + §5.13 (v0.1 container transport).
+#
+# Format: one CIDR per line, optional inline `#` comment, blank lines ignored.
+# Family is inferred from the literal (`:` => v6, otherwise v4) — netns-bringup.sh
+# routes v4 entries to iptables and v6 entries to ip6tables.
+#
+# This file is the single source of truth for "internal / metadata / loopback /
+# link-local / ULA" ranges that the capture container MUST NOT reach. It is
+# loaded by netns-bringup.sh BEFORE the container process is unpaused, so a
+# Chromium-sandbox-escape inside the container has no path to host services.
+#
+# Public-repo discipline: ONLY RFC1918 / well-known internal ranges; no real
+# production IPs, no host names with IPs.
+
+# IPv4 — RFC1918 private
+10.0.0.0/8
+172.16.0.0/12
+192.168.0.0/16
+
+# IPv4 — Carrier-grade NAT (RFC6598). Cloud VPCs and some K8s overlays land here.
+100.64.0.0/10
+
+# IPv4 — loopback
+127.0.0.0/8
+
+# IPv4 — link-local (covers AWS/GCP/Azure metadata 169.254.169.254 + Azure WireServer)
+169.254.0.0/16
+
+# IPv6 — loopback
+::1/128
+
+# IPv6 — Unique Local Addresses (RFC4193)
+fc00::/7
+
+# IPv6 — link-local
+fe80::/10
+
+# IPv6 — documentation / test (RFC3849); cloud metadata aliases used to hide here
+2001:db8::/32
+
+# IPv6 — cloud metadata aliases (spec §2 #5: "IPv6 reachable cloud metadata aliases").
+# AWS IMDS exposes fd00:ec2::254; GCP exposes fd20::; we cover them via fc00::/7
+# above. The line below is an explicit single-host belt-and-braces entry for the
+# AWS alias to make red-team grep find it; it is already a subset of fc00::/7.
+fd00:ec2::254/128
