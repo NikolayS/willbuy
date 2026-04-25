@@ -312,19 +312,22 @@ pass "scenario 4: ${REDIR_HOST_IP} DROP'd by default policy (cross-eTLD+1 DNS pi
 # stall — the kernel routes the UDP packet, conntrack creates a tuple, and
 # bash returns immediately.
 
-# Use python3 to send one UDP datagram per distinct destination. UDP
-# entries appear in conntrack on the FIRST transmitted packet (no
-# handshake, no per-flow timeout), so this completes in a few hundred
-# milliseconds with no subprocess fan-out.
-ip netns exec "$CAPTURE_NS" timeout 5 python3 -c "
-import socket
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-for i in range(1, 61):
-    try:
-        s.sendto(b'x', ('203.0.113.' + str(i), 53))
-    except OSError:
-        pass
-"
+# Insert 60 conntrack tuples directly via `conntrack -I`. This avoids the
+# "neighbor unreachable -> packet silently dropped before conntrack" failure
+# mode we saw on the CI runner when relying on actual TCP/UDP probes —
+# `conntrack -I` writes to the conntrack table unconditionally, which is
+# what the host-budget enforcer reads from. The check we're proving is
+# "the enforcer correctly counts distinct-host conntrack tuples and trips
+# at >50" — that contract is independent of how the tuples got there.
+for i in $(seq 1 60); do
+  ip netns exec "$CAPTURE_NS" conntrack -I -p udp \
+    --orig-src "$CAPTURE_HOST_IP" --orig-dst "203.0.113.${i}" \
+    --orig-port-src "$((10000 + i))" --orig-port-dst 53 \
+    --reply-src "203.0.113.${i}" --reply-dst "$CAPTURE_HOST_IP" \
+    --reply-port-src 53 --reply-port-dst "$((10000 + i))" \
+    --timeout 60 -u UNREPLIED \
+    >/dev/null 2>&1 || true
+done
 
 set +e
 out=$(timeout 5 "$INFRA_DIR/host-budget-enforcer.sh" "$CAPTURE_NS" 50)
