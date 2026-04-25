@@ -1,0 +1,47 @@
+[Unit]
+# willbuy capture-broker — spec §5.13.
+#
+# Listens on /run/willbuy/broker.sock (mode 0660, owner root, group willbuy)
+# for ONE typed request per capture from a worker connected via the bind-
+# mounted Unix socket. Validates schema + byte caps, redacts (§5.9),
+# persists to Supabase Storage + page_captures, returns ack.
+#
+# This unit is a TEMPLATE — production reads its env from
+# /etc/willbuy/broker.env (provisioned out-of-band via 1Password +
+# scripts/push-secrets.sh; the env file is NEVER in git).
+
+Description=willbuy capture broker (spec §5.13)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=willbuy
+UMask=0007
+RuntimeDirectory=willbuy
+RuntimeDirectoryMode=0750
+EnvironmentFile=-/etc/willbuy/broker.env
+ExecStart=/usr/bin/node /opt/willbuy/capture-broker/dist/bin.js
+Restart=on-failure
+RestartSec=2
+
+# Hardening — defense in depth around the host-side process. The
+# container hardening lives in the per-capture container manifest
+# (§2 #2 + apps/capture-worker/Dockerfile).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+ReadWritePaths=/run/willbuy
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+{
+  "name": "@willbuy/capture-broker",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Capture Broker — Unix-domain-socket server on the host that accepts ONE typed capture from a worker, redacts, persists artifact + page_captures row, returns ack (spec §5.13 + §5.9 + §2 #2).",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit --pretty",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "yaml": "^2.5.1",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

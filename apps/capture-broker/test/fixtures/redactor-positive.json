@@ -1,0 +1,75 @@
+{
+  "comment": "POSITIVE redaction fixtures. Each entry tests one detector. Synthetic strings only — none are real credentials. The high-signal prefixes (`sk-`, `xoxb-`, `AKIA`, `ghp_`, `glpat-`) are split into `prefix` + `body` so the committed JSON never contains the literal pattern that GitHub's secret scanner would flag. The test concatenates them at runtime to form `value`.",
+  "cases": [
+    {
+      "label": "openai-secret-prefix",
+      "prefix": "sk-",
+      "body": "ABCDEF1234567890abcdef1234567890abcdef12",
+      "kind": "openai_secret",
+      "why": "Spec §5.9 detector: 'sk-' prefix"
+    },
+    {
+      "label": "slack-bot-token",
+      "prefix": "xoxb-",
+      "body": "1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx",
+      "kind": "slack_token",
+      "why": "Spec §5.9 detector: 'xoxb-' prefix"
+    },
+    {
+      "label": "aws-access-key",
+      "prefix": "AKIA",
+      "body": "IOSFODNN7EXAMPLE",
+      "kind": "aws_access_key",
+      "why": "Spec §5.9 detector: 'AKIA' prefix. Body is the canonical AWS docs example."
+    },
+    {
+      "label": "github-pat",
+      "prefix": "ghp_",
+      "body": "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789",
+      "kind": "github_pat",
+      "why": "Spec §5.9 detector: 'ghp_' prefix"
+    },
+    {
+      "label": "gitlab-pat",
+      "prefix": "glpat-",
+      "body": "aBcDeFgHiJkLmNoPqRs1",
+      "kind": "gitlab_pat",
+      "why": "Spec §5.9 detector: 'glpat-' prefix"
+    },
+    {
+      "label": "jwt-three-segments",
+      "prefix": "",
+      "body": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.dQw4w9WgXcQabc-_ABCDEFGHIJKLMNOPQRSTUVW",
+      "kind": "jwt",
+      "why": "Spec §5.9 detector: JWT (three base64url segments separated by dots)"
+    },
+    {
+      "label": "email",
+      "prefix": "",
+      "body": "alice.example+test@subdomain.example.com",
+      "kind": "email",
+      "why": "Spec §5.9 detector: email"
+    },
+    {
+      "label": "labeled-context-hex-token-equals",
+      "prefix": "api_key=",
+      "body": "0123456789abcdef0123456789abcdef01234567",
+      "kind": "labeled_secret",
+      "why": "Spec §5.9 labeled-context boundary rule — hex 32+ chars next to a label MUST be redacted"
+    },
+    {
+      "label": "labeled-context-hex-token-colon",
+      "prefix": "secret: ",
+      "body": "0123456789abcdef0123456789abcdef01234567",
+      "kind": "labeled_secret",
+      "why": "Spec §5.9 labeled-context boundary rule — labeled context with colon"
+    },
+    {
+      "label": "labeled-context-bearer",
+      "prefix": "Authorization: Bearer ",
+      "body": "0123456789abcdef0123456789abcdef0123456789abcdef",
+      "kind": "labeled_secret",
+      "why": "Spec §5.9 labeled-context boundary rule — Bearer header"
+    }
+  ]
+}
