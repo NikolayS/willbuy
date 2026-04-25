@@ -106,10 +106,24 @@ ip -n "$CAPTURE_NS" route add default via "$TARGET_HOST_IP"
 
 # 2. Start a tiny HTTP fixture in the target netns.
 ip netns exec "$TARGET_NS" python3 -m http.server 80 --bind "$TARGET_HOST_IP" \
-  >/dev/null 2>&1 &
+  >/tmp/wb-fixture.log 2>&1 &
 http_pid=$!
-sleep 0.5
-[[ -d /proc/$http_pid ]] || fail "fixture HTTP server failed to start"
+# Wait for the listening socket to actually be up. Python's http.server takes
+# 100–500 ms to bind in a fresh netns.
+for _ in $(seq 1 20); do
+  if ip netns exec "$TARGET_NS" ss -ltn 2>/dev/null \
+       | awk -v ip="$TARGET_HOST_IP" '$4 == ip":80" {found=1} END {exit !found}'; then
+    break
+  fi
+  sleep 0.2
+done
+if ! ip netns exec "$TARGET_NS" ss -ltn 2>/dev/null \
+     | awk -v ip="$TARGET_HOST_IP" '$4 == ip":80" {found=1} END {exit !found}'; then
+  ip netns exec "$TARGET_NS" ss -ltn || true
+  cat /tmp/wb-fixture.log >&2 || true
+  fail "fixture HTTP server failed to bind ${TARGET_HOST_IP}:80"
+fi
+[[ -d /proc/$http_pid ]] || fail "fixture HTTP server died after start"
 
 # 3. Program the capture netns with the production rule shape (default-deny
 #    + DROP for every CIDR in egress-deny.txt + ACCEPT only for TARGET_HOST_IP
@@ -195,7 +209,14 @@ s.sendall(b'GET / HTTP/1.0\r\nHost: ${TARGET_HOST_IP}\r\n\r\n')
 data = s.recv(64)
 sys.stdout.write('OK' if data.startswith(b'HTTP/') else 'BAD')
 " 2>/dev/null || printf 'TIMEOUT')
-[[ "$got" == "OK" ]] || fail "scenario 2: allowed target unreachable (got '$got')"
+if [[ "$got" != "OK" ]]; then
+  printf '%s\n' "scenario 2 diagnostic dump:" >&2
+  ip netns exec "$CAPTURE_NS" iptables -L OUTPUT -v -n -x >&2 || true
+  ip netns exec "$CAPTURE_NS" iptables -L INPUT -v -n -x >&2 || true
+  ip netns exec "$CAPTURE_NS" ip route >&2 || true
+  ip netns exec "$TARGET_NS"  ss -ltn >&2 || true
+  fail "scenario 2: allowed target unreachable (got '$got')"
+fi
 pass "scenario 2: 203.0.113.10:80 (target) reachable"
 
 # — Acceptance scenario 3: IPv6 cloud-metadata alias ————————————
