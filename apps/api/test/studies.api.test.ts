@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { Client } from 'pg';
 
-import { startPostgres, stopPostgres, PG_PASSWORD } from '../../../tests/helpers/start-postgres.js';
+import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgres.js';
 import { buildServer } from '../src/server.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
