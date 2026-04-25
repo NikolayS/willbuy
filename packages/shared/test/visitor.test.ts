@@ -14,4 +14,9 @@ describe('VisitorOutput (spec §2 #15)', () => {
     const parsed = VisitorOutput.parse(validFixture);
     expect(parsed.next_action).toBe('contact_sales');
   });
+
+  it('rejects when a required field is missing', () => {
+    const { reasoning: _omit, ...withoutReasoning } = validFixture;
+    expect(() => VisitorOutput.parse(withoutReasoning)).toThrow();
+  });
 });
