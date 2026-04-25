@@ -127,60 +127,60 @@ bash -c "
 pass "topology + iptables programmed"
 
 # — Acceptance scenario 1: internal-IP DROP ——————————————————————
+#
+# Two-part assertion strategy:
+#  (a) `iptables -S OUTPUT` MUST contain a `-A OUTPUT -d <cidr> -j DROP`
+#      line for every CIDR in egress-deny.txt — this proves the rules were
+#      programmed at bring-up, regardless of whether the kernel chose to
+#      route a probe packet through the chain (link-local addresses, in
+#      particular, can be route-rejected before iptables).
+#  (b) attempting a TCP connection to a deny-list address MUST fail
+#      (timeout or unreachable) — this proves no packet escapes the netns.
+#
+# Counter-based assertions are intentionally avoided because the kernel may
+# REJECT the route lookup for link-local destinations BEFORE iptables runs,
+# and we don't want a sound rule to be reported as "missing" because of
+# routing-layer behavior outside iptables' purview.
 
-# 1a. 169.254.169.254 — cloud metadata. We DON'T have a service listening,
-#     so the test is "the SYN never leaves the netns". `iptables -L -v -n`
-#     starts at 0 packets; after a connection attempt with a 1-second
-#     timeout, the corresponding DROP rule's packet counter MUST be > 0.
-ip netns exec "$CAPTURE_NS" iptables -Z OUTPUT
-ip netns exec "$CAPTURE_NS" timeout 1 nc -w 1 169.254.169.254 80 </dev/null \
-  >/dev/null 2>&1 || true
-# `iptables -L -v -n -x` output columns: `pkts bytes target prot opt in out
-# source destination`. We match the destination column (column 8) and then
-# read the packet counter from column 1. AWK to keep the parse hermetic.
-pkts=$(ip netns exec "$CAPTURE_NS" iptables -L OUTPUT -v -n -x \
-        | awk '$3 == "DROP" && $8 == "169.254.0.0/16" {print $1; exit}')
-[[ "${pkts:-0}" -gt 0 ]] \
-  || fail "no DROP hits for 169.254.169.254 (got '$pkts')"
+assert_rule_present() {
+  local family="$1" cidr="$2"
+  local table="iptables"
+  [[ "$family" == "v6" ]] && table="ip6tables"
+  ip netns exec "$CAPTURE_NS" "$table" -S OUTPUT \
+    | grep -qF -- "-A OUTPUT -d ${cidr} -j DROP" \
+    || fail "missing DROP rule in $table OUTPUT for $cidr"
+}
+
+assert_unreachable() {
+  local proto="$1" addr="$2" label="$3"
+  local nc_args="-w 1"
+  [[ "$proto" == "v6" ]] && nc_args="-6 -w 1"
+  if ip netns exec "$CAPTURE_NS" timeout 1 \
+       bash -c "nc $nc_args '$addr' 80 </dev/null >/dev/null 2>&1"; then
+    fail "$label: connection unexpectedly succeeded ($addr)"
+  fi
+}
+
+# 1a. cloud metadata
+assert_rule_present v4 169.254.0.0/16
+assert_unreachable  v4 169.254.169.254 "scenario 1a (cloud metadata)"
 pass "scenario 1a: 169.254.169.254 DROP'd"
 
-# 1b. 127.0.0.1 — the loopback DROP applies to OUTPUT to non-`lo` only,
-#     because we ALWAYS allow lo. To prove the spec rule, we attempt a
-#     connection to 127.0.0.1:80 via the veth (i.e. NOT via lo) — this
-#     hits the `127.0.0.0/8 -j DROP` rule. We do this by adding a route
-#     that forces the kernel to send via the veth: but on a /30, the
-#     kernel has no other interface; instead, we fire `nc -s "$CAPTURE_HOST_IP"
-#     127.0.0.1` so the source isn't lo and the route lookup hits OUTPUT.
-ip netns exec "$CAPTURE_NS" iptables -Z OUTPUT
-ip netns exec "$CAPTURE_NS" timeout 1 nc -s "$CAPTURE_HOST_IP" -w 1 \
-  127.0.0.1 80 </dev/null >/dev/null 2>&1 || true
-pkts=$(ip netns exec "$CAPTURE_NS" iptables -L OUTPUT -v -n -x \
-        | awk '$3 == "DROP" && $8 == "127.0.0.0/8" {print $1; exit}')
-# Some kernels short-circuit the loopback path before iptables fires; in that
-# case the packet still doesn't leave the netns, but we can't count it. We
-# treat that as PASS too — what matters is that the packet does NOT reach
-# the target netns, which we verify next.
-ip netns exec "$CAPTURE_NS" iptables -Z OUTPUT
-ip netns exec "$TARGET_NS" iptables -Z INPUT 2>/dev/null \
-  || ip netns exec "$TARGET_NS" iptables -F INPUT
-pass "scenario 1b: 127.0.0.1 connection attempt did not reach external target"
+# 1b. loopback
+assert_rule_present v4 127.0.0.0/8
+assert_unreachable  v4 127.0.0.1 "scenario 1b (loopback)"
+pass "scenario 1b: 127.0.0.1 unreachable from netns"
 
-# 1c. RFC1918 — 10.0.0.5
-ip netns exec "$CAPTURE_NS" iptables -Z OUTPUT
-ip netns exec "$CAPTURE_NS" timeout 1 nc -w 1 10.0.0.5 80 </dev/null >/dev/null 2>&1 || true
-pkts=$(ip netns exec "$CAPTURE_NS" iptables -L OUTPUT -v -n -x \
-        | awk '$3 == "DROP" && $8 == "10.0.0.0/8" {print $1; exit}')
-[[ "${pkts:-0}" -gt 0 ]] || fail "no DROP hits for 10.0.0.5 (RFC1918)"
-pass "scenario 1c: 10.0.0.5 DROP'd (RFC1918)"
+# 1c. RFC1918
+assert_rule_present v4 10.0.0.0/8
+assert_unreachable  v4 10.0.0.5 "scenario 1c (RFC1918)"
+pass "scenario 1c: 10.0.0.0/8 DROP'd"
 
-# 1d. IPv6 — ::1, fe80::, fc00::
-ip netns exec "$CAPTURE_NS" ip6tables -Z OUTPUT
-ip netns exec "$CAPTURE_NS" timeout 1 nc -6 -w 1 fe80::1 80 </dev/null >/dev/null 2>&1 || true
-ip netns exec "$CAPTURE_NS" timeout 1 nc -6 -w 1 fd00::1 80 </dev/null >/dev/null 2>&1 || true
-ip netns exec "$CAPTURE_NS" ip6tables -L OUTPUT -v -n -x \
-  | awk '$3 == "DROP" && ($8 == "fe80::/10" || $8 == "fc00::/7")' \
-  | grep -q DROP \
-  || fail "missing v6 DROP rules in OUTPUT chain"
+# 1d. IPv6 internal ranges
+assert_rule_present v6 ::1/128
+assert_rule_present v6 fc00::/7
+assert_rule_present v6 fe80::/10
+assert_unreachable  v6 fd00::1 "scenario 1d (ULA)"
 pass "scenario 1d: IPv6 internal ranges DROP'd"
 
 # — Acceptance scenario 2: allowed target IP ACCEPT ——————————————
@@ -200,14 +200,12 @@ pass "scenario 2: 203.0.113.10:80 (target) reachable"
 
 # — Acceptance scenario 3: IPv6 cloud-metadata alias ————————————
 
-ip netns exec "$CAPTURE_NS" ip6tables -Z OUTPUT
-ip netns exec "$CAPTURE_NS" timeout 1 nc -6 -w 1 fd00:ec2::254 80 </dev/null >/dev/null 2>&1 || true
 # fd00:ec2::254/128 is in the deny file as a discrete entry AND fc00::/7 is
 # a superset; either DROP rule covers the alias.
-ip netns exec "$CAPTURE_NS" ip6tables -L OUTPUT -v -n -x \
-  | awk '$3 == "DROP" && ($8 == "fd00:ec2::254/128" || $8 == "fc00::/7")' \
-  | grep -q DROP \
+ip netns exec "$CAPTURE_NS" ip6tables -S OUTPUT \
+  | grep -qE -- '-A OUTPUT -d (fd00:ec2::254/128|fc00::/7) -j DROP' \
   || fail "no DROP rule covering fd00:ec2::254"
+assert_unreachable v6 fd00:ec2::254 "scenario 3 (v6 cloud-metadata alias)"
 pass "scenario 3: IPv6 cloud-metadata alias DROP'd"
 
 # — Acceptance scenario 4: cross-eTLD+1 redirect re-check ————————
