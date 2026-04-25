@@ -47,7 +47,27 @@ export const LOCAL_CLI_CAPABILITIES: LLMProviderCapabilities = {
 // configurable via WILLBUY_LLM_BIN; "local-cli" is the abstraction name.
 export const LOCAL_CLI_PROVIDER_NAME = 'local-cli';
 
+// Spec §4.1 mentions a 120 s default subprocess timeout for the local CLI.
+export const LOCAL_CLI_DEFAULT_TIMEOUT_MS = 120_000;
+
+export interface LocalCliProviderOptions {
+  // Test/override hook: pass argv directly. When undefined, the provider
+  // resolves the binary from the WILLBUY_LLM_BIN env var (default 'claude'
+  // per issue #5; the value MUST stay generic and configurable).
+  argv?: readonly string[];
+  // Extra env vars merged into the subprocess env; logicalRequestKey is
+  // injected as WILLBUY_REQ_KEY by chat() regardless of what's passed here.
+  env?: Readonly<Record<string, string>>;
+  timeoutMs?: number;
+}
+
 export class LocalCliProvider implements LLMProvider {
+  // Stored but unused until green commit lands.
+  private readonly _options: LocalCliProviderOptions;
+
+  constructor(options: LocalCliProviderOptions = {}) {
+    this._options = options;
+  }
   name(): string {
     return LOCAL_CLI_PROVIDER_NAME;
   }
@@ -55,6 +75,7 @@ export class LocalCliProvider implements LLMProvider {
     return LOCAL_CLI_CAPABILITIES;
   }
   chat(_opts: LLMChatOptions): Promise<LLMChatResult> {
+    void this._options;
     throw new Error('not implemented');
   }
 }
