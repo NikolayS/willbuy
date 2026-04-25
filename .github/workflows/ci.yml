@@ -36,7 +36,11 @@ jobs:
             playwright-${{ runner.os }}-
 
       - name: Install Playwright Chromium (with deps)
-        run: bun run --filter @willbuy/capture-worker playwright install --with-deps chromium
+        # Bun's `bun run --filter <ws> <name>` interprets <name> as a package
+        # SCRIPT, not a binary on the workspace's PATH (no 1:1 of pnpm's
+        # `pnpm --filter NAME exec <bin>`). Run bunx from the workspace dir
+        # so it resolves the playwright bin from apps/capture-worker/node_modules.
+        run: cd apps/capture-worker && bunx playwright install --with-deps chromium
 
       - name: Typecheck
         run: bun run typecheck
