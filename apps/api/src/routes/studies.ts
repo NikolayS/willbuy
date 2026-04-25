@@ -1,8 +1,10 @@
 /**
- * routes/studies.ts — POST /studies + GET /studies/:id (issue #30).
+ * routes/studies.ts — POST /studies + GET /studies/:id (issue #30) +
+ * GET /api/studies (issue #85, study list page).
  *
  * Spec refs: §5.1 (data flow), §2 #1 (verified-domain authorization),
- * §5.11 (study status transitions), §2 #18 (paired A/B = exactly 2 URLs).
+ * §5.11 (study status transitions), §2 #18 (paired A/B = exactly 2 URLs),
+ * §5.18 (report at /dashboard/studies/:id and /r/:slug).
  *
  * POST /studies:
  *   - Validates body with zod (urls 1..2, icp, n_visits 1..100).
@@ -14,6 +16,15 @@
  * GET /studies/:id:
  *   - Returns { id, status, visit_progress: {ok,failed,total}, started_at, finalized_at }.
  *   - 404 if not owned by req.account (no 403 leak per spec §2 #1).
+ *
+ * GET /api/studies (issue #85):
+ *   - Behind wb_session middleware (PR #95).
+ *   - Query: limit (default 20, max 100), cursor (opaque base64 of "iso|id").
+ *   - Returns { studies: [...], next_cursor: string|null }.
+ *   - DESC by created_at, id (composite cursor for stable scrolling).
+ *   - Filters by req.account.id (§2 #1).
+ *   - Each row exposes id, status, created_at, finalized_at, n_visits, urls,
+ *     and visit_progress {ok,failed,total} for the table render.
  */
 
 import tldts from 'tldts';
@@ -22,6 +33,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
 
 import { buildApiKeyMiddleware } from '../auth/api-key.js';
+import { buildSessionMiddleware } from '../auth/session.js';
 import type { Env } from '../env.js';
 
 // Per-visit estimated cost ceiling = 5¢ per spec §5.5 (cost-model ceiling).
@@ -250,6 +262,171 @@ export async function registerStudiesRoutes(
         started_at: study.created_at.toISOString(),
         finalized_at: study.finalized_at?.toISOString() ?? null,
       });
+    },
+  );
+
+  // ── GET /api/studies (issue #85) ───────────────────────────────────────────
+  //
+  // Session-cookie-authenticated paginated list of the caller's studies.
+  // Pagination uses an opaque keyset cursor over (created_at, id) DESC so the
+  // ordering is stable when new studies are inserted between page fetches
+  // (offset-based pagination would skip/duplicate rows in that case).
+  //
+  // The cursor is base64url("<created_at_iso>|<id>") of the LAST row on the
+  // current page. The next page query is:
+  //   WHERE (created_at, id) < (cursor.created_at, cursor.id)
+  //
+  // Returns 400 on a malformed cursor (per AC6) — never silently degrades.
+  const sessionMiddleware = buildSessionMiddleware(env.SESSION_HMAC_KEY, env.NODE_ENV);
+
+  const ListQuerySchema = z.object({
+    limit: z.coerce.number().int().positive().optional(),
+    cursor: z.string().optional(),
+  });
+
+  type ListQuery = z.infer<typeof ListQuerySchema>;
+
+  interface ListStudyRow {
+    id: string;
+    status: string;
+    created_at: Date;
+    finalized_at: Date | null;
+    urls: string[] | null;
+    n_visits: string;
+    ok: string;
+    failed: string;
+    total: string;
+  }
+
+  app.get<{ Querystring: Record<string, string | undefined> }>(
+    '/api/studies',
+    { preHandler: [sessionMiddleware] },
+    async (
+      req: FastifyRequest<{ Querystring: Record<string, string | undefined> }>,
+      reply: FastifyReply,
+    ) => {
+      const account = req.account!;
+
+      // Parse + clamp the query.
+      const parsed = ListQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid query' });
+      }
+      const q: ListQuery = parsed.data;
+      const requested = q.limit ?? 20;
+      // Clamp to [1, 100] — silently per AC3.
+      const limit = Math.min(100, Math.max(1, requested));
+
+      // Decode cursor if present.
+      // Format: base64url("<created_at_iso>|<id>"). We accept either base64url
+      // or standard base64 (browsers / curl users may pass either) — Buffer's
+      // base64 decoder is lenient.
+      let cursorCreatedAt: string | null = null;
+      let cursorId: string | null = null;
+      if (q.cursor) {
+        let decoded: string;
+        try {
+          decoded = Buffer.from(q.cursor, 'base64url').toString('utf8');
+        } catch {
+          return reply.code(400).send({ error: 'invalid cursor' });
+        }
+        const sep = decoded.indexOf('|');
+        if (sep === -1) {
+          return reply.code(400).send({ error: 'invalid cursor' });
+        }
+        const isoPart = decoded.slice(0, sep);
+        const idPart = decoded.slice(sep + 1);
+        // Reject obviously malformed payloads.
+        if (!isoPart || !idPart) {
+          return reply.code(400).send({ error: 'invalid cursor' });
+        }
+        // Parse the ISO timestamp — reject NaN.
+        const t = Date.parse(isoPart);
+        if (Number.isNaN(t)) {
+          return reply.code(400).send({ error: 'invalid cursor' });
+        }
+        // id must be a positive integer string.
+        if (!/^\d+$/.test(idPart)) {
+          return reply.code(400).send({ error: 'invalid cursor' });
+        }
+        cursorCreatedAt = isoPart;
+        cursorId = idPart;
+      }
+
+      // Fetch limit+1 rows so we can determine if a next page exists without
+      // an extra COUNT(*) round-trip. The +1th row, if present, is dropped
+      // from the response and used to mint next_cursor.
+      const fetchLimit = limit + 1;
+
+      const params: Array<string | number> = [String(account.id)];
+      let where = `s.account_id = $1`;
+      if (cursorCreatedAt && cursorId) {
+        // Composite keyset comparison: (created_at, id) < (cursor.created_at, cursor.id).
+        params.push(cursorCreatedAt, cursorId);
+        where += ` AND (s.created_at, s.id) < ($2::timestamptz, $3::bigint)`;
+      }
+      params.push(fetchLimit);
+      const limitParamIdx = params.length;
+
+      // LEFT JOIN backstories for n_visits (count of backstory rows).
+      // LEFT JOIN visits for visit_progress aggregates.
+      // We aggregate per study via subqueries — clearer SQL than two LEFT JOINs
+      // with a GROUP BY (which would multiply rows × visit_count × backstory_count).
+      const sql = `
+        SELECT s.id,
+               s.status,
+               s.created_at,
+               s.finalized_at,
+               s.urls,
+               COALESCE(bs.n_visits, 0)::text AS n_visits,
+               COALESCE(v.ok, 0)::text AS ok,
+               COALESCE(v.failed, 0)::text AS failed,
+               COALESCE(v.total, 0)::text AS total
+          FROM studies s
+          LEFT JOIN (
+            SELECT study_id, COUNT(*) AS n_visits
+              FROM backstories GROUP BY study_id
+          ) bs ON bs.study_id = s.id
+          LEFT JOIN (
+            SELECT study_id,
+                   COUNT(*) FILTER (WHERE status = 'ok')                              AS ok,
+                   COUNT(*) FILTER (WHERE status IN ('failed', 'indeterminate'))      AS failed,
+                   COUNT(*)                                                           AS total
+              FROM visits GROUP BY study_id
+          ) v ON v.study_id = s.id
+         WHERE ${where}
+         ORDER BY s.created_at DESC, s.id DESC
+         LIMIT $${limitParamIdx}
+      `;
+
+      const result = await pool.query<ListStudyRow>(sql, params);
+      const rows = result.rows;
+
+      const hasNext = rows.length > limit;
+      const pageRows = hasNext ? rows.slice(0, limit) : rows;
+
+      const studies = pageRows.map((r) => ({
+        id: Number(r.id),
+        status: r.status,
+        created_at: r.created_at.toISOString(),
+        finalized_at: r.finalized_at?.toISOString() ?? null,
+        n_visits: Number(r.n_visits),
+        urls: r.urls ?? [],
+        visit_progress: {
+          ok: Number(r.ok),
+          failed: Number(r.failed),
+          total: Number(r.total),
+        },
+      }));
+
+      let next_cursor: string | null = null;
+      if (hasNext) {
+        const last = pageRows[pageRows.length - 1]!;
+        const raw = `${last.created_at.toISOString()}|${last.id}`;
+        next_cursor = Buffer.from(raw, 'utf8').toString('base64url');
+      }
+
+      return reply.code(200).send({ studies, next_cursor });
     },
   );
 }
