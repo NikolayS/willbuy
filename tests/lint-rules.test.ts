@@ -42,4 +42,14 @@ describe('repo lint rules', () => {
     expect(out.code, `eslint should fail; got code=${out.code}\n${out.stdout}\n${out.stderr}`).not.toBe(0);
     expect(out.stdout + out.stderr).toMatch(/no-danger/);
   });
+
+  it('accepts Chromium-args arrays that DO NOT contain --no-sandbox', () => {
+    const out = lintFile('tests/lint-fixtures/clean-chromium-args.ts');
+    expect(out.code, `eslint should pass; got code=${out.code}\n${out.stdout}\n${out.stderr}`).toBe(0);
+  });
+
+  it('accepts ordinary React components that do not use dangerouslySetInnerHTML', () => {
+    const out = lintFile('tests/lint-fixtures/clean-react-component.tsx');
+    expect(out.code, `eslint should pass; got code=${out.code}\n${out.stdout}\n${out.stderr}`).toBe(0);
+  });
 });
