@@ -27,6 +27,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Check migration-number collisions (#100)
+        # Fail fast on duplicate 4-digit prefixes in infra/migrations/ or
+        # infra/sqlever/deploy/, missing deploy pairs, or missing sqitch.plan
+        # entries. Three collisions in one day (PR #89+#91, PR #95+#96) cost
+        # a ~30-min hotfix each — this is the cheap pre-test guard.
+        run: bash scripts/check-migrations.sh
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
