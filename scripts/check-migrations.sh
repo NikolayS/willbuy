@@ -40,9 +40,10 @@ if [[ -n "${dups}" ]]; then
 fi
 
 # Check 3: every infra/migrations/00NN_*.sql has a matching deploy script.
+# Filter to .sql files so non-SQL artefacts (e.g. README.md) don't trip the guard.
 missing_in_deploy=$(comm -23 \
-  <(ls "${migrations_dir}" | sort) \
-  <(ls "${sqlever_dir}" | sort) || true)
+  <(ls "${migrations_dir}" | grep '\.sql$' | sort) \
+  <(ls "${sqlever_dir}" | grep '\.sql$' | sort) || true)
 if [[ -n "${missing_in_deploy}" ]]; then
   echo "ERROR: migrations present in ${migrations_dir} but missing in ${sqlever_dir}:" >&2
   echo "${missing_in_deploy}" >&2
@@ -58,5 +59,5 @@ for f in "${sqlever_dir}"/[0-9]*.sql; do
   fi
 done
 
-count=$(ls "${migrations_dir}" | grep -c '^[0-9]')
+count=$(ls "${migrations_dir}" | grep -E '^[0-9].*\.sql$' | wc -l | tr -d ' ')
 echo "migration-collision check: OK (${count} migrations, all unique, all paired, all in plan)"

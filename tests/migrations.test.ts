@@ -161,6 +161,21 @@ describeIfDocker('migrations runner', () => {
     // Build a temp sqlever project that adds a bad change on top of the real plan.
     // The bad change creates a table and then errors mid-way — sqlever wraps
     // each deploy script in a BEGIN/COMMIT so the partial change rolls back.
+    //
+    // SAVEPOINT/TRANSACTION DEPENDENCY (issue #93, LOW-3):
+    // This fixture intentionally embeds its own inline `BEGIN; ... COMMIT;`
+    // block. sqlever currently runs each deploy script inside an outer
+    // transaction; the inner BEGIN/COMMIT here is treated by Postgres as
+    // an implicit SAVEPOINT (Postgres does not nest top-level transactions
+    // and emits a `WARNING: there is already a transaction in progress`).
+    // The outer transaction is what actually rolls the partial DDL back
+    // when `SELECT 1/0` raises. If sqlever's transaction model ever changes
+    // (e.g. it stops wrapping each change in a single transaction, or it
+    // promotes inner BEGIN/COMMIT to true subtransactions), this fixture
+    // could either (a) leak the half-created willbuy_fail_fixture table
+    // into the DB, or (b) commit the inner block and only the post-error
+    // rollback would catch it. If those assertions below start failing
+    // mysteriously, audit sqlever's transaction-wrapping behaviour first.
     const failingSql = [
       '-- failing fixture: creates a table, then errors mid-way',
       'BEGIN;',
