@@ -11,6 +11,8 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { reserveSpend } from '../src/billing/atomic-spend.js';
 import { startAttempt, endAttempt } from '../src/billing/provider-attempts.js';
@@ -49,6 +51,13 @@ async function waitReady(container: string, deadline: number): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Repo root (resolved from test file location: apps/api/test/ → ../../..)
+// ---------------------------------------------------------------------------
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(here, '..', '..', '..');
+
+// ---------------------------------------------------------------------------
 // Globals set up in beforeAll
 // ---------------------------------------------------------------------------
 
@@ -60,12 +69,14 @@ let pgPort: number;
 // ---------------------------------------------------------------------------
 
 function applyMigrations(): void {
-  const r = spawnSync('bash', ['/Users/nik/github/willbuy-wt-28-spend/scripts/migrate.sh'], {
+  const migrateScript = resolve(repoRoot, 'scripts', 'migrate.sh');
+  const migrationsDir = resolve(repoRoot, 'infra', 'migrations');
+  const r = spawnSync('bash', [migrateScript], {
     encoding: 'utf8',
     env: {
       ...process.env,
       DATABASE_URL: `postgres://postgres:${PG_PASSWORD}@127.0.0.1:${pgPort}/postgres`,
-      MIGRATIONS_DIR: '/Users/nik/github/willbuy-wt-28-spend/infra/migrations',
+      MIGRATIONS_DIR: migrationsDir,
     },
   });
   if (r.status !== 0) {
