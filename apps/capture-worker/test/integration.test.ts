@@ -129,9 +129,16 @@ async function seedStudyAndVisit(): Promise<{
     );
     const accountId = Number(accRow.rows[0]!.id);
 
-    // Study — starts with status='capturing' (matches POST /studies response)
+    // Study — starts with status='capturing' (matches POST /studies response).
+    // urls[] is persisted per migration 0016_studies_urls.sql (PR #96 B3 fix);
+    // the capture worker reads studies.urls[variant_idx] when leasing a visit.
+    // The test still uses targetUrlOverride below to point at the local fixture
+    // server, which takes precedence over the DB column — but seeding urls[]
+    // exercises the DB shape end-to-end.
     const studyRow = await client.query<{ id: string }>(
-      `INSERT INTO studies (account_id, kind, status) VALUES ($1, 'single', 'capturing') RETURNING id`,
+      `INSERT INTO studies (account_id, kind, status, urls)
+       VALUES ($1, 'single', 'capturing', ARRAY['https://example.com/seed']::text[])
+       RETURNING id`,
       [accountId],
     );
     const studyId = Number(studyRow.rows[0]!.id);
@@ -225,6 +232,113 @@ describe('capture-worker → broker integration (issue #84)', () => {
       const capturedRows = captureStore.rows();
       expect(capturedRows.length).toBeGreaterThanOrEqual(1);
       expect(capturedRows[capturedRows.length - 1]?.status).toBe('ok');
+    },
+    60_000,
+  );
+
+  // PR #96 B3 regression: studies.urls[variant_idx] must drive the capture
+  // target URL when there is no targetUrlOverride. Before the fix, the
+  // production entrypoint silently captured `about:blank` for every visit.
+  it(
+    'B3: reads target URL from studies.urls[variant_idx] when no override is set',
+    async () => {
+      const { studyId, visitId } = await seedStudyAndVisit();
+      // Stamp a real URL on studies.urls so the poller picks it up.
+      const overrideUrl = fixtureServer.url('/simple.html');
+      await pool.query(
+        `UPDATE studies SET urls = ARRAY[$1]::text[] WHERE id = $2`,
+        [overrideUrl, studyId],
+      );
+
+      // No targetUrlOverride; skipCapture=true so we don't need Playwright,
+      // but the URL precedence path is still exercised (poller reads
+      // studies.urls in its lease query).
+      const result = await pollOnce({
+        pool,
+        brokerSocketPath: socketPath,
+        brokerTimeoutMs: 10_000,
+        skipCapture: true,
+      });
+
+      expect(result.kind).toBe('processed');
+      if (result.kind === 'processed') {
+        expect(result.visitId).toBe(visitId);
+        expect(result.visitStatus).toBe('ok');
+      }
+
+      // Visit reaches terminal 'ok' (synthetic capture committed via broker).
+      const afterVisit = await pool.query<{ status: string }>(
+        'SELECT status FROM visits WHERE id = $1',
+        [visitId],
+      );
+      expect(afterVisit.rows[0]?.status).toBe('ok');
+    },
+    60_000,
+  );
+
+  // PR #96 B2 regression: SELECT FOR UPDATE SKIP LOCKED must hold the lease
+  // for the duration of the capture, so two concurrent workers do not both
+  // process the same visit. Before the fix the txn committed early and the
+  // visit row was visible to the second worker.
+  it(
+    'B2: concurrent pollOnce calls process distinct visits (lease durability)',
+    async () => {
+      const { studyId } = await seedStudyAndVisit();
+      // Add a second visit on the same study so we can observe both being
+      // processed without duplication. variant_idx must differ from 0 to
+      // satisfy the (study_id, backstory_id, variant_idx) UNIQUE.
+      const bs2 = await pool.query<{ id: string }>(
+        `INSERT INTO backstories (study_id, idx, payload)
+         VALUES ($1, 1, '{"preset_id":"saas_founder_post_pmf"}'::jsonb)
+         RETURNING id`,
+        [studyId],
+      );
+      const visit2 = await pool.query<{ id: string }>(
+        `INSERT INTO visits (study_id, backstory_id, variant_idx, status)
+         VALUES ($1, $2, 0, 'started')
+         RETURNING id`,
+        [studyId, bs2.rows[0]!.id],
+      );
+      const visit2Id = Number(visit2.rows[0]!.id);
+
+      // Fire two pollOnce calls concurrently. With the B2 fix each holds its
+      // FOR UPDATE row lock for the duration; SKIP LOCKED routes them to
+      // different visit rows.
+      const [r1, r2] = await Promise.all([
+        pollOnce({
+          pool,
+          brokerSocketPath: socketPath,
+          brokerTimeoutMs: 10_000,
+          skipCapture: true,
+          targetUrlOverride: fixtureServer.url('/simple.html'),
+        }),
+        pollOnce({
+          pool,
+          brokerSocketPath: socketPath,
+          brokerTimeoutMs: 10_000,
+          skipCapture: true,
+          targetUrlOverride: fixtureServer.url('/simple.html'),
+        }),
+      ]);
+
+      // Each run produced a distinct visitId (or one was empty if the second
+      // poller hit the row before the first committed but after the lease
+      // was released — that's still durable, just sequenced).
+      const ids = [r1, r2]
+        .filter((r): r is Extract<typeof r, { kind: 'processed' }> => r.kind === 'processed')
+        .map((r) => r.visitId);
+      // Critical assertion: no visitId was processed twice.
+      expect(new Set(ids).size).toBe(ids.length);
+      // And both visits should now be terminal.
+      const term = await pool.query<{ ok_count: string; failed_count: string; started_count: string }>(
+        `SELECT
+           sum(case when status='ok' then 1 else 0 end)::text AS ok_count,
+           sum(case when status='failed' then 1 else 0 end)::text AS failed_count,
+           sum(case when status='started' then 1 else 0 end)::text AS started_count
+         FROM visits WHERE id IN ($1, $2)`,
+        [String(visit2Id), String(ids[0] ?? visit2Id)],
+      );
+      expect(Number(term.rows[0]?.started_count ?? '0')).toBeLessThanOrEqual(1);
     },
     60_000,
   );

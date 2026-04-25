@@ -112,7 +112,20 @@ export async function sendToBroker(
     socket.on('connect', () => {
       const body = Buffer.from(JSON.stringify(payload), 'utf8');
       const framed = frame(body);
-      // Write message then half-close (FIN) — broker expects this.
+      // Lifecycle (PR #96 M1 fix):
+      //   1. Write the framed request, then half-close (FIN) so the broker's
+      //      `readOneFrame` loop wakes up. The broker waits for a trailing
+      //      sentinel byte OR FIN to confirm single-shot framing — without
+      //      a half-close it would block until its frame timeout.
+      //   2. Continue listening on the readable side. socket.end() only
+      //      shuts down the WRITABLE half; the readable half keeps receiving
+      //      ack bytes from the broker.
+      //   3. Resolve as soon as we have parsed the full length-prefixed ack
+      //      (do NOT wait for the broker's 'end'). This removes the
+      //      dependency on FIN ordering that the reviewer flagged in M1.
+      //   4. Destroy the socket once parsed. 'end' / 'close' are still hooked
+      //      as failure paths if the broker drops the connection without
+      //      writing a complete ack.
       socket.write(framed, (writeErr) => {
         if (writeErr) {
           fail(writeErr);
@@ -122,36 +135,53 @@ export async function sendToBroker(
       });
     });
 
-    socket.on('data', (chunk: Buffer) => {
-      chunks.push(chunk);
-      totalBytes += chunk.length;
-    });
-
-    socket.on('end', () => {
-      // Reassemble and parse the framed response.
+    const tryParse = (): boolean => {
+      if (totalBytes < HEADER_BYTES) return false;
       const buf = Buffer.concat(chunks, totalBytes);
-      if (buf.length < HEADER_BYTES) {
-        fail(new Error(`broker-client: short response (${buf.length} bytes)`));
-        return;
-      }
       const declaredLen = buf.readUInt32BE(0);
-      if (buf.length < HEADER_BYTES + declaredLen) {
-        fail(
-          new Error(
-            `broker-client: truncated response (got ${buf.length} bytes, expected ${HEADER_BYTES + declaredLen})`,
-          ),
-        );
-        return;
-      }
+      if (totalBytes < HEADER_BYTES + declaredLen) return false; // need more data
+
       const payloadBuf = buf.slice(HEADER_BYTES, HEADER_BYTES + declaredLen);
       let ack: BrokerAck;
       try {
         ack = JSON.parse(payloadBuf.toString('utf8')) as BrokerAck;
       } catch (e) {
         fail(new Error(`broker-client: unparseable ack: ${e instanceof Error ? e.message : String(e)}`));
-        return;
+        return true;
       }
+      socket.destroy();
       finish(ack);
+      return true;
+    };
+
+    socket.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      totalBytes += chunk.length;
+      // Length-prefix-driven parse: as soon as `HEADER_BYTES + declaredLen`
+      // bytes are buffered we resolve, without waiting for FIN from the
+      // broker. This is the M1 hardening from the PR review.
+      tryParse();
+    });
+
+    socket.on('end', () => {
+      // 'end' fires when the broker closes its write side (FIN from broker).
+      // Try one final parse; if the data was already complete, this is a
+      // no-op because we've already settled in the 'data' handler.
+      if (!settled) {
+        tryParse();
+        if (!settled) {
+          fail(new Error(`broker-client: connection closed with ${totalBytes} bytes (expected framed response)`));
+        }
+      }
+    });
+
+    socket.on('close', () => {
+      if (!settled) {
+        tryParse();
+        if (!settled) {
+          fail(new Error(`broker-client: socket closed unexpectedly (${totalBytes} bytes received)`));
+        }
+      }
     });
   });
 }

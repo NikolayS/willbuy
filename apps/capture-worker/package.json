@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit --pretty",
-    "test": "vitest run --exclude test/smoke.test.ts --exclude test/integration.test.ts",
+    "test": "vitest run --exclude test/smoke.test.ts",
     "test:integration": "vitest run test/integration.test.ts",
     "smoke": "vitest run test/smoke.test.ts"
   },
