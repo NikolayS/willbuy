@@ -1,0 +1,12 @@
+{
+  "name": "Maya",
+  "role_archetype": "founder_or_eng_lead",
+  "stage": "series_a",
+  "team_size": 12,
+  "managed_postgres": "supabase",
+  "current_pain": "upcoming_scale_event",
+  "entry_point": "newsletter",
+  "regulated": "no",
+  "postgres_depth": "light",
+  "budget_authority": "self"
+}
