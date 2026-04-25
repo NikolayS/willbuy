@@ -78,6 +78,12 @@ export type CaptureOpts = {
   wallClockMs?: number;
   /** Override §2 #5 distinct-host budget. Tests inject lower values. */
   hostCountBudget?: number;
+  /** Override §2 #6 total-bytes ceiling (bytes). Tests inject lower values. */
+  totalBytesBudget?: number;
+  /** Override §2 #6 a11y-tree-bytes ceiling (bytes). Tests inject lower values. */
+  a11yTreeBytesBudget?: number;
+  /** Override §2 #6 DOM-nodes ceiling. Tests inject lower values. */
+  domNodesBudget?: number;
   /**
    * Optional URL→host mapper used by tests to deterministically simulate
    * subresources hitting many distinct hosts without actually opening

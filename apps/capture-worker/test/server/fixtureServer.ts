@@ -19,6 +19,8 @@ export type FixtureServer = {
  *   GET /<name>.html       → the fixture file
  *   GET /__hang            → a never-completing keep-alive (for wall-clock test)
  *   GET /__ok              → 200 OK with empty body
+ *   GET /__big-body?bytes= → response body of exactly N bytes (default 30 MB)
+ *                            sets content-length so the total_bytes listener fires
  *
  * Bound on 127.0.0.1 with an OS-assigned port. Caller closes when done.
  */
@@ -41,6 +43,25 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       if (url.pathname === '/__ok') {
         res.statusCode = 200;
         res.end('ok');
+        return;
+      }
+      if (url.pathname === '/__big-body') {
+        // Returns a response body of configurable size (default 30 MB) with
+        // an explicit content-length header so the total_bytes listener can
+        // tally it before the body is fully buffered. The body is repeated
+        // ASCII so it never compresses down to nothing if gzip is applied.
+        const bytes = parseInt(url.searchParams.get('bytes') ?? String(30 * 1024 * 1024), 10);
+        const chunk = Buffer.alloc(65536, 'x');
+        res.setHeader('content-type', 'text/html; charset=utf-8');
+        res.setHeader('content-length', String(bytes));
+        res.statusCode = 200;
+        let written = 0;
+        while (written < bytes) {
+          const toWrite = Math.min(chunk.length, bytes - written);
+          res.write(chunk.subarray(0, toWrite));
+          written += toWrite;
+        }
+        res.end();
         return;
       }
       const safe = url.pathname.replace(/^\/+/, '');
