@@ -6,8 +6,9 @@
 // per call) uses this to assert two consecutive calls produce two distinct
 // PIDs and two separate counter increments.
 //
-// Also echoes WILLBUY_REQ_KEY into the recorded line so acceptance #3
-// (logical_request_key reaches the subprocess) can assert pass-through.
+// Also echoes WILLBUY_REQ_KEY and WILLBUY_LLM_MODEL into the recorded line
+// so acceptance #3 / #3b (logical_request_key + model reach the subprocess)
+// can assert pass-through.
 
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { stdin, stdout, env, pid, exit } from 'node:process';
@@ -33,6 +34,7 @@ stdin.on('end', () => {
     pid,
     counter,
     req_key: env.WILLBUY_REQ_KEY ?? null,
+    model: env.WILLBUY_LLM_MODEL ?? null,
     stdin_len: stdinStr.length,
     stdin_sha_prefix: stdinStr.slice(0, 64),
   });

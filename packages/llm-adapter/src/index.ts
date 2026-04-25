@@ -9,6 +9,13 @@
 // future provider can use it as Idempotency-Key (the v0.1 local CLI may
 // ignore it; spec §5.15 says transport retries reuse the key, schema-repair
 // generates a new one).
+//
+// Per spec §5.15 / §2 #15 the logical_request_key embeds a model component;
+// LLMProvider exposes model() so callers (visitor-worker, the API server's
+// spend ledger, the daily reconciliation job) can compute a key that
+// matches the on-wire request. LocalCliProvider's model() honors
+// WILLBUY_LLM_MODEL (default `local-cli/v1`) and forwards it to the
+// subprocess as WILLBUY_LLM_MODEL.
 
 import { spawn } from 'node:child_process';
 
@@ -38,6 +45,13 @@ export interface LLMChatResult {
 
 export interface LLMProvider {
   name(): string;
+  // Spec §5.15 / §2 #15: logical_request_key embeds the `model` component.
+  // The provider — not the caller — owns model identity (mirrors name()
+  // and capabilities()), so callers can compute a key that matches the
+  // on-wire request without coupling to provider config. Stable for the
+  // lifetime of the process; bumped only via deploy-time env (e.g.
+  // WILLBUY_LLM_MODEL) — never per-call.
+  model(): string;
   capabilities(): LLMProviderCapabilities;
   chat(opts: LLMChatOptions): Promise<LLMChatResult>;
 }
@@ -54,6 +68,12 @@ export const LOCAL_CLI_CAPABILITIES: LLMProviderCapabilities = {
 // identifiers, filenames, or logged messages. The CLI binary itself is
 // configurable via WILLBUY_LLM_BIN; "local-cli" is the abstraction name.
 export const LOCAL_CLI_PROVIDER_NAME = 'local-cli';
+
+// Spec §5.15 / §2 #15 model component for logical_request_key. Generic
+// per CLAUDE.md "no vendor name leaks"; deploy-time override via the
+// WILLBUY_LLM_MODEL env var lets ops bump the identity (e.g. canary)
+// without a code change while keeping the key stable per-process.
+export const LOCAL_CLI_DEFAULT_MODEL = 'local-cli/v1';
 
 // Spec §4.1 mentions a 120 s default subprocess timeout for the local CLI.
 export const LOCAL_CLI_DEFAULT_TIMEOUT_MS = 120_000;
@@ -78,6 +98,17 @@ export class LocalCliProvider implements LLMProvider {
   name(): string {
     return LOCAL_CLI_PROVIDER_NAME;
   }
+  // Spec §5.15 / §2 #15: model identity contributes to logical_request_key.
+  // Resolved fresh on every call (no cache) so a deploy-time env-var bump
+  // takes effect without restarting the process — at the cost of a per-call
+  // env lookup, which is negligible vs. the subprocess spawn cost.
+  model(): string {
+    const envModel = process.env.WILLBUY_LLM_MODEL;
+    if (envModel && envModel.trim().length > 0) {
+      return envModel.trim();
+    }
+    return LOCAL_CLI_DEFAULT_MODEL;
+  }
   capabilities(): LLMProviderCapabilities {
     return LOCAL_CLI_CAPABILITIES;
   }
@@ -98,6 +129,10 @@ export class LocalCliProvider implements LLMProvider {
         ...process.env,
         ...(this.options.env ?? {}),
         WILLBUY_REQ_KEY: opts.logicalRequestKey,
+        // Spec §5.15: the on-wire request and the logical_request_key share
+        // the same model identity. Forwarded so a future provider impl can
+        // pin the model on the subprocess side too.
+        WILLBUY_LLM_MODEL: this.model(),
       },
       stdin: stdinPayload,
       timeoutMs,
