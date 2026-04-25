@@ -129,7 +129,7 @@ describeIfDocker('migrations runner', () => {
     if (workDir) rmSync(workDir, { recursive: true, force: true });
   });
 
-  it('applies the placeholder migration on a fresh DB', () => {
+  it('applies every migration on a fresh DB', () => {
     const dir = mkdtempSync(join(workDir, 'fresh-'));
     copyRealMigrationsTo(dir);
 
@@ -143,12 +143,14 @@ describeIfDocker('migrations runner', () => {
     expect(tableCheck.code).toBe(0);
     expect(tableCheck.stdout.trim()).toBe('1');
 
+    // _migrations row count must equal the .sql file count in real migrations dir.
+    const onDisk = readdirSync(realMigrationsDir).filter((f) => f.endsWith('.sql')).sort();
     const rowCount = psql(pg.container, 'SELECT COUNT(*) FROM _migrations;');
     expect(rowCount.code).toBe(0);
-    expect(rowCount.stdout.trim()).toBe('1');
+    expect(rowCount.stdout.trim()).toBe(String(onDisk.length));
 
-    const filename = psql(pg.container, 'SELECT filename FROM _migrations ORDER BY filename;');
-    expect(filename.stdout.trim()).toBe('0000_init.sql');
+    const filenames = psql(pg.container, 'SELECT filename FROM _migrations ORDER BY filename;');
+    expect(filenames.stdout.trim().split('\n').sort()).toEqual(onDisk);
   });
 
   it('is a no-op on second run', () => {
