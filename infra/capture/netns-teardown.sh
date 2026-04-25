@@ -36,11 +36,22 @@ main() {
 
   [[ "$netns" =~ ^[a-zA-Z0-9_-]+$ ]] || die "invalid netns name: $netns"
 
-  if ip netns list 2>/dev/null | awk '{print $1}' | grep -qx "$netns"; then
-    log "deleting netns: $netns"
-    ip netns delete "$netns"
+  # Stop the pause container (its removal also destroys the kernel netns the
+  # capture container was attached to). The --rm flag on docker run means
+  # `docker stop` removes it automatically; `docker rm -f` is idempotent
+  # and handles the case where --rm lost the race on an abrupt kill.
+  local pause_name="pause-${netns}"
+  if docker inspect --format '{{.State.Status}}' "$pause_name" 2>/dev/null | grep -qv '^$'; then
+    log "stopping pause container: $pause_name"
+    docker rm -f "$pause_name" 2>/dev/null || true
   else
-    log "netns absent, nothing to delete: $netns"
+    log "pause container absent, nothing to stop: $pause_name"
+  fi
+
+  # Legacy: remove any iproute2 named netns left by a prior code version.
+  if ip netns list 2>/dev/null | awk '{print $1}' | grep -qx "$netns"; then
+    log "deleting legacy iproute2 netns: $netns"
+    ip netns delete "$netns"
   fi
 
   local state_file="${state_dir}/${netns}.state"

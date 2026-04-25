@@ -5,8 +5,10 @@
 # Given a target URL, this script:
 #   1. Resolves the target hostname ONCE via the host resolver (per-request
 #      DNS pinning — spec §2 #5).
-#   2. Creates a Linux network namespace with a veth pair to the host.
-#   3. Programs iptables (v4) + ip6tables (v6) in the namespace with:
+#   2. Starts a Docker pause container with --network=none so Docker creates
+#      a fresh kernel netns for it (the standard Kubernetes pause pattern).
+#   3. Programs iptables (v4) + ip6tables (v6) in that netns via nsenter BEFORE
+#      the capture container starts:
 #        - default-deny INPUT/OUTPUT/FORWARD,
 #        - allow ESTABLISHED/RELATED inbound,
 #        - allow ONLY the resolved target IPs outbound to 80/443,
@@ -101,10 +103,19 @@ cidr_match() {
 }
 
 v4_to_int() {
+  # Validate: must be exactly 4 dot-separated decimal octets, each 0-255.
+  # Defense-in-depth: getent is the only caller in production, but the shim
+  # is attacker-influenced if the resolver is compromised (spec §2 #5).
   local ip="$1"
   local IFS=.
   # shellcheck disable=SC2206
   local parts=($ip)
+  [[ "${#parts[@]}" -eq 4 ]] || die "v4_to_int: expected 4 octets, got ${#parts[@]} in '${ip}'"
+  local o
+  for o in "${parts[@]}"; do
+    [[ "$o" =~ ^[0-9]+$ ]] || die "v4_to_int: non-numeric octet '${o}' in '${ip}'"
+    (( o >= 0 && o <= 255 )) || die "v4_to_int: octet ${o} out of range 0-255 in '${ip}'"
+  done
   printf '%s' $(( (parts[0] << 24) + (parts[1] << 16) + (parts[2] << 8) + parts[3] ))
 }
 
@@ -252,26 +263,44 @@ emit_rules() {
 }
 
 apply_rules() {
-  # Apply the rendered ruleset inside the netns. Each `iptables -A` runs
-  # `ip netns exec <netns> iptables ...`. We program v4 + v6 in one go.
+  # Apply the rendered ruleset inside a network namespace.
+  #
+  # Two modes:
+  #   apply_rules <netns-name> <v4> <v6> <deny_file>
+  #     — uses `ip netns exec <netns>` (test harness / iproute2 named netns).
+  #   apply_rules "" <v4> <v6> <deny_file> <pid>
+  #     — uses `nsenter -t <pid> -n` (production: pause container netns).
+  #
+  # The test suite calls the first form directly (the netns is already set up
+  # with a veth by the test). Production main() calls the second form after
+  # starting a pause container. Both forms program identical iptables rules.
   local netns="$1"
   local v4_list="$2"
   local v6_list="$3"
   local deny_file="$4"
+  local pause_pid="${5:-}"
 
-  ip netns exec "$netns" iptables -P INPUT DROP
-  ip netns exec "$netns" iptables -P OUTPUT DROP
-  ip netns exec "$netns" iptables -P FORWARD DROP
-  ip netns exec "$netns" iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-  ip netns exec "$netns" iptables -A INPUT -i lo -j ACCEPT
-  ip netns exec "$netns" iptables -A OUTPUT -o lo -j ACCEPT
+  # Build the exec prefix.
+  local -a run_in
+  if [[ -n "$pause_pid" ]]; then
+    run_in=(nsenter -t "$pause_pid" -n --)
+  else
+    run_in=(ip netns exec "$netns")
+  fi
 
-  ip netns exec "$netns" ip6tables -P INPUT DROP
-  ip netns exec "$netns" ip6tables -P OUTPUT DROP
-  ip netns exec "$netns" ip6tables -P FORWARD DROP
-  ip netns exec "$netns" ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-  ip netns exec "$netns" ip6tables -A INPUT -i lo -j ACCEPT
-  ip netns exec "$netns" ip6tables -A OUTPUT -o lo -j ACCEPT
+  "${run_in[@]}" iptables -P INPUT DROP
+  "${run_in[@]}" iptables -P OUTPUT DROP
+  "${run_in[@]}" iptables -P FORWARD DROP
+  "${run_in[@]}" iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  "${run_in[@]}" iptables -A INPUT -i lo -j ACCEPT
+  "${run_in[@]}" iptables -A OUTPUT -o lo -j ACCEPT
+
+  "${run_in[@]}" ip6tables -P INPUT DROP
+  "${run_in[@]}" ip6tables -P OUTPUT DROP
+  "${run_in[@]}" ip6tables -P FORWARD DROP
+  "${run_in[@]}" ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  "${run_in[@]}" ip6tables -A INPUT -i lo -j ACCEPT
+  "${run_in[@]}" ip6tables -A OUTPUT -o lo -j ACCEPT
 
   local cidr
   while IFS= read -r line; do
@@ -279,22 +308,22 @@ apply_rules() {
     cidr="${cidr//[[:space:]]/}"
     [[ -z "$cidr" ]] && continue
     if [[ "$cidr" == *:* ]]; then
-      ip netns exec "$netns" ip6tables -A OUTPUT -d "$cidr" -j DROP
+      "${run_in[@]}" ip6tables -A OUTPUT -d "$cidr" -j DROP
     else
-      ip netns exec "$netns" iptables -A OUTPUT -d "$cidr" -j DROP
+      "${run_in[@]}" iptables -A OUTPUT -d "$cidr" -j DROP
     fi
   done < "$deny_file"
 
   local ip4 ip6
   while IFS= read -r ip4; do
     [[ -z "$ip4" ]] && continue
-    ip netns exec "$netns" iptables -A OUTPUT -d "$ip4" -p tcp --dport 443 -j ACCEPT
-    ip netns exec "$netns" iptables -A OUTPUT -d "$ip4" -p tcp --dport 80 -j ACCEPT
+    "${run_in[@]}" iptables -A OUTPUT -d "$ip4" -p tcp --dport 443 -j ACCEPT
+    "${run_in[@]}" iptables -A OUTPUT -d "$ip4" -p tcp --dport 80 -j ACCEPT
   done <<< "$v4_list"
   while IFS= read -r ip6; do
     [[ -z "$ip6" ]] && continue
-    ip netns exec "$netns" ip6tables -A OUTPUT -d "$ip6" -p tcp --dport 443 -j ACCEPT
-    ip netns exec "$netns" ip6tables -A OUTPUT -d "$ip6" -p tcp --dport 80 -j ACCEPT
+    "${run_in[@]}" ip6tables -A OUTPUT -d "$ip6" -p tcp --dport 443 -j ACCEPT
+    "${run_in[@]}" ip6tables -A OUTPUT -d "$ip6" -p tcp --dport 80 -j ACCEPT
   done <<< "$v6_list"
 }
 
@@ -304,6 +333,7 @@ write_state() {
   local v4_list="$3"
   local v6_list="$4"
   local state_dir="$5"
+  local pause_container="${6:-}"
   install -d -m 0755 "$state_dir"
   local state_file="${state_dir}/${netns}.state"
   {
@@ -312,9 +342,27 @@ write_state() {
     printf 'created_at=%s\n' "$(date -u +%FT%TZ)"
     printf 'allowed_ipv4=%s\n' "$(tr '\n' ',' <<< "$v4_list" | sed 's/,$//')"
     printf 'allowed_ipv6=%s\n' "$(tr '\n' ',' <<< "$v6_list" | sed 's/,$//')"
+    printf 'pause_container=%s\n' "${pause_container}"
   } > "$state_file"
   chmod 0644 "$state_file"
   printf '%s' "$state_file"
+}
+
+extract_host() {
+  # Pure-bash URL host extractor. Requires a scheme (http:// or https://).
+  # Returns empty string for scheme-less inputs so the caller's
+  # [[ -n "$host" ]] guard triggers a clean die().
+  # Strips :port, query, and fragment. (F5: handles scheme-less + fragment/query.)
+  local url="$1"
+  # Must have a scheme — reject if no '://' present.
+  [[ "$url" == *://* ]] || { printf ''; return 0; }
+  local rest
+  rest="${url#*://}"
+  rest="${rest%%/*}"
+  rest="${rest%%\?*}"
+  rest="${rest%%#*}"
+  rest="${rest%%:*}"  # strip :port
+  printf '%s' "$rest"
 }
 
 main() {
@@ -368,35 +416,47 @@ main() {
   if [[ "$dry_run" == "1" ]]; then
     log "DRY RUN — emitting ruleset, NOT applying"
     emit_rules "$netns" "$v4_list" "$v6_list" "$deny_file"
-    write_state "$netns" "$host" "$v4_list" "$v6_list" "$state_dir" >/dev/null
+    write_state "$netns" "$host" "$v4_list" "$v6_list" "$state_dir" "" >/dev/null
     return 0
   fi
 
-  log "creating netns: $netns"
-  if ip netns list | awk '{print $1}' | grep -qx "$netns"; then
-    die "netns $netns already exists; tear down first"
-  fi
-  ip netns add "$netns"
-  ip netns exec "$netns" ip link set lo up
+  # Production path: start a Docker "pause" container with --network=none so
+  # Docker allocates a fresh kernel netns for it. We then program iptables
+  # INSIDE that netns via `nsenter -t <pid> -n` BEFORE the capture container
+  # is started. The capture container runs with
+  #   `docker run --network container:<pause_name>`
+  # which attaches it to the same kernel netns — with rules already bound.
+  #
+  # This is the standard Kubernetes pause-container pattern; Docker's
+  # --network container:NAME requires a Docker container name, not an
+  # iproute2 `ip netns add`-created namespace.
+  local pause_name="pause-${netns}"
 
-  log "programming iptables in $netns"
-  apply_rules "$netns" "$v4_list" "$v6_list" "$deny_file"
+  # Idempotency: if a prior run crashed after starting the pause container,
+  # tear it down now.
+  docker rm -f "$pause_name" 2>/dev/null || true
+
+  log "starting pause container: $pause_name"
+  docker run -d \
+    --name "$pause_name" \
+    --network none \
+    --rm \
+    gcr.io/pause:3.9 \
+    >/dev/null
+
+  # Extract the pause container's init PID so we can nsenter its netns.
+  local pause_pid
+  pause_pid=$(docker inspect --format '{{.State.Pid}}' "$pause_name")
+  [[ -n "$pause_pid" && "$pause_pid" -gt 0 ]] \
+    || die "could not get pause container PID for $pause_name"
+
+  log "programming iptables in pause container netns (pid=$pause_pid)"
+  # Apply rules BEFORE the capture container is unpaused — spec §5.13 invariant.
+  apply_rules "" "$v4_list" "$v6_list" "$deny_file" "$pause_pid"
 
   local state_file
-  state_file=$(write_state "$netns" "$host" "$v4_list" "$v6_list" "$state_dir")
-  log "ready: state=$state_file ipv4=$(wc -l <<< "$v4_list" | tr -d ' ') ipv6=$(wc -l <<< "$v6_list" | tr -d ' ')"
-}
-
-extract_host() {
-  # Pure-bash URL host extractor. Accepts http(s)://host[:port]/...
-  local url="$1"
-  local rest
-  rest="${url#*://}"
-  rest="${rest%%/*}"
-  rest="${rest%%\?*}"
-  rest="${rest%%#*}"
-  rest="${rest%%:*}"  # strip :port
-  printf '%s' "$rest"
+  state_file=$(write_state "$netns" "$host" "$v4_list" "$v6_list" "$state_dir" "$pause_name")
+  log "ready: state=$state_file pause=$pause_name ipv4=$(wc -l <<< "$v4_list" | tr -d ' ') ipv6=$(wc -l <<< "$v6_list" | tr -d ' ')"
 }
 
 main "$@"

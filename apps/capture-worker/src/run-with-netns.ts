@@ -121,15 +121,25 @@ export async function runWithNetns(opts: RunWithNetnsOpts): Promise<RunWithNetns
   }
 
   // 2. Run the container. dry-run mode skips this.
+  //
+  // Production: the bringup script started a pause container named
+  // `pause-<netns>` with --network=none and programmed iptables inside its
+  // kernel netns via nsenter BEFORE this point. We attach the capture
+  // container to that SAME kernel netns with --network container:<name>.
+  // Docker's --network container:NAME expects a real Docker container name
+  // (not an iproute2 `ip netns add` namespace) — pause-<netns> satisfies
+  // this contract.  Rules are already bound; the capture container starts
+  // with no path to host services.
   let containerStdout = '';
   let containerStderr = '';
   try {
     if (!dryRun) {
+      const pauseName = `pause-${netns}`;
       const dockerRun = await spawnCollect('docker', [
         'run',
         '--rm',
         '--network',
-        `container:netns-${netns}`,
+        `container:${pauseName}`,
         '--read-only',
         '--cap-drop',
         'ALL',
