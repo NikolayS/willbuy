@@ -69,9 +69,9 @@ async function applyMigrations(url: string): Promise<void> {
 // Shared HMAC key used in all test cases — must match what the server uses.
 const TEST_HMAC_KEY = 'a'.repeat(64); // 64 hex chars = 32 bytes
 
-// Cookie name helper — mirrors server implementation.
+// Cookie name helper — mirrors server implementation (spec §2 #20).
 function cookieName(slug: string): string {
-  return `willbuy_share_${slug}`;
+  return `wb_rt_${slug}`;
 }
 
 // Build a valid HMAC cookie value for a slug+expiresAt+accountId combination.
@@ -216,8 +216,8 @@ describeIfDocker('§5.12 share-token HttpOnly cookie redirect (issue #76)', () =
     const cookies = parseCookieHeader(res.headers['set-cookie'] as string | string[]);
     expect(cookies.length, 'at least one Set-Cookie header').toBeGreaterThan(0);
 
-    const cookieStr = cookies.find((c) => c.startsWith(`willbuy_share_${slug}=`));
-    expect(cookieStr, 'correct cookie name').toBeTruthy();
+    const cookieStr = cookies.find((c) => c.startsWith(`wb_rt_${slug}=`));
+    expect(cookieStr, 'correct cookie name (wb_rt_<slug> per spec §2 #20)').toBeTruthy();
     expect(cookieStr, 'HttpOnly flag').toMatch(/HttpOnly/i);
     expect(cookieStr, 'Secure flag').toMatch(/Secure/i);
     expect(cookieStr, 'SameSite=Lax').toMatch(/SameSite=Lax/i);
@@ -394,5 +394,69 @@ describeIfDocker('§5.12 share-token HttpOnly cookie redirect (issue #76)', () =
     });
 
     expect(res.statusCode, 'should 404 for private report without token').toBe(404);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Sprint 3 retro F1: cookie name must be `wb_rt_<slug>` per spec §2 #20
+  // (audit found impl used `willbuy_share_<slug>`).
+  // ---------------------------------------------------------------------------
+  it('F1. Set-Cookie name is wb_rt_<slug> per spec §2 #20 (not willbuy_share_)', async () => {
+    const token = `tokF1_${uid()}`;
+    const { slug } = await seedReport({ shareToken: token });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/reports/${slug}?t=${token}`,
+    });
+
+    expect(res.statusCode, 'should 302').toBe(302);
+
+    const cookies = parseCookieHeader(res.headers['set-cookie'] as string | string[]);
+    expect(cookies.length, 'at least one Set-Cookie header').toBeGreaterThan(0);
+
+    const wbCookie = cookies.find((c) => c.startsWith(`wb_rt_${slug}=`));
+    expect(wbCookie, 'Set-Cookie header starts with wb_rt_<slug>=').toBeTruthy();
+
+    const joined = cookies.join('\n');
+    expect(joined, 'cookie does NOT use legacy willbuy_share_ name').not.toMatch(
+      /willbuy_share_/,
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Sprint 3 retro F2: cookie Max-Age must be capped at 2 hours (7200s) per
+  // spec §2 #20 — even when the underlying token's expires_at is 90 days out.
+  // The underlying TOKEN expiry stays long; only the COOKIE is capped.
+  // ---------------------------------------------------------------------------
+  it('F2. Set-Cookie Max-Age is capped at 7200s even with 90-day token expiry', async () => {
+    const token = `tokF2_${uid()}`;
+    // seedReport defaults the share_tokens row's expires_at to ~90 days out.
+    const { slug, expiresAt } = await seedReport({ shareToken: token });
+
+    // Sanity: confirm the underlying token is many days out (not 2h).
+    expect(expiresAt, 'token expiresAt seeded').toBeTruthy();
+    const tokenSecondsOut = Math.floor((expiresAt!.getTime() - Date.now()) / 1000);
+    expect(tokenSecondsOut, 'token TTL is much greater than 2h').toBeGreaterThan(
+      24 * 60 * 60, // > 1 day
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/reports/${slug}?t=${token}`,
+    });
+
+    expect(res.statusCode, 'should 302').toBe(302);
+    const cookies = parseCookieHeader(res.headers['set-cookie'] as string | string[]);
+    // Match either the new (wb_rt_) or legacy (willbuy_share_) name so this
+    // test surfaces the TTL bug independently of the F1 rename status.
+    const shareCookie = cookies.find(
+      (c) => c.startsWith(`wb_rt_${slug}=`) || c.startsWith(`willbuy_share_${slug}=`),
+    );
+    expect(shareCookie, 'share-token cookie present').toBeTruthy();
+
+    const maxAgeMatch = shareCookie!.match(/Max-Age=(\d+)/i);
+    expect(maxAgeMatch, 'Max-Age attribute present').toBeTruthy();
+    const maxAge = Number(maxAgeMatch![1]);
+    expect(maxAge, 'Max-Age capped at 2h (7200s) per spec §2 #20').toBe(7200);
   });
 });
