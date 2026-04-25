@@ -121,23 +121,38 @@ export async function acquireLease(
     const row = existing.rows[0];
 
     if (row === undefined) {
-      // No lease row — insert and win.
-      const ins = await client.query<{ lease_until: Date }>(
-        `INSERT INTO backstory_leases
-           (backstory_id, study_id, holder_visit_id, lease_until, heartbeat_at)
-         SELECT b.id, b.study_id, $2::bigint,
-                NOW() + ($3::int * INTERVAL '1 second'), NOW()
-           FROM backstories b
-          WHERE b.id = $1
-         RETURNING lease_until`,
-        [String(backstory_id), String(owner_visit_id), ttl_seconds],
-      );
-      await client.query('COMMIT');
-      const insRow = ins.rows[0];
-      if (insRow === undefined) {
-        return { ok: false, reason: 'held' };
+      // No lease row — attempt to insert and win.
+      // Two concurrent callers can both reach here if neither saw an existing
+      // row under their individual FOR UPDATE selects (FOR UPDATE only locks
+      // existing rows; it does not block on non-existent rows).  One INSERT
+      // will succeed; the other will hit a PK duplicate-key error (code 23505).
+      // We catch that and return 'held' for the loser.
+      try {
+        const ins = await client.query<{ lease_until: Date }>(
+          `INSERT INTO backstory_leases
+             (backstory_id, study_id, holder_visit_id, lease_until, heartbeat_at)
+           SELECT b.id, b.study_id, $2::bigint,
+                  NOW() + ($3::int * INTERVAL '1 second'), NOW()
+             FROM backstories b
+            WHERE b.id = $1
+           RETURNING lease_until`,
+          [String(backstory_id), String(owner_visit_id), ttl_seconds],
+        );
+        await client.query('COMMIT');
+        const insRow = ins.rows[0];
+        if (insRow === undefined) {
+          return { ok: false, reason: 'held' };
+        }
+        return { ok: true, lease_until: insRow.lease_until };
+      } catch (insertErr) {
+        // PK duplicate = another concurrent caller won the INSERT race.
+        const pgErr = insertErr as { code?: string };
+        if (pgErr.code === '23505') {
+          await client.query('ROLLBACK');
+          return { ok: false, reason: 'held' };
+        }
+        throw insertErr;
       }
-      return { ok: true, lease_until: insRow.lease_until };
     }
 
     if (row.lease_until <= now) {

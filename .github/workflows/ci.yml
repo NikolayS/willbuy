@@ -16,15 +16,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
-      # Postgres for integration tests (leases.integration.test.ts + migrations.schema.test.ts).
-      # Port 54399 matches the TEST_DATABASE_URL default in leases.integration.test.ts.
-      # migrations.schema.test.ts spins its own ephemeral containers; this service is
-      # for the lease/finalize integration tests only.
+      # Shared Postgres for apps/api/test/leases.integration.test.ts.
+      # Using a service container avoids launching a fourth ephemeral Docker
+      # container (the migration tests already spin two) which causes OOM kills
+      # on the 7 GB GitHub Actions runner.  The test reads TEST_DATABASE_URL
+      # and skips Docker-container-start when the env var is set.
       postgres:
-        image: postgres:15-alpine
+        image: postgres:16-alpine
         env:
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: willbuy_test
+          POSTGRES_PASSWORD: willbuy_lease_test_pw
+          POSTGRES_DB: willbuy_lease_test
         ports:
           - 54399:5432
         options: >-
@@ -68,15 +69,19 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Apply migrations (for lease/finalize integration tests)
-        run: DATABASE_URL=postgres://postgres:testpass@127.0.0.1:54399/willbuy_test bash scripts/migrate.sh
+      - name: Apply migrations for lease integration tests
+        # Applies the full schema to the service container before tests run.
+        # The lease integration tests read TEST_DATABASE_URL and skip Docker-start.
+        run: bash scripts/migrate.sh
         env:
-          DATABASE_URL: postgres://postgres:testpass@127.0.0.1:54399/willbuy_test
+          DATABASE_URL: postgres://postgres:willbuy_lease_test_pw@127.0.0.1:54399/willbuy_lease_test
 
       - name: Test
         run: pnpm test
         env:
-          TEST_DATABASE_URL: postgres://postgres:testpass@127.0.0.1:54399/willbuy_test
+          # Tells leases.integration.test.ts to use this pre-migrated DB
+          # instead of spinning its own Docker container (prevents OOM on runner).
+          TEST_DATABASE_URL: postgres://postgres:willbuy_lease_test_pw@127.0.0.1:54399/willbuy_lease_test
 
   aggregator:
     runs-on: ubuntu-latest
