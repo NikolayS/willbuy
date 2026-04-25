@@ -312,13 +312,19 @@ pass "scenario 4: ${REDIR_HOST_IP} DROP'd by default policy (cross-eTLD+1 DNS pi
 # stall — the kernel routes the UDP packet, conntrack creates a tuple, and
 # bash returns immediately.
 
-# shellcheck disable=SC2016 # the single-quoted body MUST defer $i expansion
-# until the bash sub-shell runs inside `ip netns exec`.
-ip netns exec "$CAPTURE_NS" bash -c '
-  for i in $(seq 1 60); do
-    : >/dev/udp/203.0.113.${i}/53 2>/dev/null || true
-  done
-'
+# Use python3 to send one UDP datagram per distinct destination. UDP
+# entries appear in conntrack on the FIRST transmitted packet (no
+# handshake, no per-flow timeout), so this completes in a few hundred
+# milliseconds with no subprocess fan-out.
+ip netns exec "$CAPTURE_NS" timeout 5 python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+for i in range(1, 61):
+    try:
+        s.sendto(b'x', ('203.0.113.' + str(i), 53))
+    except OSError:
+        pass
+"
 
 set +e
 out=$(timeout 5 "$INFRA_DIR/host-budget-enforcer.sh" "$CAPTURE_NS" 50)
