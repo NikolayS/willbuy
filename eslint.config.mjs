@@ -3,7 +3,18 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import reactPlugin from 'eslint-plugin-react';
-import willbuy from './eslint-rules/no-sandbox-flag.js';
+import noSandboxFlag from './eslint-rules/no-sandbox-flag.js';
+import noReservedLlmIdentifiers from './packages/llm-adapter/eslint-rule.js';
+
+// Single namespaced plugin: ESLint v9 wants one plugin object with all
+// rules merged in. Two separate plugin entries with the same key would
+// collide.
+const willbuy = {
+  rules: {
+    ...noSandboxFlag.rules,
+    ...noReservedLlmIdentifiers.rules,
+  },
+};
 
 export default tseslint.config(
   {
@@ -20,6 +31,10 @@ export default tseslint.config(
       // issue #7 acceptance #4). They are linted explicitly by
       // apps/web/test/lint-scoping.test.ts via `eslint --no-ignore`.
       'apps/web/_lint-fixtures/**',
+      // Negative-test inputs for the AST identifier ban. Linted
+      // explicitly by packages/llm-adapter/test/lint-rule.test.ts via
+      // the fixtures-only config (which does NOT ignore them).
+      'packages/llm-adapter/lint-fixtures/**',
     ],
   },
   js.configs.recommended,
@@ -35,6 +50,7 @@ export default tseslint.config(
     },
     rules: {
       'willbuy/no-sandbox-flag': 'error',
+      'willbuy/no-reserved-llm-identifiers': 'error',
     },
   },
   {
@@ -55,12 +71,19 @@ export default tseslint.config(
     },
   },
   {
-    // The rule definition and the test that exercises it both legitimately
-    // mention the banned literal as a pattern/diagnostic string. They are the
-    // single allow-listed exception to `willbuy/no-sandbox-flag`.
-    files: ['eslint-rules/**/*.js', 'tests/lint-rules.test.ts'],
+    // The rule definitions and tests that exercise them both legitimately
+    // mention the banned literal/identifiers as patterns/diagnostic
+    // strings. This is the SINGLE allow-list scope for both willbuy
+    // custom rules; new files added here require a reviewer eyebrow.
+    files: [
+      'eslint-rules/**/*.js',
+      'packages/llm-adapter/eslint-rule.js',
+      'tests/lint-rules.test.ts',
+      'packages/llm-adapter/test/lint-rule.test.ts',
+    ],
     rules: {
       'willbuy/no-sandbox-flag': 'off',
+      'willbuy/no-reserved-llm-identifiers': 'off',
     },
   },
 );
