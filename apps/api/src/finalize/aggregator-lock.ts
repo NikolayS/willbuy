@@ -143,7 +143,7 @@ export interface RecordLateArrivalInput {
 }
 
 // recordLateArrival — INSERT INTO late_arrivals.  Idempotent: the schema-level
-// UNIQUE(study_id, visit_id) added by migration 0012 makes concurrent inserts
+// UNIQUE(study_id, visit_id) added by migration 0013 makes concurrent inserts
 // of the same pair safe via ON CONFLICT DO NOTHING (issue #58).
 // A late visit is one that lands after the study has reached 'ready' or
 // 'failed' (spec §5.11).

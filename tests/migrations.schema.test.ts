@@ -1103,7 +1103,7 @@ describeIfDocker('migrations schema (issue #26)', () => {
   });
 
   // ── Issue #58 — late_arrivals UNIQUE(study_id, visit_id) ──────────────────
-  // TDD red→green: these tests fail before migration 0012 is applied.
+  // TDD red→green: these tests fail before migration 0013 is applied.
   describe('#58 — late_arrivals UNIQUE(study_id, visit_id)', () => {
     it('late_arrivals has a UNIQUE constraint on (study_id, visit_id)', () => {
       const out = expectSqlOk(

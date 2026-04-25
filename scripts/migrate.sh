@@ -105,11 +105,13 @@ apply_migration() {
   # SQL is piped over stdin so the docker-bundled psql fallback works
   # the same as a local psql.
   local rc=0
+  local safe_filename_insert="${filename//\'/\'\'}"
   {
     cat "${file}"
     printf '\n-- migrate.sh: tracking insert\n'
+    # NB2: escape single-quotes in filename (same defence-in-depth as is_applied).
     printf "INSERT INTO _migrations (filename, checksum) VALUES ('%s', '%s');\n" \
-      "${filename}" "${checksum}"
+      "${safe_filename_insert}" "${checksum}"
   } | "${PSQL_CMD[@]}" \
     -v ON_ERROR_STOP=1 \
     --quiet \

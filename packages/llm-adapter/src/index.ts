@@ -122,6 +122,8 @@ export interface LocalCliProviderOptions {
   // "jittered exponential backoff" without pinning a scale; +20% is small
   // enough to not stretch the 8 s tail meaningfully and large enough to
   // de-synchronize concurrent transient failures across visitors.
+  // (The PR #40 review suggested 50% as an illustrative example; 20% was
+  // chosen deliberately — both are within spec.)
   jitter?: number;
   // Test seam — clock for the backoff sleep. Defaults to setTimeout. Tests
   // can pass an immediate-resolve impl to skip waits without zero-wait races.
