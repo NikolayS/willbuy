@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scoreVisit } from '../src/scoring.js';
+import { NEXT_ACTION_WEIGHTS, scoreVisit } from '../src/scoring.js';
 import type { VisitorOutputT } from '../src/visitor.js';
 
 const baseVisit: VisitorOutputT = {
@@ -61,5 +61,30 @@ describe('scoreVisit (growth/ab/pricing-page-2026apr/scoring.md mirror)', () => 
 
   it('returns 0.2 for ask_teammate', () => {
     expect(scoreVisit(visitWith('ask_teammate'))).toBe(0.2);
+  });
+
+  it('returns 0.0 for leave', () => {
+    expect(scoreVisit(visitWith('leave'))).toBe(0.0);
+  });
+
+  it('exposes NEXT_ACTION_WEIGHTS mirroring the growth scoring rubric', () => {
+    expect(NEXT_ACTION_WEIGHTS.purchase_paid_today).toBe(1.0);
+    expect(NEXT_ACTION_WEIGHTS.contact_sales).toBe(0.8);
+    expect(NEXT_ACTION_WEIGHTS.book_demo).toBe(0.8);
+    expect(NEXT_ACTION_WEIGHTS.start_paid_trial).toBe(0.6);
+    // bookmark_compare_later and start_free_hobby base = 0.0; bumps live in
+    // scoreVisit per growth/scoring.md.
+    expect(NEXT_ACTION_WEIGHTS.bookmark_compare_later).toBe(0.0);
+    expect(NEXT_ACTION_WEIGHTS.start_free_hobby).toBe(0.0);
+    expect(NEXT_ACTION_WEIGHTS.ask_teammate).toBe(0.2);
+    expect(NEXT_ACTION_WEIGHTS.leave).toBe(0.0);
+  });
+
+  it('returns 0.0 defensively for an unknown next_action', () => {
+    const malformed = {
+      ...baseVisit,
+      next_action: 'not_in_enum',
+    } as unknown as VisitorOutputT;
+    expect(scoreVisit(malformed)).toBe(0.0);
   });
 });
