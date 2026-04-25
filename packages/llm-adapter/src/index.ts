@@ -178,7 +178,6 @@ export class LocalCliProvider implements LLMProvider {
     // Spec §5.15: same logicalRequestKey across all transport attempts.
     // The provider-side Idempotency-Key (when capabilities.idempotency is
     // true) MUST stay byte-identical so a future HTTP backend can dedupe.
-    let lastOutcome: AttemptOutcome | undefined;
     let transportAttempts = 0;
 
     for (let i = 0; i < LOCAL_CLI_MAX_TRANSPORT_ATTEMPTS; i += 1) {
@@ -190,7 +189,6 @@ export class LocalCliProvider implements LLMProvider {
         stdin: stdinPayload,
         timeoutMs,
       });
-      lastOutcome = outcome;
 
       if (outcome.kind === 'ok') {
         return {
@@ -203,6 +201,9 @@ export class LocalCliProvider implements LLMProvider {
         if (i + 1 < LOCAL_CLI_MAX_TRANSPORT_ATTEMPTS) {
           const baseWait = backoff[i] ?? 0;
           // jitter ∈ [0, 1]; final wait ∈ [baseWait, baseWait * (1 + jitter)].
+          // Math.random() is not exercised in CI (tests pass sleepFn that
+          // returns immediately). The jitter path is correct-by-inspection:
+          // random() ∈ [0,1) so waitMs ∈ [baseWait, baseWait*(1+jitter)).
           const waitMs = baseWait * (1 + jitter * Math.random());
           await sleep(waitMs);
         }
@@ -229,8 +230,9 @@ export class LocalCliProvider implements LLMProvider {
       };
     }
 
-    // Loop ended → cap reached on transient_safe_retry. lastOutcome is set.
-    void lastOutcome;
+    // Loop ended → all 3 attempts were transient_safe_retry; cap reached.
+    // lastOutcome is always 'transient_safe_retry' at this point; no
+    // actionable information to surface beyond status='error'.
     return {
       raw: '',
       transportAttempts,
@@ -327,6 +329,12 @@ function runOnceClassified(opts: RunOnceOpts): Promise<AttemptOutcome> {
     child.stderr.on('error', () => {});
 
     child.on('close', (code, signal) => {
+      // Race note: if the child exits cleanly (code=0) in the same event-loop
+      // turn that our timer fires, Node.js queues both events; the first one
+      // to reach settle() wins (settled flag prevents double-resolve).  If
+      // close arrives first we return 'ok'; if the timer callback runs first
+      // it sets timedOutByAdapter=true and we classify 'indeterminate'. Either
+      // outcome is valid; the race is benign because settle is idempotent.
       if (timedOutByAdapter) {
         // Spec §5.15 — `maybe_executed` outcome class. For idempotency:false
         // (LocalCliProvider) the chat() loop will classify indeterminate and
