@@ -10,13 +10,7 @@
 //      tree is never touched.
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import {
-  cpSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,10 +48,7 @@ describe('scripts/check-migrations.sh (#100)', () => {
       });
       // Induce the failure mode: clone 0014_share_tokens.sql under a new
       // name with the same 4-digit prefix.
-      const dupSrc = join(
-        fixtureRoot,
-        'infra/migrations/0014_share_tokens.sql',
-      );
+      const dupSrc = join(fixtureRoot, 'infra/migrations/0014_share_tokens.sql');
       const dupDst = join(fixtureRoot, 'infra/migrations/0014_dup.sql');
       writeFileSync(dupDst, readFileSync(dupSrc));
 
