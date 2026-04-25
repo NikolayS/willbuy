@@ -16,7 +16,8 @@ const dockerCheck = spawnSync('docker', ['version', '--format', '{{.Server.Versi
 const dockerAvailable = dockerCheck.status === 0;
 const describeIfDocker = dockerAvailable ? describe : describe.skip;
 
-const PG_IMAGE = 'postgres:16-alpine';
+// S-NB2: pin by digest; matches scripts/migrate.sh fallback image.
+const PG_IMAGE = 'postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50';
 const PG_PASSWORD = 'willbuy_test_pw';
 const CONTAINER_PREFIX = 'willbuy-migrate-test-';
 
