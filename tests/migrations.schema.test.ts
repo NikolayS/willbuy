@@ -58,10 +58,13 @@ async function startPostgres(): Promise<{ container: string; port: number; url: 
       '--rm',
       '--name',
       container,
-      '-e',
-      `POSTGRES_PASSWORD=${PG_PASSWORD}`,
-      '-p',
-      `${port}:5432`,
+      // Faster startup: trust-mode skips md5 auth handshake during initdb.
+      '-e', `POSTGRES_PASSWORD=${PG_PASSWORD}`,
+      '-e', 'POSTGRES_INITDB_ARGS=--auth-host=trust',
+      // Smaller footprint: 128 MB shared_buffers avoids OOM under CI memory pressure.
+      '-e', 'POSTGRES_SHARED_BUFFERS=128MB',
+      '--shm-size=256m',
+      '-p', `${port}:5432`,
       PG_IMAGE,
     ]);
     if (r.code === 0) {
@@ -76,17 +79,25 @@ async function startPostgres(): Promise<{ container: string; port: number; url: 
     throw new Error(`failed to start postgres container: ${lastErr}`);
   }
 
-  const deadline = Date.now() + 30_000;
+  // Wait strategy: first poll docker logs for the canonical "ready to accept connections"
+  // line — this fires only after initdb + WAL recovery completes, eliminating the race
+  // where pg_isready returns 0 during startup but before the postmaster accepts SQL.
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    const r = dockerRun(['exec', container, 'pg_isready', '-U', 'postgres']);
-    if (r.code === 0) {
-      const url = `postgres://postgres:${PG_PASSWORD}@127.0.0.1:${port}/postgres`;
-      return { container, port, url };
+    const logs = dockerRun(['logs', container]);
+    const combined = logs.stdout + logs.stderr;
+    if (combined.includes('database system is ready to accept connections')) {
+      // Secondary sanity: confirm the port is actually accepting connections.
+      const ready = dockerRun(['exec', container, 'pg_isready', '-U', 'postgres']);
+      if (ready.code === 0) {
+        const url = `postgres://postgres:${PG_PASSWORD}@127.0.0.1:${port}/postgres`;
+        return { container, port, url };
+      }
     }
-    await new Promise((res) => setTimeout(res, 500));
+    await new Promise((res) => setTimeout(res, 300));
   }
   dockerRun(['rm', '-f', container]);
-  throw new Error('postgres container did not become ready in 30s');
+  throw new Error('postgres container did not become ready in 60s');
 }
 
 function stopPostgres(container: string): void {

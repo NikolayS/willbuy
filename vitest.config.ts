@@ -10,5 +10,14 @@ export default defineConfig({
     ],
     environment: 'node',
     testTimeout: 30_000,
+    // Prevent concurrent Postgres containers within the migrations suite:
+    // running two containers simultaneously caused OOM-kills on CI runners
+    // with constrained memory budgets (issue #57).
+    poolOptions: {
+      threads: {
+        singleThread: true,
+        maxThreads: 1,
+      },
+    },
   },
 });
