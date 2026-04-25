@@ -14,4 +14,9 @@ describe('Backstory (spec §2 #5 + personas/backstories.md)', () => {
     const parsed = Backstory.parse(validFixture);
     expect(parsed.name).toBe('Maya');
   });
+
+  it('rejects a backstory with a bad enum value', () => {
+    const bad = { ...validFixture, managed_postgres: 'mongodb' };
+    expect(() => Backstory.parse(bad)).toThrow();
+  });
 });
