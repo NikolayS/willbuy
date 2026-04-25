@@ -46,5 +46,6 @@ export function scoreVisit(
   if (parsed.next_action === 'start_free_hobby') {
     return considered !== undefined && PAID_TIERS.has(considered) ? 0.2 : 0.0;
   }
+  if (parsed.next_action === 'ask_teammate') return 0.2;
   return 0.0;
 }
