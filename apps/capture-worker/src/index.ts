@@ -1,3 +1,11 @@
+/**
+ * index.ts — capture-worker library exports + production entrypoint.
+ *
+ * When imported as a module the exports below are available.
+ * When run directly (`bun run src/index.ts`) the polling loop starts,
+ * driven by DATABASE_URL + BROKER_SOCKET_PATH env vars.
+ */
+
 export { captureUrl } from './capture.js';
 export { LAUNCH_FLAGS } from './launchFlags.js';
 export type {
@@ -8,3 +16,48 @@ export type {
   CaptureStatus,
 } from './types.js';
 export { CAPTURE_CEILINGS } from './types.js';
+export { pollOnce, runPollingLoop } from './poller.js';
+export { sendToBroker } from './broker-client.js';
+
+// ── production entrypoint ─────────────────────────────────────────────────────
+// Only runs when this file is executed directly (not when imported).
+
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+
+const isMain =
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+
+if (isMain) {
+  const { Pool } = await import('pg');
+  const { runPollingLoop: startLoop } = await import('./poller.js');
+
+  const dbUrl = process.env['DATABASE_URL'];
+  if (!dbUrl) {
+    console.error('[capture-worker] DATABASE_URL is required');
+    process.exit(1);
+  }
+
+  const pool = new Pool({ connectionString: dbUrl });
+  const brokerSocketPath = process.env['BROKER_SOCKET_PATH'];
+
+  const ac = new AbortController();
+
+  process.on('SIGTERM', () => {
+    console.log('[capture-worker] SIGTERM — draining in-flight captures…');
+    ac.abort();
+    // Give in-flight captures 60 s to drain before forcing exit.
+    setTimeout(() => process.exit(0), 60_000).unref();
+  });
+  process.on('SIGINT', () => ac.abort());
+
+  console.log('[capture-worker] starting polling loop');
+  await startLoop({
+    pool,
+    signal: ac.signal,
+    ...(brokerSocketPath !== undefined && { brokerSocketPath }),
+  });
+  await pool.end();
+  console.log('[capture-worker] drained; exiting');
+}
