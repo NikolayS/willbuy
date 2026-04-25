@@ -14,6 +14,11 @@ describe('GET /health (spec §4.1)', () => {
         URL_HASH_SALT: 'x'.repeat(32),
         DATABASE_URL: 'postgres://localhost/test',
         DAILY_CAP_CENTS: 10_000,
+        STRIPE_SECRET_KEY: 'sk_test_not_used_in_health_test',
+        STRIPE_WEBHOOK_SECRET: 'whsec_not_used_in_health_test',
+        STRIPE_PRICE_ID_STARTER: 'price_not_used',
+        STRIPE_PRICE_ID_GROWTH: 'price_not_used',
+        STRIPE_PRICE_ID_SCALE: 'price_not_used',
       },
     });
   });

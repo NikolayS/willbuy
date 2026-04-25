@@ -9,7 +9,7 @@
  * Spec refs: §5.6, §16, §4.1.
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { createHash, createHmac } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -17,6 +17,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { Client } from 'pg';
+import type Stripe from 'stripe';
 
 import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgres.js';
 import { buildServer } from '../src/server.js';
@@ -99,6 +100,50 @@ function buildCheckoutEvent(opts: {
 // Test suite
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Stripe stub — avoids real Stripe API calls in CI.
+// webhooks.constructEvent is re-implemented locally so signature tests work.
+// ---------------------------------------------------------------------------
+
+const STUB_CHECKOUT_URL = 'https://checkout.stripe.com/pay/cs_test_stub_session_url';
+
+function buildStripeStub(): Stripe {
+  return {
+    checkout: {
+      sessions: {
+        create: async () => ({
+          id: `cs_test_stub_${Date.now()}`,
+          url: STUB_CHECKOUT_URL,
+          object: 'checkout.session',
+        }),
+      },
+    },
+    webhooks: {
+      // Re-implement constructEvent so real HMAC verification runs but no
+      // network call is made.
+      constructEvent: (payload: string, sig: string, secret: string): Stripe.Event => {
+        // Parse t= and v1= from header.
+        const parts = Object.fromEntries(
+          sig.split(',').map((p) => p.split('=')),
+        ) as Record<string, string>;
+        const ts = parts['t'];
+        const v1 = parts['v1'];
+        if (!ts || !v1) throw new Error('invalid stripe-signature format');
+        const expected = createHmac('sha256', secret)
+          .update(`${ts}.${payload}`)
+          .digest('hex');
+        if (expected !== v1) {
+          const err = new Error('No signatures found matching the expected signature for payload');
+          (err as Error & { type: string }).type = 'StripeSignatureVerificationError';
+          throw err;
+        }
+        // Parse and return the event — safe for our test payloads.
+        return JSON.parse(payload) as Stripe.Event;
+      },
+    },
+  } as unknown as Stripe;
+}
+
 describeIfDocker('Stripe Checkout + webhook (issue #36, real DB)', () => {
   let pgContainer = '';
   let dbUrl = '';
@@ -106,7 +151,6 @@ describeIfDocker('Stripe Checkout + webhook (issue #36, real DB)', () => {
   let accountId: bigint;
   const apiKey = 'sk_live_stripe_test_key_36abcd';
   const webhookSecret = 'whsec_test_secret_for_issue_36';
-  const stripeSecretKey = 'sk_test_fake_stripe_key_for_tests_only';
 
   beforeAll(async () => {
     const pg = await startPostgres({ containerPrefix: 'willbuy-stripe-test-' });
@@ -132,7 +176,7 @@ describeIfDocker('Stripe Checkout + webhook (issue #36, real DB)', () => {
       await client.end();
     }
 
-    // Build server with Stripe env vars wired.
+    // Build server with Stripe stub injected (no real Stripe API calls in CI).
     app = await buildServer({
       env: {
         PORT: 0,
@@ -140,12 +184,13 @@ describeIfDocker('Stripe Checkout + webhook (issue #36, real DB)', () => {
         URL_HASH_SALT: 'x'.repeat(32),
         DATABASE_URL: dbUrl,
         DAILY_CAP_CENTS: 10_000,
-        STRIPE_SECRET_KEY: stripeSecretKey,
+        STRIPE_SECRET_KEY: 'sk_test_fake_not_used_because_stub_injected',
         STRIPE_WEBHOOK_SECRET: webhookSecret,
         STRIPE_PRICE_ID_STARTER: 'price_test_starter_1000',
         STRIPE_PRICE_ID_GROWTH: 'price_test_growth_4000',
         STRIPE_PRICE_ID_SCALE: 'price_test_scale_15000',
       },
+      stripe: buildStripeStub(),
     });
   });
 
@@ -184,6 +229,8 @@ describeIfDocker('Stripe Checkout + webhook (issue #36, real DB)', () => {
     const body = res.json() as { url: string };
     expect(typeof body.url).toBe('string');
     expect(body.url.length).toBeGreaterThan(0);
+    // Stub returns the fixed test URL.
+    expect(body.url).toBe(STUB_CHECKOUT_URL);
   });
 
   it('POST /checkout/sessions with invalid pack_id returns 400', async () => {
