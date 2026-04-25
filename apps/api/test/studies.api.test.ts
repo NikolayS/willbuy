@@ -354,14 +354,15 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
     expect(otherRes.statusCode).toBe(404);
   });
 
-  // --- Acceptance #7: GET /reports/:slug happy path ---
-  it('GET /reports/:slug returns report payload with valid share token', async () => {
-    // Insert a report directly (aggregator normally creates this).
+  // --- Acceptance #7: GET /reports/:slug — §5.12 cookie-redirect flow ---
+  it('GET /reports/:slug: valid token → 302 + Set-Cookie; no-token private → 404', async () => {
+    // Insert a report + share_tokens row (§5.12 requires share_tokens table, issue #76).
     const client = new Client({ connectionString: dbUrl });
     await client.connect();
     let studyId: bigint;
     const shareToken = 'validtoken12345678901'; // 21 chars nanoid-style
     const tokenHash = sha256hex(shareToken);
+    const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 90 days
     try {
       // Create a study.
       const s = await client.query<{ id: bigint }>(
@@ -378,30 +379,36 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
          VALUES ($1, $2, 0.5, '{}', false)`,
         [String(studyId), tokenHash],
       );
+
+      // Create share_tokens row (§5.12 cookie-redirect flow, issue #76).
+      await client.query(
+        `INSERT INTO share_tokens (report_slug, token_hash, expires_at, account_id)
+         VALUES ($1, $2, $3, $4)`,
+        [String(studyId), tokenHash, expiresAt, String(accountId)],
+      );
     } finally {
       await client.end();
     }
 
-    // Access without token — should 404 (not public, token required).
+    // Access without token — should 404 (not public, no cookie).
     const noTokenRes = await app.inject({
       method: 'GET',
       url: `/reports/${String(studyId)}`,
     });
     expect(noTokenRes.statusCode).toBe(404);
 
-    // Access with valid token — should 200.
+    // Access with valid token — should 302 + Set-Cookie (§5.12 cookie-redirect).
     const withTokenRes = await app.inject({
       method: 'GET',
       url: `/reports/${String(studyId)}?t=${shareToken}`,
     });
-    expect(withTokenRes.statusCode).toBe(200);
-    const body = withTokenRes.json() as {
-      study_id: number;
-      conv_score: number;
-      paired_delta_json: object;
-    };
-    expect(body.study_id).toBeDefined();
-    expect(typeof body.conv_score).toBe('number');
+    expect(withTokenRes.statusCode).toBe(302);
+    expect(withTokenRes.headers['location']).toBe(`/r/${String(studyId)}`);
+    const cookies = withTokenRes.headers['set-cookie'];
+    const cookieArr = Array.isArray(cookies) ? cookies : cookies ? [cookies] : [];
+    const shareC = cookieArr.find((c: string) => c.startsWith(`willbuy_share_${String(studyId)}=`));
+    expect(shareC).toBeTruthy();
+    expect(shareC).toMatch(/HttpOnly/i);
   });
 
   it('404 when report is expired (§2 #20 — no existence leak)', async () => {

@@ -50,6 +50,7 @@ function sha256hex(s: string): string {
 }
 
 async function applyMigrations(url: string): Promise<void> {
+  // All migrations including 0014_share_tokens.sql (issue #76).
   const files = readdirSync(migrationsDir)
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();
@@ -60,19 +61,6 @@ async function applyMigrations(url: string): Promise<void> {
       const sql = readFileSync(resolve(migrationsDir, file), 'utf8');
       await client.query(sql);
     }
-    // Apply the share_tokens migration needed for this test suite.
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS share_tokens (
-        id           int8        generated always as identity primary key,
-        report_slug  text        not null,
-        token_hash   text        not null unique,
-        expires_at   timestamptz not null,
-        revoked_at   timestamptz,
-        account_id   int8        not null references accounts(id) on delete cascade,
-        created_at   timestamptz not null default now()
-      );
-      CREATE INDEX IF NOT EXISTS share_tokens_report_slug_idx ON share_tokens(report_slug);
-    `);
   } finally {
     await client.end();
   }
