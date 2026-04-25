@@ -10,6 +10,11 @@ export const EnvSchema = z.object({
   URL_HASH_SALT: z
     .string({ required_error: 'URL_HASH_SALT is required (≥ 32 chars)' })
     .min(32, 'URL_HASH_SALT must be at least 32 chars (spec §5.12)'),
+  DATABASE_URL: z
+    .string({ required_error: 'DATABASE_URL is required' })
+    .url('DATABASE_URL must be a valid URL'),
+  // Per-account daily spend cap in cents. Default $100/day (10_000 ¢).
+  DAILY_CAP_CENTS: z.coerce.number().int().positive().default(10_000),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

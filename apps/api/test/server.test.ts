@@ -12,6 +12,8 @@ describe('GET /health (spec §4.1)', () => {
         PORT: 0,
         LOG_LEVEL: 'silent',
         URL_HASH_SALT: 'x'.repeat(32),
+        DATABASE_URL: 'postgres://localhost/test',
+        DAILY_CAP_CENTS: 10_000,
       },
     });
   });

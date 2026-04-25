@@ -111,8 +111,8 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
   let app: FastifyInstance;
   let accountId: bigint;
   let otherAccountId: bigint;
-  let apiKey = 'sk_live_testkey_valid_12345678';
-  let otherApiKey = 'sk_live_testkey_other_12345678';
+  const apiKey = 'sk_live_testkey_valid_12345678';
+  const otherApiKey = 'sk_live_testkey_other_12345678';
   const dailyCapCents = 10_000; // $100/day cap for tests
 
   beforeAll(async () => {
@@ -296,7 +296,7 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
     const client = new Client({ connectionString: dbUrl });
     await client.connect();
     let capAccount: bigint;
-    let capApiKey = 'sk_live_captest_key_12345678';
+    const capApiKey = 'sk_live_captest_key_12345678';
     try {
       const acc = await client.query<{ id: bigint }>(
         `INSERT INTO accounts (owner_email, verified_domains) VALUES ('cap@example.com', ARRAY['example.com']) RETURNING id`,
@@ -313,6 +313,7 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
         [String(capAccount), `cap-topup-${uid()}`],
       );
       // Seed llm_spend_daily at 99% of the daily cap (9900 out of 10000 cents).
+      // The study request is n_visits=50 × 8¢ = 400¢. 9900 + 400 = 10300 > 10000 → 402.
       await client.query(
         `INSERT INTO llm_spend_daily (account_id, date, kind, cents)
          VALUES ($1, CURRENT_DATE, 'visit', $2)`,
@@ -322,6 +323,7 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
       await client.end();
     }
 
+    // n_visits=50 → estCents = 50 × 8¢ = 400¢; 9900 + 400 = 10300 > 10000 → 402.
     const res = await app.inject({
       method: 'POST',
       url: '/studies',
@@ -329,7 +331,7 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
       payload: {
         urls: ['https://example.com/pricing'],
         icp: { preset_id: 'saas_founder_pre_pmf' },
-        n_visits: 5,
+        n_visits: 50,
       },
     });
     expect(res.statusCode).toBe(402);
@@ -399,9 +401,8 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
     const client = new Client({ connectionString: dbUrl });
     await client.connect();
     let studyId: bigint;
-    let shareToken = 'validtoken12345678901'; // 21 chars nanoid-style
-    let tokenHash = sha256hex(shareToken);
-    let slug = `test-slug-${uid()}`;
+    const shareToken = 'validtoken12345678901'; // 21 chars nanoid-style
+    const tokenHash = sha256hex(shareToken);
     try {
       // Create a study.
       const s = await client.query<{ id: bigint }>(
@@ -422,20 +423,12 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
       await client.end();
     }
 
-    // Access without token — should 404 (not public).
+    // Access without token — should 404 (not public, token required).
     const noTokenRes = await app.inject({
-      method: 'GET',
-      url: `/reports/${slug}`,
-    });
-    // The slug doesn't match yet — test slug route exists.
-    // We'll use study_id based lookup for simplicity in tests.
-    // The actual route uses study_id as slug for now.
-    // Let's hit with the study_id as slug.
-    const noTokenRes2 = await app.inject({
       method: 'GET',
       url: `/reports/${String(studyId)}`,
     });
-    expect(noTokenRes2.statusCode).toBe(404);
+    expect(noTokenRes.statusCode).toBe(404);
 
     // Access with valid token — should 200.
     const withTokenRes = await app.inject({
@@ -456,8 +449,8 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
     const client = new Client({ connectionString: dbUrl });
     await client.connect();
     let studyId: bigint;
-    let shareToken = 'expiredtoken123456789';
-    let tokenHash = sha256hex(shareToken);
+    const shareToken = 'expiredtoken123456789';
+    const tokenHash = sha256hex(shareToken);
     try {
       const s = await client.query<{ id: bigint }>(
         `INSERT INTO studies (account_id, kind, status)

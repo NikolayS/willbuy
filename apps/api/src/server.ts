@@ -4,9 +4,12 @@ import { fileURLToPath } from 'node:url';
 
 import sensible from '@fastify/sensible';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import { Pool } from 'pg';
 
 import type { Env } from './env.js';
 import { buildLogger } from './logger.js';
+import { registerStudiesRoutes } from './routes/studies.js';
+import { registerReportsRoutes } from './routes/reports.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // dist/ when built, src/ when run via tsx — both are one level below apps/api.
@@ -30,11 +33,25 @@ export async function buildServer(opts: BuildServerOptions): Promise<FastifyInst
 
   await app.register(sensible);
 
+  // Postgres connection pool — shared across all routes.
+  const pool = new Pool({ connectionString: opts.env.DATABASE_URL });
+
   app.get('/health', async () => ({
     status: 'ok',
     uptime: process.uptime(),
     version: pkgVersion,
   }));
+
+  // Wire authenticated routes.
+  await registerStudiesRoutes(app, pool, opts.env);
+
+  // Wire public report route.
+  await registerReportsRoutes(app, pool);
+
+  // Close pool on server shutdown.
+  app.addHook('onClose', async () => {
+    await pool.end();
+  });
 
   return app;
 }
