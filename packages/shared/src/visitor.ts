@@ -9,9 +9,17 @@ const anyValue = z.any().refine((v) => v !== undefined, {
   message: 'field is required (spec §2 #15)',
 });
 
+// Spec §2 #15 caps first_impression at 400 chars; rejecting longer
+// strings is what triggers the schema-repair retry path (§2 #14).
+const firstImpression = z
+  .string()
+  .max(400, 'first_impression capped at 400 chars (spec §2 #15)');
+
 export const VisitorOutput = z
   .object({
-    first_impression: anyValue.describe('Spec §2 #15: first_impression.'),
+    first_impression: firstImpression.describe(
+      'Spec §2 #15: first_impression, ≤ 400 chars.',
+    ),
     will_to_buy: anyValue.describe('Spec §2 #15: will_to_buy.'),
     questions: anyValue.describe('Spec §2 #15: questions[].'),
     confusions: anyValue.describe('Spec §2 #15: confusions[].'),
