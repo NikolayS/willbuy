@@ -1,0 +1,22 @@
+{
+  "name": "@willbuy/capture-worker",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Hardened-container Playwright capture: navigates a URL, extracts a11y tree, enforces resource ceilings (spec §2 #2 + §2 #6).",
+  "main": "src/capture.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit --pretty",
+    "test": "vitest run",
+    "smoke": "node --experimental-strip-types --no-warnings test/smoke.ts"
+  },
+  "dependencies": {
+    "playwright": "1.45.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
