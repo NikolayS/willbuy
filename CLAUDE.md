@@ -2,6 +2,14 @@
 
 This file is read by every Claude Code agent working in this repo. Follow it.
 
+## Shared rules (postgres-ai family)
+
+This repo follows the conventions at **https://gitlab.com/postgres-ai/rules/-/tree/main/rules** — pull latest before starting work. Sibling repos using the same baseline: `pg_ash`, `rpg`, `pgque`. Below extends that baseline for willbuy specifics; on conflict the willbuy rules in this file win.
+
+## Naming
+
+`willbuy` is always lowercase (schema, package names, CLI, repo, prose, headings). The product is `willbuy.dev`. Mirrors PostgreSQL ecosystem convention (pgmq, pg_cron, pg_ash, pgque).
+
 ## The spec is authoritative
 
 The single source of truth is `.samo/spec/willbuy/SPEC.md`. Read the relevant section before you start. If reality forces a deviation from the spec, do **not** silently change behavior — record the deviation in `.samo/spec/willbuy/SPEC.willbuy.amendments.md` (create if missing, append-only, dated) and link it from the PR description.
@@ -52,12 +60,14 @@ Every PR you open must include:
 
 ## Review will be applied
 
-Every PR gets reviewed by the REV tool (`/review-mr <PR-URL>`) before merge — both blocking and non-blocking findings are surfaced. SOC2-flavored findings can be ignored on this repo (we are not SOC2-scoped at v0.1; this is an explicit exception). All other blocking findings must be addressed before merge.
+Every PR gets reviewed by the REV tool (https://gitlab.com/postgres-ai/rev/) — `/review-mr <PR-URL>` — before merge. REV is designed for GitLab MRs but works on GitHub PRs too. Both blocking and non-blocking findings are surfaced. SOC2-flavored findings can be ignored on this repo (we are not SOC2-scoped at v0.1; this is an explicit exception). All other blocking findings must be addressed before merge. **Never merge without explicit approval from the manager (or project owner).**
 
 ## Commit message convention
 
+Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`, `ci:`, `build:`, `perf:`, `style:`. Optional scope in parens.
+
 ```
-<area>: <imperative summary under 60 chars>
+<type>(<scope>): <imperative summary under 60 chars>
 
 <optional body explaining WHY, wrapping at 72 chars>
 <optional footer with refs>
@@ -65,9 +75,38 @@ Every PR gets reviewed by the REV tool (`/review-mr <PR-URL>`) before merge — 
 Closes #<issue-number>
 ```
 
-Areas seen so far: `infra`, `spec`, `chore`. New areas appear naturally (`api`, `web`, `capture`, `visitor`, `aggregator`, `shared`, `llm-adapter`, `ci`).
+Scopes seen so far: `monorepo`, `shared`, `llm-adapter`, `api`, `web`, `capture-worker`, `visitor-worker`, `aggregator`, `infra`, `spec`. New scopes appear naturally.
 
 Co-Authored-By footer is welcome but not required.
+
+### Git safety
+
+- **Never amend** — create a new commit. Amending breaks reviewers' diff state and confuses CI.
+- **Never force-push** unless explicitly confirmed. If you must (e.g. rebase to fix a merge conflict), use `--force-with-lease`, never `--force`, and only on your own feature branch.
+- **Never push directly to `main`.** All changes go through PR + review + merge.
+
+## Shell style (for `scripts/`, `infra/`, CI)
+
+Every script must start with:
+
+```bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IFS=$'\n\t'
+```
+
+Then:
+
+- 2-space indent, no tabs.
+- Quote all variable expansions; prefer `${var}` over `$var`.
+- `[[ ]]` over `[ ]`; `$(command)` over backticks.
+- Errors to STDERR; use `trap cleanup EXIT` where appropriate.
+- `lower_case` for functions and variables; `UPPER_CASE` for constants.
+- Scripts with functions have `main()` at the bottom; last line is `main "$@"`.
+
+## Binary units in prose
+
+Use binary units (KiB, MiB, GiB, TiB) for memory, storage, and data sizes in prose, reports, and documentation. Exception: provider-native config formats stay as the provider writes them (e.g. Postgres `shared_buffers = '2GB'`).
 
 ## Commands you'll use a lot
 
