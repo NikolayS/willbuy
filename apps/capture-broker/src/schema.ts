@@ -21,7 +21,9 @@ export const CaptureRequest = z
     a11y_tree_b64: z.string(),
     // Optional: only when study.screenshots_enabled AND after the OCR
     // scrub (Sprint 3). For v0.1 the worker leaves it absent.
-    screenshot_b64: z.string().optional(),
+    // N5: empty string is rejected — a screenshot_b64 present must encode
+    // at least 1 byte of actual image data.
+    screenshot_b64: z.string().min(1).optional(),
     banner_selectors_matched: z.array(z.string()),
     overlays_unknown_present: z.boolean(),
     blocked_reason: z.string().optional(),

@@ -1,18 +1,25 @@
 import { createServer, type Server, type Socket } from 'node:net';
 import { randomUUID } from 'node:crypto';
+import { chmodSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { CaptureRequest, type BrokerAck, type BrokerErrorCode } from './schema.js';
 import { BYTE_CAPS, decodedBase64Bytes } from './byteCaps.js';
 import { redact, REDACTOR_VERSION } from './redactor.js';
-import { frame, readOneFrame } from './framing.js';
+import { frame, readOneFrame, READ_TIMEOUT_MS } from './framing.js';
 import type { ObjectStorage } from './storage.js';
 import type { CaptureStore, PageCaptureRow } from './captureStore.js';
+
+/** Socket inode mode required by spec §5.13: rw-rw---- (owner + group only). */
+export const SOCKET_MODE = 0o660;
 
 /**
  * Capture Broker — spec §5.13.
  *
  * - Listens on a Unix domain socket at `socketPath` (production:
- *   `/run/willbuy/broker.sock`, mode 0660 set by the systemd unit).
+ *   `/run/willbuy/broker.sock`). After `server.listen()` resolves,
+ *   `chmodSync(socketPath, 0o660)` is called immediately — this overrides
+ *   the process umask (systemd UMask=0007 would yield 0770 otherwise).
+ *   Spec §5.13 requires mode 0660.
  * - Accepts ONE typed message per connection (single-shot framing).
  * - Schema-parses, byte-cap-enforces, redacts, persists artifact +
  *   `page_captures` row, returns ack, closes.
@@ -30,6 +37,11 @@ export type BrokerDeps = {
   now?: () => string;
   /** Capture-id factory (test injection). */
   newId?: () => string;
+  /**
+   * Per-connection frame-read timeout in ms (N1). Defaults to
+   * `READ_TIMEOUT_MS` (30 s). Tests inject a short value to avoid slow tests.
+   */
+  frameTimeoutMs?: number;
 };
 
 export type BrokerHandle = {
@@ -68,6 +80,12 @@ export async function startBroker(deps: BrokerDeps): Promise<BrokerHandle> {
     server.once('error', ko);
     server.listen(deps.socketPath, () => {
       server.removeListener('error', ko);
+      // Spec §5.13: socket inode MUST be mode 0660. Node creates the socket
+      // with mode derived from process umask. The systemd unit sets
+      // UMask=0007, which would yield 0770. We explicitly chmod to 0660
+      // immediately after bind so the contract is enforced regardless of the
+      // host umask.
+      chmodSync(deps.socketPath, SOCKET_MODE);
       ok();
     });
   });
@@ -91,9 +109,18 @@ async function handleConnection(socket: Socket, deps: BrokerDeps): Promise<void>
     sendAck(detail ? { ok: false, error, detail } : { ok: false, error });
   };
 
-  const result = await readOneFrame(socket, BYTE_CAPS.MESSAGE_BYTES);
+  const result = await readOneFrame(
+    socket,
+    BYTE_CAPS.MESSAGE_BYTES,
+    deps.frameTimeoutMs ?? READ_TIMEOUT_MS,
+  );
   if (result.kind === 'too_big') {
     sendError('message_too_big', `declared ${result.declaredLen} > cap ${BYTE_CAPS.MESSAGE_BYTES}`);
+    return;
+  }
+  if (result.kind === 'error' && result.message === 'timeout') {
+    // N1: per-connection timeout expired. The socket was already destroyed by
+    // readOneFrame; nothing left to do here.
     return;
   }
   if (result.kind === 'closed' || result.kind === 'error') {

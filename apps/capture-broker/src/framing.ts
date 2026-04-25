@@ -27,6 +27,9 @@ export type ReadFrameResult =
   | { kind: 'closed'; bytesRead: number }
   | { kind: 'error'; message: string };
 
+/** Default per-connection read timeout in milliseconds (N1). */
+export const READ_TIMEOUT_MS = 30_000;
+
 /**
  * Read one length-prefixed frame from `socket` using event listeners
  * (not async iteration — async iteration consumes the readable side in
@@ -38,6 +41,9 @@ export type ReadFrameResult =
  *   that's the single-shot detection (spec §5.13). We deliberately do
  *   NOT block waiting for more after we have enough; we resolve as soon
  *   as we have `declaredLen + 1` bytes OR the peer half-closes.
+ * - Times out after `timeoutMs` ms (default 30 s, N1) to guard against
+ *   peers that send a valid frame but never half-close. On timeout, the
+ *   socket is destroyed and the result is `{ kind: 'error', message: 'timeout' }`.
  *
  * `maxPayloadBytes` is a hard ceiling — if the declared length exceeds
  * it, we resolve `too_big` without continuing to read.
@@ -45,6 +51,7 @@ export type ReadFrameResult =
 export function readOneFrame(
   socket: Socket,
   maxPayloadBytes: number,
+  timeoutMs = READ_TIMEOUT_MS,
 ): Promise<ReadFrameResult> {
   return new Promise<ReadFrameResult>((resolve) => {
     const chunks: Buffer[] = [];
@@ -52,7 +59,13 @@ export function readOneFrame(
     let resolved = false;
     let declaredLen: number | null = null;
 
+    const timer = setTimeout(() => {
+      socket.destroy();
+      finish({ kind: 'error', message: 'timeout' });
+    }, timeoutMs);
+
     const cleanup = (): void => {
+      clearTimeout(timer);
       socket.off('data', onData);
       socket.off('end', onEnd);
       socket.off('error', onError);

@@ -1,14 +1,19 @@
 [Unit]
 # willbuy capture-broker — spec §5.13.
 #
-# Listens on /run/willbuy/broker.sock (mode 0660, owner root, group willbuy)
-# for ONE typed request per capture from a worker connected via the bind-
-# mounted Unix socket. Validates schema + byte caps, redacts (§5.9),
-# persists to Supabase Storage + page_captures, returns ack.
+# Listens on /run/willbuy/broker.sock for ONE typed request per capture.
+# Socket inode mode is 0660 (owner root, group willbuy). The mode is
+# enforced by chmodSync(socketPath, 0o660) in startBroker() immediately
+# after server.listen() — NOT by this unit. UMask=0007 would produce 0770
+# without the explicit chmod.
 #
 # This unit is a TEMPLATE — production reads its env from
 # /etc/willbuy/broker.env (provisioned out-of-band via 1Password +
 # scripts/push-secrets.sh; the env file is NEVER in git).
+#
+# N2 note: worker-side bind-mount (READ-ONLY mount of broker.sock into
+# the capture container at a fixed in-container path) is tracked in a
+# follow-up issue and lands with the capture-worker integration.
 
 Description=willbuy capture broker (spec §5.13)
 After=network.target

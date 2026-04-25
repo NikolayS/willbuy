@@ -27,27 +27,43 @@ export async function sendOnceNoEnd(
   return new Promise<BrokerAck>((resolve, reject) => {
     const socket: Socket = connect(socketPath);
     const chunks: Buffer[] = [];
+    let done = false;
+
+    const finish = (fn: () => void): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      fn();
+    };
+
     const timer = setTimeout(() => {
       socket.destroy();
-      reject(new Error(`sendOnceNoEnd: no ack within ${waitMs}ms`));
+      finish(() => reject(new Error(`sendOnceNoEnd: no ack within ${waitMs}ms`)));
     }, waitMs);
-    socket.on('error', (err) => { clearTimeout(timer); reject(err); });
+
+    socket.on('error', (err) => finish(() => reject(err)));
+
+    const handleClose = (): void => {
+      finish(() => {
+        const all = Buffer.concat(chunks);
+        if (all.length < HEADER_BYTES) {
+          reject(new Error(`server closed without writing a frame; got ${all.length}B`));
+          return;
+        }
+        const len = all.readUInt32BE(0);
+        const body = all.slice(HEADER_BYTES, HEADER_BYTES + len);
+        try {
+          resolve(JSON.parse(body.toString('utf8')) as BrokerAck);
+        } catch (e) {
+          reject(e instanceof Error ? e : new Error(String(e)));
+        }
+      });
+    };
+
     socket.on('data', (c: Buffer) => chunks.push(c));
-    socket.on('end', () => {
-      clearTimeout(timer);
-      const all = Buffer.concat(chunks);
-      if (all.length < HEADER_BYTES) {
-        reject(new Error(`server closed without writing a frame; got ${all.length}B`));
-        return;
-      }
-      const len = all.readUInt32BE(0);
-      const body = all.slice(HEADER_BYTES, HEADER_BYTES + len);
-      try {
-        resolve(JSON.parse(body.toString('utf8')) as BrokerAck);
-      } catch (e) {
-        reject(e instanceof Error ? e : new Error(String(e)));
-      }
-    });
+    socket.on('end', handleClose);
+    // 'close' fires after 'end' on a graceful FIN, and also on destroy()
+    socket.on('close', handleClose);
     socket.on('connect', () => {
       // Write the frame but deliberately do NOT call socket.end() — we want
       // the broker's timeout to be the thing that terminates the exchange.

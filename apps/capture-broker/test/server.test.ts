@@ -56,6 +56,8 @@ describe('Capture Broker server — spec §5.13 acceptance scenarios', () => {
       socketPath,
       now: () => '2026-04-24T00:00:00.000Z',
       newId: () => 'cap-test-id',
+      // N1: inject a short frame-timeout for testing (avoids 30 s wait)
+      frameTimeoutMs: 300,
     });
   });
 
@@ -239,18 +241,31 @@ describe('Capture Broker server — spec §5.13 acceptance scenarios', () => {
   });
 
   // N1 — readOneFrame per-connection timeout.
-  // A peer that sends a valid framed message but does NOT half-close should
-  // NOT hold the connection forever. After the timeout fires, the broker
-  // must still ack (or cleanly drop) and free the connection.
-  it('does not hang forever when peer sends valid frame but keeps connection open (N1 timeout)', async () => {
+  // A peer that sends a valid framed message but does NOT half-close (no FIN)
+  // will have its connection dropped after the 30 s timeout. The broker must
+  // NOT hang forever. We use a shortened timeout via the test helper and
+  // verify the broker rejects the stalled connection within that window.
+  it('drops stalled connection when peer sends valid frame but never half-closes (N1 timeout)', async () => {
     // Send a framed valid request WITHOUT calling socket.end() — simulates
-    // a peer that never half-closes. The broker should timeout and respond.
+    // a peer that never half-closes. The broker has frameTimeoutMs=300 injected
+    // so the socket should be destroyed within 300 ms.
     const req = validRequest();
-    const ack = await sendOnceNoEnd(socketPath, JSON.stringify(req), 35_000);
-    // We only assert that we got an ack within the test timeout; the exact
-    // ok/fail value depends on whether the broker sends an ack before reset.
-    expect(ack).toBeDefined();
-  }, 40_000);
+    // sendOnceNoEnd with waitMs larger than frameTimeoutMs (300 ms) means the
+    // helper will see the server-side destroy as an 'error' or 'end' event
+    // within the wait window.
+    let gotError = false;
+    try {
+      await sendOnceNoEnd(socketPath, JSON.stringify(req), 2_000);
+    } catch {
+      // Expected: server destroyed the socket → helper throws.
+      gotError = true;
+    }
+    expect(gotError).toBe(true);
+    // The server itself must still be accepting new connections after the
+    // timeout — it must not have crashed or deadlocked.
+    const followUpAck = await sendOnce(socketPath, JSON.stringify(req));
+    expect(followUpAck.ok).toBe(true);
+  }, 10_000);
 
   // N4 — .strict() schema must reject unknown top-level fields.
   it('rejects a request with an unknown top-level field (N4 strict schema)', async () => {

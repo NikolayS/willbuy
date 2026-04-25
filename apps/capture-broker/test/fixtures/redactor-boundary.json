@@ -19,10 +19,10 @@
     },
     {
       "label": "two-labels-29-and-35-REDACT",
-      "custom_input": "token=                                   0123456789abcdef0123456789abcdef01234567 secret=                             0123456789abcdef0123456789abcdef01234567",
+      "custom_input": "secret=token=                             0123456789abcdef0123456789abcdef01234567",
       "body": "0123456789abcdef0123456789abcdef01234567",
       "expect": "redact",
-      "why": "Spec §6.1: first occurrence has gap=35 (> 32, no fire), second occurrence has gap=29 (≤ 32, fires) → overall redact"
+      "why": "Spec §6.1: two labels before the same body — 'secret=' is 35 chars away (> 32, would not fire alone), 'token=' is 29 chars away (≤ 32, fires) → redact"
     },
     {
       "label": "newline-in-gap-REDACT",

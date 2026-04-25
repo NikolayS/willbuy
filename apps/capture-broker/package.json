@@ -6,7 +6,7 @@
   "description": "Capture Broker — Unix-domain-socket server on the host that accepts ONE typed capture from a worker, redacts, persists artifact + page_captures row, returns ack (spec §5.13 + §5.9 + §2 #2).",
   "main": "src/index.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit --pretty",
     "test": "vitest run"
   },
