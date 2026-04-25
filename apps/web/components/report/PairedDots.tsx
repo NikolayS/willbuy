@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import {
   CartesianGrid,
+  Cell,
+  Customized,
   ReferenceLine,
   ResponsiveContainer,
   Scatter,
@@ -18,11 +20,11 @@ import type { ReportT } from './types';
 // thin connecting segment, color-coded by swing direction. Hover/click
 // reveals backstory + both verdicts.
 //
-// Implementation: we plot two scatter series (A and B) sharing the same
-// x axis (1..n) so each backstory occupies one column. The thin
-// connecting segment is drawn via a SVG <line> overlay keyed off the
-// chart geometry — Recharts' <Customized /> would also work but a
-// per-row segment is cleaner with the data already in column form.
+// Implementation: two Scatter series (A and B) share the same x-axis
+// (1..n) so each backstory occupies one column. The thin connecting
+// segment is drawn via Recharts <Customized />, which receives the live
+// chart scales so we can map (x, score_a) → (x, score_b) into SVG
+// pixel coordinates and emit one <line> per backstory.
 
 const SWING_COLOR: Record<ReportT['paired_dots'][number]['swing'], string> = {
   a_wins: '#dc2626', // red — variant A scored higher
@@ -30,17 +32,49 @@ const SWING_COLOR: Record<ReportT['paired_dots'][number]['swing'], string> = {
   b_wins: '#16a34a', // green — variant B (NEW) scored higher
 };
 
-export function PairedDots({ rows }: { rows: ReportT['paired_dots'] }) {
-  const [active, setActive] = useState<string | null>(null);
-  // Sort by swing magnitude desc so the chart reads left → right as
-  // "biggest moves first." Stable secondary sort by id for determinism.
+// Shape passed by Recharts to <Customized component={...} />.
+// We only use the axis maps to compute pixel coordinates.
+interface CustomizedProps {
+  xAxisMap?: Record<string, { scale: (v: number) => number }>;
+  yAxisMap?: Record<string, { scale: (v: number) => number }>;
+}
+
+function Connectors({
+  data,
+  xAxisMap,
+  yAxisMap,
+}: CustomizedProps & { data: ReturnType<typeof buildData> }) {
+  const xScale = xAxisMap && Object.values(xAxisMap)[0]?.scale;
+  const yScale = yAxisMap && Object.values(yAxisMap)[0]?.scale;
+  if (!xScale || !yScale) return null;
+
+  return (
+    <g>
+      {data.map((d) => (
+        <line
+          key={d.backstory_id}
+          data-connector={d.backstory_id}
+          x1={xScale(d.x)}
+          y1={yScale(d.score_a)}
+          x2={xScale(d.x)}
+          y2={yScale(d.score_b)}
+          stroke={SWING_COLOR[d.swing]}
+          strokeWidth={1.5}
+          strokeOpacity={0.6}
+        />
+      ))}
+    </g>
+  );
+}
+
+function buildData(rows: ReportT['paired_dots']) {
   const sorted = [...rows].sort((p, q) => {
     const dp = Math.abs(p.score_b - p.score_a);
     const dq = Math.abs(q.score_b - q.score_a);
     if (dq !== dp) return dq - dp;
     return p.backstory_id.localeCompare(q.backstory_id);
   });
-  const data = sorted.map((row, idx) => ({
+  return sorted.map((row, idx) => ({
     x: idx + 1,
     score_a: row.score_a,
     score_b: row.score_b,
@@ -48,8 +82,13 @@ export function PairedDots({ rows }: { rows: ReportT['paired_dots'] }) {
     backstory_id: row.backstory_id,
     backstory_name: row.backstory_name,
   }));
+}
 
-  const activeRow = sorted.find((r) => r.backstory_id === active) ?? null;
+export function PairedDots({ rows }: { rows: ReportT['paired_dots'] }) {
+  const [active, setActive] = useState<string | null>(null);
+  const data = buildData(rows);
+
+  const activeRow = rows.find((r) => r.backstory_id === active) ?? null;
 
   return (
     <section
@@ -72,6 +111,12 @@ export function PairedDots({ rows }: { rows: ReportT['paired_dots'] }) {
               contentStyle={{ fontSize: 12 }}
               formatter={(v: number) => v.toFixed(0)}
             />
+            {/* Connector lines drawn before dots so dots render on top. */}
+            <Customized
+              component={(props: CustomizedProps) => (
+                <Connectors {...props} data={data} />
+              )}
+            />
             <Scatter
               name="A"
               data={data}
@@ -80,6 +125,7 @@ export function PairedDots({ rows }: { rows: ReportT['paired_dots'] }) {
               shape="circle"
               onClick={(d) => setActive((d as { backstory_id: string }).backstory_id)}
             />
+            {/* F2: use <Cell> for per-dot swing coloring (Recharts contract). */}
             <Scatter
               name="B"
               data={data}
@@ -88,7 +134,7 @@ export function PairedDots({ rows }: { rows: ReportT['paired_dots'] }) {
               onClick={(d) => setActive((d as { backstory_id: string }).backstory_id)}
             >
               {data.map((d) => (
-                <Scatter key={d.backstory_id} fill={SWING_COLOR[d.swing]} />
+                <Cell key={d.backstory_id} fill={SWING_COLOR[d.swing]} />
               ))}
             </Scatter>
           </ScatterChart>
