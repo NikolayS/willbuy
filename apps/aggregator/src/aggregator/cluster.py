@@ -119,15 +119,19 @@ def cluster_findings(strings: Sequence[str]) -> list[Cluster]:
     # Per spec §17 + §5.7.
     # random_state=42: required by spec §17 verbatim; technically a no-op for
     # the deterministic EOM selection path but present for explicit spec alignment.
-    # metric='euclidean': rows are L2-normalized so euclidean distance is
-    # equivalent to cosine distance (euclidean = √(2·(1−cos)) for unit vectors);
-    # see amendment A2 in SPEC.willbuy.amendments.md for full rationale.
+    # metric='cosine': spec §17 verbatim. Amendment A2 documents why euclidean on
+    # L2-normalized vectors is mathematically equivalent, BUT hdbscan 0.8.33 routes
+    # metric='euclidean' through _hdbscan_prims_kdtree → sklearn KDTree.__init__,
+    # which does NOT accept random_state as a kwarg (raises TypeError). The cosine
+    # path routes through _hdbscan_generic which DOES accept it. Reverting to
+    # 'cosine' until upstream fixes the kwarg forwarding; see A2 follow-on
+    # 2026-04-25 in SPEC.willbuy.amendments.md (B5 fix).
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=3,
         min_samples=3,
         cluster_selection_method="eom",
         approx_min_span_tree=False,
-        metric="euclidean",  # amendment A2: equivalent to cosine on L2-normalized
+        metric="cosine",  # spec §17 verbatim; see A2 + B5 fix for euclidean rationale
         random_state=42,
     )
     labels = clusterer.fit_predict(embeddings)

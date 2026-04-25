@@ -75,3 +75,21 @@ Because the square-root transformation is strictly monotone, `euclidean` and `co
 **What is NOT changed.** The `_embed` function still L2-normalizes every output row (line 102–104 of `cluster.py`). Removing that normalization would make `metric='euclidean'` no longer equivalent to cosine. Any future change to `_embed` that removes L2 normalization MUST also change `metric` back to `'cosine'` or re-derive the equivalence.
 
 **Tracking.** PR #39 (issue #31). Future spec rev updates §17 to read "euclidean over L2-normalized vectors (equivalent to cosine; see amendment A2)".
+
+### 2026-04-25 follow-on: revert to `metric='cosine'` for hdbscan 0.8.33 compatibility
+
+**Problem (B5).** In hdbscan 0.8.33, `metric='euclidean'` routes internally through `_hdbscan_prims_kdtree`, which forwards `**kwargs` (including `random_state=42`) to sklearn's `KDTree.__init__`. `KDTree` does not accept a `random_state` keyword argument, so the call raises:
+
+```
+TypeError: __init__() got an unexpected keyword argument 'random_state'
+```
+
+This broke CI (GitHub Actions run https://github.com/NikolayS/willbuy/actions/runs/24932709425) with 3 failing tests.
+
+**Resolution.** The implementation reverts to `metric='cosine'` (spec §17 verbatim). The cosine path in hdbscan 0.8.33 routes through `_hdbscan_generic`, which does correctly accept `random_state` as a kwarg.
+
+**Math equivalence still stands.** The rationale in A2 (euclidean on L2-normalized vectors is order-preserving equivalent to cosine) remains fully valid. The `_embed` function continues to L2-normalize every row — this is harmless under cosine and will be required if/when the implementation switches back to `metric='euclidean'`. Amendment A2 is preserved as documentation of WHY euclidean-on-L2-normalized is safe to use in the future, once the upstream hdbscan kwarg-forwarding bug is fixed.
+
+**Regression test.** Two new tests added in `tests/test_cluster.py` guard this (B5 fix, PR #39):
+- `test_hdbscan_metric_is_cosine_not_euclidean`: inspects module source to assert `metric='euclidean'` is absent from the HDBSCAN constructor call.
+- `test_hdbscan_no_typeerror_with_random_state`: monkeypatches `_embed` and runs `cluster_findings` end-to-end, asserting no `TypeError` is raised with `random_state=42`.
