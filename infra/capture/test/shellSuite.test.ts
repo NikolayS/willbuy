@@ -1,5 +1,5 @@
 // shellSuite.test.ts — wraps the bash-level acceptance suites so they run
-// inside the standard `pnpm test` flow on every CI runner.
+// inside the standard `bun run test` flow on every CI runner.
 //
 // What this proves:
 //  - infra/capture/test/dryrun.test.sh exits 0 (default-deny ruleset shape).

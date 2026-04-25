@@ -3,4 +3,4 @@ dist
 build
 .next
 coverage
-pnpm-lock.yaml
+bun.lock

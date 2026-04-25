@@ -24,7 +24,7 @@ export default tseslint.config(
       '**/build/**',
       '**/.next/**',
       '**/coverage/**',
-      'pnpm-lock.yaml',
+      'bun.lock',
       'tests/lint-fixtures/**',
       // Same exclusion pattern as tests/lint-fixtures: files here are
       // negative-test inputs for `apps/web` lint rules (SPEC §5.10 +

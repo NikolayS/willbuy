@@ -10,8 +10,8 @@ function lintWebFile(relPath: string): { code: number; out: string } {
   // Use the main repo eslint config — this proves the rule is scoped to
   // apps/web/** as intended (NOT relying on the fixtures-only config).
   const result = spawnSync(
-    'pnpm',
-    ['exec', 'eslint', '--no-error-on-unmatched-pattern', '--no-ignore', relPath],
+    'bunx',
+    ['eslint', '--no-error-on-unmatched-pattern', '--no-ignore', relPath],
     {
       cwd: repoRoot,
       encoding: 'utf8',

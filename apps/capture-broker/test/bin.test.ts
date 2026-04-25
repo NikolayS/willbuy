@@ -7,9 +7,8 @@
  *  2. The built `dist/bin.js` exists and can be executed for `--help` or a
  *     quick `--smoke` flag that starts + immediately stops the broker.
  *
- * Because TypeScript compilation is part of `pnpm build` (not `pnpm test`),
- * we exercise the source-level entrypoint via tsx in the test environment.
- * The systemd unit runs `dist/bin.js` (Node, compiled); CI builds before
+ * Because TypeScript compilation is part of `bun run build` (not test),
+ * the systemd unit runs `dist/bin.js` (Node, compiled); CI builds before
  * running tests so `dist/bin.js` should be present when this suite runs.
  */
 import { describe, it, expect } from 'vitest';
@@ -27,8 +26,8 @@ describe('capture-broker entrypoint (N3)', () => {
     expect(existsSync(srcBin), `${srcBin} should exist`).toBe(true);
   });
 
-  it('dist/bin.js exists after pnpm build', () => {
-    expect(existsSync(distBin), `${distBin} should exist — run pnpm build first`).toBe(true);
+  it('dist/bin.js exists after bun run build', () => {
+    expect(existsSync(distBin), `${distBin} should exist — run bun run build first`).toBe(true);
   });
 
   // Smoke: run `node dist/bin.js --smoke` and expect exit 0 within 5 s.

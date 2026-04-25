@@ -143,6 +143,20 @@ This matrix is passed to HDBSCAN as `metric='precomputed'`. With `metric='precom
 
 **Tracking.** Issue #47 (PR set on cutover). Migration ships as a single atomic PR per workspace (apps/api → apps/web → apps/capture-worker → apps/visitor-worker → apps/aggregator stays Python). Spec future rev folds Bun into §4.1.
 
+### 2026-04-25 follow-on (Bun 1.3.5 reality): cutover refinements from PR #52
+
+**Driver.** PR #52 (issue #47) cut over the monorepo. Three reality-vs-spec gaps surfaced during implementation; documenting them here so the spec future rev folds the corrected text into §4.1, not the original A3 wording.
+
+**1. Lockfile format: `bun.lock` (text), not `bun.lockb` (binary).** A3 said the lockfile becomes `bun.lockb` (binary). That was true for Bun 1.0–1.1; Bun 1.2+ defaults to a text-format `bun.lock` (TOML-shaped, diffable in PRs, mergeable without binary tooling). Both `bun.lock` and `bun.lockb` are accepted by `bun install --frozen-lockfile` — the runtime decides based on which file is present. The willbuy repo ships `bun.lock` (Bun 1.3.5 was the version pinned in CI at cutover). Reviewer-friendly text diffs are an unambiguous improvement over a binary blob, so this is a strict upgrade over the A3 wording. Any future Bun-version pin bump that flips the default back to binary MUST update both this paragraph and the `bun.lock` → `bun.lockb` rename in the same PR.
+
+**2. Test runner: vitest is kept; `bun test` is not adopted at cutover.** A3 named `bun test` as the substitution target for vitest. In practice, `bun test` (as of Bun 1.3.5) is materially incompatible with the existing test suite on three axes: (a) no built-in jsdom environment (the `apps/web` tests need it for `@testing-library/react`), (b) a different esbuild-vs-Bun-transpiler JSX transform configuration surface (the `vitest.config.ts` `esbuild: { jsx: 'automatic' }` knob has no `bun test` equivalent that produces identical bytecode), (c) `beforeAll`/`afterAll` scoping semantics differ subtly from vitest's at the suite-vs-file level (capture-broker's per-test socket teardown depends on vitest's behavior). Rewriting 225 tests during a toolchain migration is the wrong shape of change — too much surface area for a "no contract change" PR. Vitest stays, invoked via `bun run test`. The migration is therefore **package-manager + script-runner + TypeScript-execution swap only**; the test framework is unchanged. A future migration to `bun test` (or whatever passes the vitest-compat bar at that point) is a separate issue/PR with its own red→green test-rewrite history. The A3 phrase "Bun-native equivalent (`bun install`, `bun run`, `bun test`, ...)" should be read as MAY-not-MUST; #52 exercises the MAY for `bun install` and `bun run` and explicitly defers `bun test`.
+
+**3. ESLint 9 flat config + §5.16 AST rules: verified green under `bunx eslint`.** A3 constraint (c) required the AST rules from §5.16 (`willbuy/no-sandbox-flag`, `willbuy/no-reserved-llm-identifiers`, `react/no-danger`) to continue running under Bun. PR #52 verified this end-to-end: `bunx eslint .` produces zero diagnostics on the clean tree, and the three test suites that exercise the rules via fixture inputs (`tests/lint-rules.test.ts`, `apps/web/test/lint-scoping.test.ts`, `packages/llm-adapter/test/lint-rule.test.ts`) all pass after migrating their `spawnSync('pnpm', ['exec', 'eslint', ...])` calls to `spawnSync('bunx', ['eslint', ...])`. typescript-eslint, eslint-plugin-react, and the custom willbuy plugins all load identically under Bun's Node-API runtime.
+
+**4. CI workspace-bin invocation pattern.** Bun's `bun run --filter <ws-name> <name>` interprets the trailing `<name>` as a package SCRIPT, not as a binary on the workspace's `PATH` — so it has no 1:1 equivalent of pnpm's `pnpm --filter NAME exec <bin>`. The CI step that installs Playwright browsers therefore uses `cd apps/capture-worker && bunx playwright install --with-deps chromium` instead. This is documented inline in `.github/workflows/ci.yml` so future engineers don't re-introduce the broken `bun run --filter ... playwright` form.
+
+**Tracking.** PR #52 (issue #47).
+
 ---
 
 ## 2026-04-24 — A4: `NikolayS/sqlever` replaces the bash `migrate.sh` runner for schema migrations
@@ -174,3 +188,19 @@ This matrix is passed to HDBSCAN as `metric='precomputed'`. With `metric='precom
 **Constraints.** (a) ZFS dataset properties: `recordsize=8K` (matches Postgres page size), `compression=lz4`, `atime=off`, `logbias=throughput`, `primarycache=metadata` per the postgres-ai standard ZFS-for-Postgres tuning. (b) WAL on a separate dataset with `recordsize=128K` is preferred but not blocking. (c) DBLab is not in the request hot path — it's a developer/CI primitive only; production reads/writes go straight to the primary Postgres instance. (d) Backup story: ZFS snapshots `+` `zfs send` to off-host storage, replacing whatever pg_dump cron we would otherwise run. (e) Capacity sizing on CPX21 (40 GB SSD) is tight for ZFS; the migration may bundle a VM upsize if monitoring shows the ARC + branching headroom is insufficient.
 
 **Tracking.** Issue #49 (PR set on cutover). Spec future rev folds the ZFS + DBLab deployment into §5.6 and adds a §10 amendment around test-time branching.
+
+---
+
+## 2026-04-25 — A6: `packages/adapters` renamed to `packages/llm-adapter`; forbidden identifiers inlined in `eslint-rule.js`
+
+**Affects:** §2 #12 (`packages/adapters/**` AST scope, `packages/adapters/forbidden-keys.ts` location), §6 (`packages/adapters/forbidden-keys.ts` reference).
+
+**Driver:** Sprint 1 implementation simplification — a single workspace with a single `eslint-rule.js` is shorter than a separate `forbidden-keys.ts` module that the rule has to import. Spec was written before the simpler shape was clear.
+
+**Amendment.** Wherever the spec says `packages/adapters/`, read `packages/llm-adapter/`. The forbidden identifier list lives inline in `packages/llm-adapter/eslint-rule.js` (the `FORBIDDEN` Set constant) instead of a separate `forbidden-keys.ts` file. AST lint scope is unchanged: still scans all TS files in `packages/llm-adapter/**` for forbidden identifier usage as keys, properties, parameters, and imports.
+
+**What is NOT changed.** The 9-identifier list itself (now correct after this PR per BD-1 fix: `conversation_id`, `session_id`, `thread_id`, `previous_response_id`, `cached_prompt_id`, `parent_message_id`, `context_id`, `assistant_id`, `run_id`), the AST-vs-grep authoritative ordering, the CI failure semantics on lint hit, the LLMProvider interface contract.
+
+**Constraints.** Adding more provider adapters in the future (e.g. a hypothetical OpenAI HTTP adapter) MUST live in `packages/llm-adapter/` and inherit the same `eslint-rule.js` Set. If a separate provider package is ever needed, the `eslint-rule.js` Set should be extracted to a shared module first.
+
+**Tracking.** PR #N (set on merge), issue #20.

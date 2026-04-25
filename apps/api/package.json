@@ -6,8 +6,8 @@
   "description": "willbuy.dev API server (Fastify + structured logging + health) — see SPEC §4.1",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "bun --watch src/index.ts",
+    "start": "bun run dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.test.json"
   },
@@ -17,11 +17,11 @@
     "fastify": "^5.2.1",
     "pg": "^8.20.0",
     "pino": "^9.5.0",
+    "postgres": "^3.4.9",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

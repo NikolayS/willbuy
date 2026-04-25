@@ -3,23 +3,21 @@
 # SPEC §4.1 component.
 
 # ---------- deps ----------
-FROM node:22-alpine AS deps
+FROM oven/bun:1.3.5-alpine AS deps
 WORKDIR /repo
-RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY bun.lock package.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
-RUN pnpm install --frozen-lockfile --filter @willbuy/web...
+RUN bun install --frozen-lockfile --filter @willbuy/web
 
 # ---------- build ----------
-FROM node:22-alpine AS build
+FROM oven/bun:1.3.5-alpine AS build
 WORKDIR /repo
-RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
 COPY --from=deps /repo /repo
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY apps/web apps/web
-RUN pnpm --filter @willbuy/web build
+RUN bun run --filter @willbuy/web build
 
 # ---------- runtime ----------
 FROM node:22-alpine AS runtime
