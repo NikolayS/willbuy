@@ -16,13 +16,14 @@ import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { Client } from 'pg';
 
+import { startPostgres, stopPostgres, PG_PASSWORD } from '../../../tests/helpers/start-postgres.js';
 import { buildServer } from '../src/server.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const migrationsDir = resolve(repoRoot, 'infra/migrations');
 
-// --- Docker helpers (same pattern as tests/migrations.test.ts) ---
+// --- Docker availability guard ---
 
 const dockerCheck = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], {
   encoding: 'utf8',
@@ -30,56 +31,8 @@ const dockerCheck = spawnSync('docker', ['version', '--format', '{{.Server.Versi
 const dockerAvailable = dockerCheck.status === 0;
 const describeIfDocker = dockerAvailable ? describe : describe.skip;
 
-const PG_IMAGE = 'postgres:16-alpine';
-const PG_PASSWORD = 'willbuy_test_pw';
-const CONTAINER_PREFIX = 'willbuy-api-test-';
-
 function uid(): string {
   return `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-}
-
-function dockerRun(args: string[]): { code: number; stdout: string; stderr: string } {
-  const r = spawnSync('docker', args, { encoding: 'utf8' });
-  return { code: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-}
-
-function findFreePort(): number {
-  return 30000 + Math.floor(Math.random() * 30000);
-}
-
-async function startPostgres(): Promise<{ container: string; port: number; url: string }> {
-  const container = CONTAINER_PREFIX + uid();
-  let port = findFreePort();
-  let attempts = 0;
-  let started = false;
-  let lastErr = '';
-  while (attempts < 3 && !started) {
-    const r = dockerRun([
-      'run', '-d', '--rm', '--name', container,
-      '-e', `POSTGRES_PASSWORD=${PG_PASSWORD}`,
-      '-p', `${port}:5432`,
-      PG_IMAGE,
-    ]);
-    if (r.code === 0) {
-      started = true;
-    } else {
-      lastErr = r.stderr;
-      port = findFreePort();
-      attempts += 1;
-    }
-  }
-  if (!started) throw new Error(`failed to start postgres container: ${lastErr}`);
-
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const r = dockerRun(['exec', container, 'pg_isready', '-U', 'postgres']);
-    if (r.code === 0) {
-      return { container, port, url: `postgres://postgres:${PG_PASSWORD}@127.0.0.1:${port}/postgres` };
-    }
-    await new Promise((res) => setTimeout(res, 500));
-  }
-  dockerRun(['rm', '-f', container]);
-  throw new Error('postgres container did not become ready in 30s');
 }
 
 async function applyMigrations(url: string): Promise<void> {
@@ -116,7 +69,7 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
   const dailyCapCents = 10_000; // $100/day cap for tests
 
   beforeAll(async () => {
-    const pg = await startPostgres();
+    const pg = await startPostgres({ containerPrefix: 'willbuy-api-test-' });
     container = pg.container;
     dbUrl = pg.url;
 
@@ -173,7 +126,7 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
 
   afterAll(async () => {
     await app?.close();
-    if (container) dockerRun(['rm', '-f', container]);
+    if (container) stopPostgres(container);
   });
 
   // --- Acceptance #4: missing/invalid API key → 401 ---

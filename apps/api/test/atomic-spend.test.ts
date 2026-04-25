@@ -14,41 +14,22 @@ import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
+import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgres.js';
 import { reserveSpend } from '../src/billing/atomic-spend.js';
 import { startAttempt, endAttempt } from '../src/billing/provider-attempts.js';
 import { maybeWarnCap } from '../src/billing/cap-warning.js';
 
 // ---------------------------------------------------------------------------
-// Docker-backed Postgres helpers (mirrors migrations.test.ts pattern)
+// Docker availability guard
 // ---------------------------------------------------------------------------
 
-const PG_IMAGE = 'postgres:16-alpine';
 const PG_PASSWORD = 'willbuy_test_pw_28';
-const CONTAINER_NAME = `willbuy-spend-test-${Date.now()}`;
 
 const dockerCheck = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], {
   encoding: 'utf8',
 });
 const dockerAvailable = dockerCheck.status === 0;
 const describeIfDocker = dockerAvailable ? describe : describe.skip;
-
-function dockerRun(args: string[]): { code: number; stdout: string; stderr: string } {
-  const r = spawnSync('docker', args, { encoding: 'utf8' });
-  return { code: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-}
-
-function findFreePort(): number {
-  return 32000 + Math.floor(Math.random() * 5000);
-}
-
-async function waitReady(container: string, deadline: number): Promise<void> {
-  while (Date.now() < deadline) {
-    const r = dockerRun(['exec', container, 'pg_isready', '-U', 'postgres']);
-    if (r.code === 0) return;
-    await new Promise<void>((res) => setTimeout(res, 300));
-  }
-  throw new Error('postgres did not become ready in time');
-}
 
 // ---------------------------------------------------------------------------
 // Repo root (resolved from test file location: apps/api/test/ → ../../..)
@@ -63,6 +44,7 @@ const repoRoot = resolve(here, '..', '..', '..');
 
 let sql: ReturnType<typeof postgres>;
 let pgPort: number;
+let pgContainer: string;
 
 // ---------------------------------------------------------------------------
 // Schema bootstrap — applies all real migrations into the test DB
@@ -117,24 +99,15 @@ async function newStudy(accountId: bigint): Promise<bigint> {
 
 describeIfDocker('atomic spend reservation (§5.5)', () => {
   beforeAll(async () => {
-    pgPort = findFreePort();
-    let started = false;
-    for (let i = 0; i < 3 && !started; i++) {
-      const r = dockerRun([
-        'run', '-d', '--rm', '--name', CONTAINER_NAME,
-        '-e', `POSTGRES_PASSWORD=${PG_PASSWORD}`,
-        '-p', `${pgPort}:5432`,
-        PG_IMAGE,
-      ]);
-      if (r.code === 0) {
-        started = true;
-      } else {
-        pgPort = findFreePort();
-      }
-    }
-    if (!started) throw new Error('failed to start postgres container');
+    // Use the shared startPostgres helper (PR #60 wait-for-log strategy) to
+    // eliminate the startup race that caused flakes in the second CI pass.
+    const pg = await startPostgres({
+      containerPrefix: 'willbuy-spend-test-',
+      password: PG_PASSWORD,
+    });
+    pgPort = pg.port;
+    pgContainer = pg.container;
 
-    await waitReady(CONTAINER_NAME, Date.now() + 30_000);
     applyMigrations();
 
     sql = postgres(`postgres://postgres:${PG_PASSWORD}@127.0.0.1:${pgPort}/postgres`, {
@@ -145,7 +118,7 @@ describeIfDocker('atomic spend reservation (§5.5)', () => {
 
   afterAll(async () => {
     await sql?.end();
-    dockerRun(['rm', '-f', CONTAINER_NAME]);
+    stopPostgres(pgContainer);
   });
 
   // -------------------------------------------------------------------------
@@ -346,7 +319,6 @@ describeIfDocker('atomic spend reservation (§5.5)', () => {
       logical_request_key: `test-lrk-${Date.now()}-${Math.random()}`,
       provider: 'anthropic',
       model: 'claude-haiku-4-5',
-      est_cents: 5,
     });
 
     // Simulate subprocess failure: verify row exists before any endAttempt call

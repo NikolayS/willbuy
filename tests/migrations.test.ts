@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, copyFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startPostgres, stopPostgres } from './helpers/start-postgres.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -15,73 +16,6 @@ const dockerCheck = spawnSync('docker', ['version', '--format', '{{.Server.Versi
 });
 const dockerAvailable = dockerCheck.status === 0;
 const describeIfDocker = dockerAvailable ? describe : describe.skip;
-
-const PG_IMAGE = 'postgres:16-alpine';
-const PG_PASSWORD = 'willbuy_test_pw';
-const CONTAINER_PREFIX = 'willbuy-migrate-test-';
-
-function uid(): string {
-  return `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-}
-
-function dockerRun(args: string[]): { code: number; stdout: string; stderr: string } {
-  const r = spawnSync('docker', args, { encoding: 'utf8' });
-  return { code: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-}
-
-function findFreePort(): number {
-  // Pick a random ephemeral port; let docker bind it. If conflict, retry once.
-  return 30000 + Math.floor(Math.random() * 30000);
-}
-
-async function startPostgres(): Promise<{ container: string; port: number; url: string }> {
-  const container = CONTAINER_PREFIX + uid();
-  let port = findFreePort();
-  let attempts = 0;
-  let started = false;
-  let lastErr = '';
-  while (attempts < 3 && !started) {
-    const r = dockerRun([
-      'run',
-      '-d',
-      '--rm',
-      '--name',
-      container,
-      '-e',
-      `POSTGRES_PASSWORD=${PG_PASSWORD}`,
-      '-p',
-      `${port}:5432`,
-      PG_IMAGE,
-    ]);
-    if (r.code === 0) {
-      started = true;
-    } else {
-      lastErr = r.stderr;
-      port = findFreePort();
-      attempts += 1;
-    }
-  }
-  if (!started) {
-    throw new Error(`failed to start postgres container: ${lastErr}`);
-  }
-
-  // Wait for postgres readiness.
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const r = dockerRun(['exec', container, 'pg_isready', '-U', 'postgres']);
-    if (r.code === 0) {
-      const url = `postgres://postgres:${PG_PASSWORD}@127.0.0.1:${port}/postgres`;
-      return { container, port, url };
-    }
-    await new Promise((res) => setTimeout(res, 500));
-  }
-  dockerRun(['rm', '-f', container]);
-  throw new Error('postgres container did not become ready in 30s');
-}
-
-function stopPostgres(container: string): void {
-  dockerRun(['rm', '-f', container]);
-}
 
 function runMigrate(opts: {
   databaseUrl: string;
@@ -120,7 +54,7 @@ describeIfDocker('migrations runner', () => {
   let workDir: string;
 
   beforeAll(async () => {
-    pg = await startPostgres();
+    pg = await startPostgres({ containerPrefix: 'willbuy-migrate-test-' });
     workDir = mkdtempSync(join(tmpdir(), 'willbuy-mig-'));
   }, 60_000);
 

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startPostgres, stopPostgres } from './helpers/start-postgres.js';
 
 /*
  * Schema migration assertions for issue #26.
@@ -27,71 +28,6 @@ const dockerCheck = spawnSync('docker', ['version', '--format', '{{.Server.Versi
 });
 const dockerAvailable = dockerCheck.status === 0;
 const describeIfDocker = dockerAvailable ? describe : describe.skip;
-
-const PG_IMAGE = 'postgres:16-alpine';
-const PG_PASSWORD = 'willbuy_test_pw';
-const CONTAINER_PREFIX = 'willbuy-schema-test-';
-
-function uid(): string {
-  return `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-}
-
-function dockerRun(args: string[]): { code: number; stdout: string; stderr: string } {
-  const r = spawnSync('docker', args, { encoding: 'utf8' });
-  return { code: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-}
-
-function findFreePort(): number {
-  return 30000 + Math.floor(Math.random() * 30000);
-}
-
-async function startPostgres(): Promise<{ container: string; port: number; url: string }> {
-  const container = CONTAINER_PREFIX + uid();
-  let port = findFreePort();
-  let attempts = 0;
-  let started = false;
-  let lastErr = '';
-  while (attempts < 3 && !started) {
-    const r = dockerRun([
-      'run',
-      '-d',
-      '--rm',
-      '--name',
-      container,
-      '-e',
-      `POSTGRES_PASSWORD=${PG_PASSWORD}`,
-      '-p',
-      `${port}:5432`,
-      PG_IMAGE,
-    ]);
-    if (r.code === 0) {
-      started = true;
-    } else {
-      lastErr = r.stderr;
-      port = findFreePort();
-      attempts += 1;
-    }
-  }
-  if (!started) {
-    throw new Error(`failed to start postgres container: ${lastErr}`);
-  }
-
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const r = dockerRun(['exec', container, 'pg_isready', '-U', 'postgres']);
-    if (r.code === 0) {
-      const url = `postgres://postgres:${PG_PASSWORD}@127.0.0.1:${port}/postgres`;
-      return { container, port, url };
-    }
-    await new Promise((res) => setTimeout(res, 500));
-  }
-  dockerRun(['rm', '-f', container]);
-  throw new Error('postgres container did not become ready in 30s');
-}
-
-function stopPostgres(container: string): void {
-  dockerRun(['rm', '-f', container]);
-}
 
 function runMigrate(databaseUrl: string): { code: number; stdout: string; stderr: string } {
   const r = spawnSync('bash', [migrateScript], {
@@ -135,7 +71,7 @@ describeIfDocker('migrations schema (issue #26)', () => {
   let pg: { container: string; port: number; url: string };
 
   beforeAll(async () => {
-    pg = await startPostgres();
+    pg = await startPostgres({ containerPrefix: 'willbuy-schema-test-' });
     const r = runMigrate(pg.url);
     expect(r.code, `migrate stdout=${r.stdout}\nstderr=${r.stderr}`).toBe(0);
   }, 120_000);
@@ -1086,6 +1022,108 @@ describeIfDocker('migrations schema (issue #26)', () => {
            where a.owner_email='b2check-ok@example.com';`,
       );
       expect(r.code, `commit with valid provider_attempt_id should be accepted: ${r.stderr}`).toBe(0);
+    });
+  });
+
+  // ── Issue #58 — late_arrivals UNIQUE(study_id, visit_id) ──────────────────
+  // TDD red→green: these tests fail before migration 0013 is applied.
+  describe('#58 — late_arrivals UNIQUE(study_id, visit_id)', () => {
+    it('late_arrivals has a UNIQUE constraint on (study_id, visit_id)', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select count(*) from pg_indexes
+         where tablename = 'late_arrivals'
+           and upper(indexdef) like '%UNIQUE%'
+           and indexdef like '%study_id%visit_id%';`,
+        'late_arrivals UNIQUE(study_id, visit_id)',
+      );
+      expect(out).toBe('1');
+    });
+
+    it('duplicate (study_id, visit_id) insert into late_arrivals is rejected', () => {
+      // seed the required parent rows
+      psql(pg.container, `insert into accounts (owner_email) values ('la-uniq@example.com');`);
+      psql(
+        pg.container,
+        `insert into studies (account_id, kind, status) select id, 'single', 'ready' from accounts where owner_email='la-uniq@example.com';`,
+      );
+      psql(
+        pg.container,
+        `insert into backstories (study_id, idx, payload) select id, 0, '{}'::jsonb from studies where account_id=(select id from accounts where owner_email='la-uniq@example.com');`,
+      );
+      psql(
+        pg.container,
+        `insert into visits (study_id, backstory_id, variant_idx, status, repair_generation, transport_attempts, started_at)
+           select s.id, b.id, 0, 'ok', 0, 1, now()
+           from backstories b join studies s on s.id = b.study_id
+           where s.account_id=(select id from accounts where owner_email='la-uniq@example.com');`,
+      );
+
+      // first insert must succeed
+      const first = psql(
+        pg.container,
+        `insert into late_arrivals (study_id, visit_id)
+           select s.id, v.id
+           from studies s join visits v on v.study_id = s.id
+           where s.account_id=(select id from accounts where owner_email='la-uniq@example.com');`,
+      );
+      expect(first.code, `first insert: ${first.stderr}`).toBe(0);
+
+      // second insert of the same pair must be rejected
+      expectSqlError(
+        pg.container,
+        `insert into late_arrivals (study_id, visit_id)
+           select s.id, v.id
+           from studies s join visits v on v.study_id = s.id
+           where s.account_id=(select id from accounts where owner_email='la-uniq@example.com');`,
+        /duplicate key value violates unique/i,
+        'late_arrivals UNIQUE(study_id, visit_id) must reject duplicate',
+      );
+    });
+
+    it('ON CONFLICT DO NOTHING on late_arrivals duplicate insert is a no-op', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('la-conflict@example.com');`);
+      psql(
+        pg.container,
+        `insert into studies (account_id, kind, status) select id, 'single', 'ready' from accounts where owner_email='la-conflict@example.com';`,
+      );
+      psql(
+        pg.container,
+        `insert into backstories (study_id, idx, payload) select id, 0, '{}'::jsonb from studies where account_id=(select id from accounts where owner_email='la-conflict@example.com');`,
+      );
+      psql(
+        pg.container,
+        `insert into visits (study_id, backstory_id, variant_idx, status, repair_generation, transport_attempts, started_at)
+           select s.id, b.id, 0, 'ok', 0, 1, now()
+           from backstories b join studies s on s.id = b.study_id
+           where s.account_id=(select id from accounts where owner_email='la-conflict@example.com');`,
+      );
+
+      // first insert
+      psql(
+        pg.container,
+        `insert into late_arrivals (study_id, visit_id)
+           select s.id, v.id from studies s join visits v on v.study_id = s.id
+           where s.account_id=(select id from accounts where owner_email='la-conflict@example.com');`,
+      );
+
+      // second insert with ON CONFLICT DO NOTHING must succeed (row count stays 1)
+      const r = psql(
+        pg.container,
+        `insert into late_arrivals (study_id, visit_id)
+           select s.id, v.id from studies s join visits v on v.study_id = s.id
+           where s.account_id=(select id from accounts where owner_email='la-conflict@example.com')
+           on conflict (study_id, visit_id) do nothing;`,
+      );
+      expect(r.code, `ON CONFLICT DO NOTHING should succeed: ${r.stderr}`).toBe(0);
+
+      const count = expectSqlOk(
+        pg.container,
+        `select count(*) from late_arrivals
+           where study_id=(select id from studies where account_id=(select id from accounts where owner_email='la-conflict@example.com'));`,
+        'late_arrivals row count',
+      );
+      expect(count).toBe('1');
     });
   });
 });

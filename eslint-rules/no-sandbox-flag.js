@@ -9,6 +9,14 @@
  * TemplateElement AST nodes so concatenation tricks still get caught
  * (any expression that ultimately materializes the substring contains
  * a node we can flag).
+ *
+ * Defense-in-depth note: runtime-concatenated splits like `"--no" + "-sandbox"`
+ * produce two partial-string AST nodes, neither of which contains the full
+ * BANNED substring, so they evade this rule. Tightening to a BinaryExpression
+ * visitor that constant-folds adjacent string nodes is non-trivial and
+ * error-prone. The gap is closed by the complementary runtime test in
+ * `apps/capture-worker/test/launchFlags.test.ts`, which reconstructs the
+ * banned literal at test time and asserts it is absent from LAUNCH_FLAGS.
  */
 
 const BANNED = '--no-sandbox';

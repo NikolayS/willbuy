@@ -25,7 +25,9 @@ export type StartAttemptInput = {
   logical_request_key: string;
   provider: string;
   model: string;
-  est_cents: number;
+  // est_cents removed: provider_attempts.cost_cents is written at endAttempt
+  // time (actual_cents), not at start. The reservation is tracked by
+  // llm_spend_daily via reserveSpend before this call.
 };
 
 export type EndAttemptInput = {

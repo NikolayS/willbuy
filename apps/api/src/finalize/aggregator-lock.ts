@@ -142,24 +142,20 @@ export interface RecordLateArrivalInput {
   payload_key?: string | null;
 }
 
-// recordLateArrival — INSERT INTO late_arrivals.  Idempotent: ON CONFLICT
-// on (study_id, visit_id) does nothing.  A late visit is one that lands
-// after the study has reached 'ready' or 'failed' (spec §5.11).
+// recordLateArrival — INSERT INTO late_arrivals.  Idempotent: the schema-level
+// UNIQUE(study_id, visit_id) added by migration 0013 makes concurrent inserts
+// of the same pair safe via ON CONFLICT DO NOTHING (issue #58).
+// A late visit is one that lands after the study has reached 'ready' or
+// 'failed' (spec §5.11).
 // Does NOT require an open transaction; uses the pool directly.
 export async function recordLateArrival(
   pool: Pool,
   input: RecordLateArrivalInput,
 ): Promise<void> {
-  // late_arrivals has no unique constraint on (study_id, visit_id) in the
-  // migration, so we check-before-insert to make this idempotent without
-  // needing to alter the schema.  The insert is a no-op if the pair exists.
   await pool.query(
     `INSERT INTO late_arrivals (study_id, visit_id, payload_key)
-     SELECT $1, $2, $3
-      WHERE NOT EXISTS (
-        SELECT 1 FROM late_arrivals
-         WHERE study_id = $1 AND visit_id = $2
-      )`,
+     VALUES ($1, $2, $3)
+     ON CONFLICT (study_id, visit_id) DO NOTHING`,
     [
       String(input.study_id),
       String(input.visit_id),

@@ -32,9 +32,13 @@ import {
 export async function captureUrl(url: string, opts?: CaptureOpts): Promise<CaptureResult> {
   const wallClockMs = opts?.wallClockMs ?? CAPTURE_CEILINGS.WALL_CLOCK_MS;
   const hostBudget = opts?.hostCountBudget ?? CAPTURE_CEILINGS.HOST_COUNT;
+  const totalBytesBudget = opts?.totalBytesBudget ?? CAPTURE_CEILINGS.TOTAL_BYTES;
+  const a11yTreeBytesBudget = opts?.a11yTreeBytesBudget ?? CAPTURE_CEILINGS.A11Y_TREE_BYTES;
+  const domNodesBudget = opts?.domNodesBudget ?? CAPTURE_CEILINGS.DOM_NODES;
   const hostExtractor = opts?.hostExtractor ?? defaultHostExtractor;
 
   const hosts = new Set<string>();
+  let totalBytes = 0;
   let breach: BreachReason | undefined;
 
   let browser: Browser | undefined;
@@ -78,6 +82,20 @@ export async function captureUrl(url: string, opts?: CaptureOpts): Promise<Captu
       }
     });
 
+    // Total-bytes listener — accumulates response body sizes (spec §2 #6).
+    // Aborts as soon as the running total crosses the ceiling so we don't
+    // buffer an unbounded response into memory before we can check.
+    page.on('response', (resp) => {
+      const contentLength = resp.headers()['content-length'];
+      if (contentLength) {
+        totalBytes += parseInt(contentLength, 10);
+        if (totalBytes > totalBytesBudget) {
+          breach = 'total_bytes';
+          void context?.close().catch(() => {});
+        }
+      }
+    });
+
     // Race the actual capture against the wall-clock timer. We don't
     // use Playwright's per-call timeout because we want a SINGLE budget
     // covering nav + idle wait + tree dump.
@@ -93,14 +111,14 @@ export async function captureUrl(url: string, opts?: CaptureOpts): Promise<Captu
       const tree = serializeAxTree(nodes as AxNode[]);
 
       const treeBytes = Buffer.byteLength(JSON.stringify(tree), 'utf8');
-      if (treeBytes > CAPTURE_CEILINGS.A11Y_TREE_BYTES) {
+      if (treeBytes > a11yTreeBytesBudget) {
         return errorResult(url, hosts.size, 'a11y_tree_bytes');
       }
 
       // DOM node count via CDP (cheap; runs on the renderer side).
       const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true });
       const domNodes = countDomNodes(root as DomNode);
-      if (domNodes > CAPTURE_CEILINGS.DOM_NODES) {
+      if (domNodes > domNodesBudget) {
         return errorResult(url, hosts.size, 'dom_nodes');
       }
 

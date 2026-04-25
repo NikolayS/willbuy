@@ -1,11 +1,14 @@
 // Spec §2 #14, §2 #15, §5.15 — visitor orchestrator.
 //
-// On schema-validation failure we build a FRESH-CONTEXT repair call —
-// prior bad raw output passed back as user-role content only, NEVER as
-// an assistant turn — and retry up to MAX_REPAIR_GENERATION times. Each
-// repair generation gets a NEW logical_request_key (§5.15 line 253 form
-// `sha256(visit_id || provider || model || 'visit' || repair_generation)`);
-// transport retries inside the adapter share the key.
+// runVisit() builds the visitor prompt, calls LLMProvider.chat once,
+// validates against VisitorOutput zod, and on validation failure
+// constructs a fresh-context repair call (new logical_request_key per
+// `sha256(visit_id || provider || model || 'visit' || repair_generation)`,
+// prior bad output as user-role content only — NEVER as an assistant turn)
+// up to MAX_REPAIR_GENERATION (= 2) times.
+// Adapter `status: 'error'` short-circuits to failure_reason='transport'
+// without entering the schema-repair loop (transport retries belong to
+// the adapter, per §5.15).
 
 import { createHash } from 'node:crypto';
 
