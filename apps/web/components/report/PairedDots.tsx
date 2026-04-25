@@ -100,7 +100,7 @@ export function PairedDots({ rows }: { rows: ReportT['paired_dots'] }) {
         One column per backstory. Red = A higher, green = B higher, gray = tie.
       </p>
       <div className="mt-4 h-64 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={256}>
           <ScatterChart margin={{ top: 16, right: 16, bottom: 16, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="x" type="number" name="Backstory" tick={false} />

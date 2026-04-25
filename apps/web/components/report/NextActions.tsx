@@ -74,7 +74,7 @@ export function NextActions({ rows }: { rows: ReportT['next_actions'] }) {
         8 actions ordered by intent weight (amendment A1). Stacked counts per variant.
       </p>
       <div className="mt-4 h-72 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={288}>
           <BarChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="variant" />

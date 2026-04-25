@@ -50,7 +50,7 @@ function CategoryChart({
     >
       <h3 className="font-semibold capitalize text-gray-900">{category}</h3>
       <div className="mt-2 h-40 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={160}>
           <BarChart layout="vertical" data={data} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis type="number" allowDecimals={false} />

@@ -161,6 +161,88 @@ describe('§5.18 — report visualization', () => {
     expect(banner.textContent).toMatch(/low.power/i);
   });
 
+  it('F2 — charts render SVG content even when parent getBoundingClientRect returns 0 height (issue #78)', () => {
+    // Regression guard for the "empty chart on initial paint" bug (#78).
+    //
+    // Root cause: ResponsiveContainer with height="100%" measures its parent
+    // via ResizeObserver/getBoundingClientRect. On first paint in a Next.js
+    // SSR context the CSS hasn't applied yet, so the measured height is 0 —
+    // Recharts emits an SVG with height=0 and nothing is visible.
+    //
+    // The fix is to pass explicit pixel heights instead of "100%". This test
+    // verifies the fix by rendering each chart component with a parent whose
+    // getBoundingClientRect returns height=0, then asserting that the SVG
+    // element has a non-zero height attribute (meaning Recharts used the
+    // hard-coded prop, not the measured parent size).
+    //
+    // If any component still uses height="100%", its SVG will render with
+    // height=0 (or Recharts will skip rendering entirely) and this test fails.
+    const origGBCR = HTMLElement.prototype.getBoundingClientRect;
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value() {
+        return { width: 800, height: 0, top: 0, left: 0, right: 800, bottom: 0, x: 0, y: 0, toJSON: () => ({}) };
+      },
+    });
+
+    try {
+      // PairedDots — container uses h-64 = 256px
+      {
+        const { container } = render(<PairedDots rows={fixture.paired_dots} />);
+        const svgs = container.querySelectorAll('svg');
+        expect(svgs.length, 'PairedDots: expected at least one SVG element').toBeGreaterThan(0);
+        const svgHeight = Number(svgs[0]?.getAttribute('height') ?? 0);
+        expect(svgHeight, 'PairedDots: SVG height must be > 0 (not measured from zero-height parent)').toBeGreaterThan(0);
+        cleanup();
+      }
+
+      // Histograms — container uses h-48 = 192px per histogram
+      {
+        const { container } = render(<ReportView report={fixture} mode="public" />);
+        const histA = container.querySelector('[data-testid="histogram-A"] svg');
+        const histB = container.querySelector('[data-testid="histogram-B"] svg');
+        expect(histA, 'Histograms: histogram-A SVG must exist').toBeTruthy();
+        expect(histB, 'Histograms: histogram-B SVG must exist').toBeTruthy();
+        expect(
+          Number(histA?.getAttribute('height') ?? 0),
+          'Histograms: histogram-A SVG height must be > 0',
+        ).toBeGreaterThan(0);
+        expect(
+          Number(histB?.getAttribute('height') ?? 0),
+          'Histograms: histogram-B SVG height must be > 0',
+        ).toBeGreaterThan(0);
+        // NextActions — h-72 = 288px
+        const nextActions = container.querySelector('[data-testid="next-actions"] svg');
+        expect(nextActions, 'NextActions: SVG must exist').toBeTruthy();
+        expect(
+          Number(nextActions?.getAttribute('height') ?? 0),
+          'NextActions: SVG height must be > 0',
+        ).toBeGreaterThan(0);
+        // TierPicked — h-48 = 192px
+        const tierPicked = container.querySelector('[data-testid="tier-picked"] svg');
+        expect(tierPicked, 'TierPicked: SVG must exist').toBeTruthy();
+        expect(
+          Number(tierPicked?.getAttribute('height') ?? 0),
+          'TierPicked: SVG height must be > 0',
+        ).toBeGreaterThan(0);
+        // ThemeBoard — h-40 = 160px per category chart
+        const themeBlockers = container.querySelector('[data-testid="theme-blockers"] svg');
+        expect(themeBlockers, 'ThemeBoard/blockers: SVG must exist').toBeTruthy();
+        expect(
+          Number(themeBlockers?.getAttribute('height') ?? 0),
+          'ThemeBoard/blockers: SVG height must be > 0',
+        ).toBeGreaterThan(0);
+        cleanup();
+      }
+    } finally {
+      // Restore original getBoundingClientRect so subsequent tests are unaffected.
+      Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+        configurable: true,
+        value: origGBCR,
+      });
+    }
+  });
+
   it('F1 — paired-dot plot renders one SVG <line> connector per backstory (§5.18 #2)', () => {
     // Spec §5.18 #2: "Per-visitor dots showing A-score vs B-score with a
     // thin connecting segment." The connector is the entire point of the
