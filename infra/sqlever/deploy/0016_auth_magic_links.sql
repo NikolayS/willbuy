@@ -11,6 +11,8 @@
 -- Also adds UNIQUE constraint on accounts.owner_email so the upsert in
 -- POST /api/auth/magic-link can use ON CONFLICT (owner_email).
 
+BEGIN;
+
 ALTER TABLE accounts
   ADD CONSTRAINT accounts_owner_email_unique UNIQUE (owner_email);
 
@@ -33,3 +35,10 @@ CREATE INDEX IF NOT EXISTS auth_magic_links_token_hash_idx
 -- The verify handler only needs: used_at IS NULL AND expires_at > now().
 -- Old rows are harmless but bloat the index; a future cleanup job can
 -- DELETE WHERE created_at < now() - interval '7 days'.
+
+-- sqlever-managed backward-compat row so _migrations stays in sync.
+INSERT INTO _migrations (filename, checksum, applied_at)
+VALUES ('0016_auth_magic_links.sql', 'sqlever-managed', NOW())
+ON CONFLICT (filename) DO NOTHING;
+
+COMMIT;
