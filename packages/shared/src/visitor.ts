@@ -15,12 +15,17 @@ const firstImpression = z
   .string()
   .max(400, 'first_impression capped at 400 chars (spec §2 #15)');
 
+// Spec §2 #15: will_to_buy and confidence are integers 0–10.
+const score0to10 = z.number().int().min(0).max(10);
+
 export const VisitorOutput = z
   .object({
     first_impression: firstImpression.describe(
       'Spec §2 #15: first_impression, ≤ 400 chars.',
     ),
-    will_to_buy: anyValue.describe('Spec §2 #15: will_to_buy.'),
+    will_to_buy: score0to10.describe(
+      'Spec §2 #15: will_to_buy integer 0–10.',
+    ),
     questions: anyValue.describe('Spec §2 #15: questions[].'),
     confusions: anyValue.describe('Spec §2 #15: confusions[].'),
     objections: anyValue.describe('Spec §2 #15: objections[].'),
