@@ -107,14 +107,16 @@ sleep 0.5
 
 # 3. Program the capture netns with the production rule shape (default-deny
 #    + DROP for every CIDR in egress-deny.txt + ACCEPT only for TARGET_HOST_IP
-#    on tcp/80). We CALL THE REAL FUNCTIONS by sourcing the bring-up script
-#    with `main` stripped, then invoking apply_rules manually — this proves
-#    the production code path is what we're asserting on.
-helper_src="$(sed '$ d' "$INFRA_DIR/netns-bringup.sh")"
-# shellcheck disable=SC1090
-source <(printf '%s\n' "$helper_src")
-
-apply_rules "$CAPTURE_NS" "$TARGET_HOST_IP" "" "$INFRA_DIR/egress-deny.txt"
+#    on tcp/80). We CALL THE REAL FUNCTION via a sub-bash so the bring-up
+#    script's own `readonly HERE/PROG` declarations don't collide with this
+#    test's own readonly state.
+bash -c "
+  set -Eeuo pipefail
+  IFS=\$'\n\t'
+  helper_src=\$(sed '\$ d' '$INFRA_DIR/netns-bringup.sh')
+  eval \"\$helper_src\"
+  apply_rules '$CAPTURE_NS' '$TARGET_HOST_IP' '' '$INFRA_DIR/egress-deny.txt'
+"
 
 pass "topology + iptables programmed"
 
@@ -220,10 +222,12 @@ pass "scenario 4: redirect target (not pre-resolved) is unreachable (DNS pinning
 # Synthesize 60 distinct destination flows in the target netns by attempting
 # a connection to 60 distinct IPs. Each attempt creates a conntrack entry
 # even if the SYN is DROP'd, because conntrack hooks fire BEFORE iptables.
+# Fan out in parallel to keep the suite under the CI job timeout budget.
 for i in $(seq 1 60); do
   ip netns exec "$CAPTURE_NS" timeout 1 nc -w 1 "203.0.113.${i}" 80 \
-    </dev/null >/dev/null 2>&1 || true
+    </dev/null >/dev/null 2>&1 &
 done
+wait || true
 
 set +e
 out=$("$INFRA_DIR/host-budget-enforcer.sh" "$CAPTURE_NS" 50)

@@ -87,6 +87,16 @@ jobs:
           which conntrack && sudo conntrack -V
           which nc
 
+      - name: Load conntrack kernel modules
+        # `apply_rules` uses `-m conntrack --ctstate ESTABLISHED,RELATED`,
+        # which auto-loads nf_conntrack on the first invocation, but loading
+        # explicitly here makes the failure surface obvious if the runner's
+        # kernel ever ships without it. nf_conntrack_ipv6 is auto-pulled by
+        # nf_conntrack on modern kernels.
+        run: |
+          sudo modprobe nf_conntrack || true
+          lsmod | grep -E '^nf_conntrack' || true
+
       - name: Run dry-run shell suites (no NET_ADMIN required)
         run: |
           bash infra/capture/test/dryrun.test.sh
