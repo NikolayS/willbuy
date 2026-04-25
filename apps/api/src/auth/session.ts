@@ -32,10 +32,6 @@ export interface SessionPayload {
   expires_at: string; // ISO-8601
 }
 
-function b64url(buf: Buffer): string {
-  return buf.toString('base64url');
-}
-
 function sign(payload: string, key: string): string {
   return createHmac('sha256', key).update(payload).digest('base64url');
 }
@@ -142,7 +138,7 @@ export function buildSetCookieHeader(
 ): string {
   const name = cookieName(nodeEnv);
   const secure = nodeEnv === 'production' ? '; Secure' : '';
-  const domain = nodeEnv === 'production' ? '' : ''; // __Host- forbids Domain=
+  // __Host- prefix forbids Domain= attribute in all envs
   return `${name}=${value}; HttpOnly${secure}; SameSite=Lax; Path=/; Max-Age=${maxAgeSeconds}`;
 }
 

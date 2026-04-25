@@ -19,12 +19,6 @@ import { Client } from 'pg';
 import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgres.js';
 import { buildServer } from '../src/server.js';
 import type { ResendClient } from '../src/email/resend.js';
-import {
-  encodeSession,
-  buildSetCookieHeader,
-  parseCookie,
-  cookieName,
-} from '../src/auth/session.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');

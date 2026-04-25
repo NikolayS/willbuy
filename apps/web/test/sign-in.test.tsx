@@ -9,7 +9,7 @@
  *   3. Error state shows error message for invalid email client-side.
  */
 
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 // For the static render tests (form renders), we import the page directly.
