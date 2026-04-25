@@ -139,7 +139,7 @@ async function apiFetch<T>(
     return {
       ok: false,
       status: res.status,
-      error: `Response shape mismatch: ${parsed.error.issues.map((i) => i.message).join('; ')}`,
+      error: `Response shape mismatch: ${parsed.error.issues.map((i: z.ZodIssue) => i.message).join('; ')}`,
     };
   }
   return { ok: true, data: parsed.data };

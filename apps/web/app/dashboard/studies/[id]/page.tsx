@@ -132,7 +132,8 @@ function StudyStatusInner({ id }: { id: string }) {
   }
 
   const s = study!;
-  const status = s.status;
+  // Narrow status to the literal-union key type so the Record indexes type-check.
+  const status = s.status as StudyStatus;
   const isTerminal = TERMINAL.includes(status);
   const progress = s.visit_progress;
 
