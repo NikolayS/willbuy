@@ -1,6 +1,7 @@
-// TODO(#4): move CaptureResult, A11yNode, BreachReason to @willbuy/shared once
-// that package's exports are merged. Defining them locally for now keeps this
-// PR self-contained per CLAUDE.md "no premature abstraction".
+// CaptureResult, A11yNode, and BreachReason are intentionally kept in this
+// package. Issue #4 (PR #18) landed @willbuy/shared with visitor/scoring/
+// backstory types — capture-specific wire types were out of scope there and
+// remain here to avoid premature cross-package coupling (CLAUDE.md §coding).
 
 /**
  * A single node in the serialized accessibility tree returned by
