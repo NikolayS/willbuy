@@ -12,9 +12,13 @@
 
 // @vitest-environment jsdom
 
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
 import { BuyCredits } from '../components/credits/BuyCredits';
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('BuyCredits visit-estimate copy (issue #73)', () => {
   function renderComponent() {
@@ -28,16 +32,17 @@ describe('BuyCredits visit-estimate copy (issue #73)', () => {
 
   it('starter pack shows "580 visits"', () => {
     renderComponent();
-    expect(screen.getByText(/580 visits/i)).toBeTruthy();
+    // Use getAllByText to handle locale-formatted numbers; assert at least one match.
+    expect(screen.getAllByText(/580 visits/i).length).toBeGreaterThan(0);
   });
 
   it('growth pack shows "1980 visits"', () => {
     renderComponent();
-    expect(screen.getByText(/1,?980 visits/i)).toBeTruthy();
+    expect(screen.getAllByText(/1[,.]?980 visits/i).length).toBeGreaterThan(0);
   });
 
   it('scale pack shows "5980 visits"', () => {
     renderComponent();
-    expect(screen.getByText(/5,?980 visits/i)).toBeTruthy();
+    expect(screen.getAllByText(/5[,.]?980 visits/i).length).toBeGreaterThan(0);
   });
 });
