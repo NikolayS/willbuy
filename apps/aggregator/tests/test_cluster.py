@@ -74,7 +74,7 @@ def test_cluster_findings_returns_lex_sorted_inputs_in_member_indices() -> None:
         for idx in c.member_indices:
             assert 0 <= idx < len(normalized)
         # Members are listed in ascending member_indices (tie-break by sort order).
-        assert c.member_indices == sorted(c.member_indices)
+        assert list(c.member_indices) == sorted(c.member_indices)
 
 
 def test_cluster_findings_handles_empty_and_tiny_inputs() -> None:

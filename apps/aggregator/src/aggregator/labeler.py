@@ -13,7 +13,7 @@ call site (cluster labeling) the aggregator needs.
 from __future__ import annotations
 
 import time
-from typing import Callable, Protocol
+from typing import Callable, Protocol, Sequence
 
 
 class _LedgerLike(Protocol):
@@ -38,7 +38,7 @@ def _truncate_to_eight_words(s: str) -> str:
 
 
 def label_cluster(
-    member_strings: list[str],
+    member_strings: Sequence[str],
     *,
     llm_caller: LLMCaller,
     ledger: _LedgerLike,

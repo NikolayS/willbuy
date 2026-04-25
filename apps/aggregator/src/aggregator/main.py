@@ -18,10 +18,10 @@ import json
 import os
 import sys
 from collections import defaultdict
-from typing import Any, Callable
+from typing import Any
 
 from . import db
-from .cluster import cluster_findings, Cluster
+from .cluster import cluster_findings
 from .labeler import label_cluster, LLMCaller
 from .stats import paired_delta
 

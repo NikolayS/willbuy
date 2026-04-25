@@ -47,3 +47,31 @@ Conversion-weight base map (replaces §2 #18):
 **Backstory dimensions.** §2 #5 enumerates backstory fields generically (stage, team_size, stack, pain, entry point, budget authority); the growth repo's `personas/backstories.md` pins concrete value sets for the launch dogfood and the postgres.ai study. Issue #4 wires those concrete value sets into the zod schema. This is a refinement of §2 #5 within its existing shape, not a deviation; recorded here for traceability.
 
 **Tracking.** PR #N (set on merge). Future spec rev rolls this amendment back into §2 #15 / §2 #18 / §2 #19 inline.
+
+---
+
+## 2026-04-24 — A2: HDBSCAN `metric='euclidean'` on L2-normalized embeddings is equivalent to `metric='cosine'`
+
+**Affects:** §17 (HDBSCAN params: `cosine distance`).
+
+**Driver:** PR #39 (issue #31). Spec §17 specifies `cosine distance` for HDBSCAN; the implementation uses `metric='euclidean'` on L2-normalized embedding vectors.
+
+**Rationale.** For two L2-normalized vectors **u** and **v** (‖u‖₂ = ‖v‖₂ = 1):
+
+```
+euclidean(u, v)  = ‖u − v‖₂
+                 = √(‖u‖² − 2·u·v + ‖v‖²)
+                 = √(1 − 2·cosine_similarity(u,v) + 1)
+                 = √(2·(1 − cosine_similarity(u,v)))
+                 = √(2·cosine_distance(u,v))
+```
+
+Because the square-root transformation is strictly monotone, `euclidean` and `cosine` distance are **order-preserving on L2-normalized vectors**: for any triple (a, b, c), `euclidean(a,b) < euclidean(a,c)` iff `cosine(a,b) < cosine(a,c)`. HDBSCAN's mutual-reachability distance, MST edges, and EOM cluster extraction all operate on pairwise distance orderings, so the resulting cluster assignments are identical.
+
+**Practical advantages of `metric='euclidean'` over `metric='cosine'` in hdbscan 0.8.33:**
+- scipy's `cdist` + BLAS SGEMM is used for the pairwise matrix, which is faster and better-tested numerically than the cosine-distance path.
+- Avoids a rare edge case in hdbscan's cosine path when vectors have near-zero norm (guarded in `_embed` anyway via `norms[norms == 0] = 1.0`, but belt-and-suspenders).
+
+**What is NOT changed.** The `_embed` function still L2-normalizes every output row (line 102–104 of `cluster.py`). Removing that normalization would make `metric='euclidean'` no longer equivalent to cosine. Any future change to `_embed` that removes L2 normalization MUST also change `metric` back to `'cosine'` or re-derive the equivalence.
+
+**Tracking.** PR #39 (issue #31). Future spec rev updates §17 to read "euclidean over L2-normalized vectors (equivalent to cosine; see amendment A2)".

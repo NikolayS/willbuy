@@ -9,10 +9,10 @@
 #   1) builder: install pinned deps into a venv, pre-download fastembed weights.
 #   2) runtime: copy venv + weights into a slim base, drop privileges to UID 1001.
 
-# Pin base image by digest. python:3.12.4-slim-bookworm at the time of writing.
-# Using a tag is fine for the source build; we cosign-sign the resulting image
-# (spec §5.16 covers capture-container provenance; the aggregator inherits the
-# same posture).
+# Base image pinned by tag. Pinning by digest (@sha256:...) would give stronger
+# bit-for-bit guarantees across build dates; that hardening is tracked as N5
+# and deferred. We cosign-sign the *resulting* image (spec §5.16 covers
+# capture-container provenance; the aggregator inherits the same posture).
 FROM python:3.12.4-slim-bookworm AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -36,8 +36,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # The pyproject.toml pins every version; --no-deps would skip transitive pins,
 # so we install with deps but rely on the resolver to honour our pins.
-# We also write a tiny fake README so that pip's PEP 517 backend doesn't error
-# out when the package has no source under /build/src yet.
+# We copy src/ so that the PEP 517 backend can find the package source.
 COPY apps/aggregator/src ./src
 # Non-editable install so the `aggregator` package lives under venv
 # site-packages and is importable when we copy /opt/venv into the runtime

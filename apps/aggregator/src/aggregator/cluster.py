@@ -68,15 +68,12 @@ class Cluster:
     """
 
     id: int
-    members: list[str] = field(default_factory=list)
-    member_indices: list[int] = field(default_factory=list)
-
-
-_embed_cache: dict[str, np.ndarray] = {}
+    members: tuple[str, ...] = field(default_factory=tuple)
+    member_indices: tuple[int, ...] = field(default_factory=tuple)
 
 
 def _embed(strings: Sequence[str]) -> np.ndarray:
-    """Embed strings via fastembed and L2-normalize. Cached per-call by string.
+    """Embed strings via fastembed and L2-normalize.
 
     Returns a (N, D) float32 numpy array; rows L2-normalized so cosine distance
     reduces to 1 - dot product (HDBSCAN's metric='cosine' will do that itself,
@@ -119,14 +116,19 @@ def cluster_findings(strings: Sequence[str]) -> list[Cluster]:
 
     import hdbscan  # noqa: WPS433 — heavy import, kept local.
 
-    # Per spec §17 + §5.7. random_state=42 is a no-op for the deterministic
-    # eom selection but kept for explicit alignment with the spec text.
+    # Per spec §17 + §5.7.
+    # random_state=42: required by spec §17 verbatim; technically a no-op for
+    # the deterministic EOM selection path but present for explicit spec alignment.
+    # metric='euclidean': rows are L2-normalized so euclidean distance is
+    # equivalent to cosine distance (euclidean = √(2·(1−cos)) for unit vectors);
+    # see amendment A2 in SPEC.willbuy.amendments.md for full rationale.
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=3,
         min_samples=3,
         cluster_selection_method="eom",
         approx_min_span_tree=False,
-        metric="euclidean",  # rows are L2-normalized; euclidean ≡ √(2·(1−cos))
+        metric="euclidean",  # amendment A2: equivalent to cosine on L2-normalized
+        random_state=42,
     )
     labels = clusterer.fit_predict(embeddings)
 
@@ -148,8 +150,8 @@ def cluster_findings(strings: Sequence[str]) -> list[Cluster]:
     return [
         Cluster(
             id=new_id,
-            members=[normalized[i] for i in group],
-            member_indices=group,
+            members=tuple(normalized[i] for i in group),
+            member_indices=tuple(group),
         )
         for new_id, group in enumerate(groups)
     ]
