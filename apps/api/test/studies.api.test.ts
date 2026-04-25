@@ -120,6 +120,11 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
         URL_HASH_SALT: 'x'.repeat(32),
         DATABASE_URL: dbUrl,
         DAILY_CAP_CENTS: dailyCapCents,
+        STRIPE_SECRET_KEY: 'sk_test_not_used_in_studies_test',
+        STRIPE_WEBHOOK_SECRET: 'whsec_not_used_in_studies_test',
+        STRIPE_PRICE_ID_STARTER: 'price_not_used',
+        STRIPE_PRICE_ID_GROWTH: 'price_not_used',
+        STRIPE_PRICE_ID_SCALE: 'price_not_used',
       },
     });
   }, 60_000);

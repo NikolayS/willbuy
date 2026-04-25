@@ -1,0 +1,66 @@
+/**
+ * routes/checkout.ts — POST /checkout/sessions (issue #36).
+ *
+ * Creates a Stripe Checkout session for one of the three credit packs (§5.6).
+ * Behind the api-key middleware; uses req.account.id as client_reference_id
+ * so the webhook can reconcile the payment back to the account.
+ *
+ * Spec refs: §4.1 (Stripe Checkout), §5.6 (pack tiers).
+ */
+
+import { z } from 'zod';
+import type Stripe from 'stripe';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { Pool } from 'pg';
+
+import { buildApiKeyMiddleware } from '../auth/api-key.js';
+import type { Env } from '../env.js';
+import { PACKS, type PackId } from '../billing/packs.js';
+
+const CreateSessionBodySchema = z.object({
+  pack_id: z.enum(['starter', 'growth', 'scale']),
+});
+
+export async function registerCheckoutRoutes(
+  app: FastifyInstance,
+  pool: Pool,
+  env: Env,
+  stripe: Stripe,
+): Promise<void> {
+  const apiKeyMiddleware = buildApiKeyMiddleware(pool);
+
+  app.post(
+    '/checkout/sessions',
+    { preHandler: [apiKeyMiddleware] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const account = req.account!;
+
+      const bodyResult = CreateSessionBodySchema.safeParse(req.body);
+      if (!bodyResult.success) {
+        return reply.code(400).send({ error: 'invalid pack_id' });
+      }
+
+      const packId: PackId = bodyResult.data.pack_id;
+      const pack = PACKS[packId];
+
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: pack.price_id,
+            quantity: 1,
+          },
+        ],
+        client_reference_id: String(account.id),
+        metadata: { pack_id: packId },
+        // success_url and cancel_url are required by Stripe; use env if set,
+        // otherwise use fallback placeholders (adequate for test mode).
+        success_url: env.STRIPE_SUCCESS_URL ?? 'https://willbuy.dev/credits?success=1',
+        cancel_url: env.STRIPE_CANCEL_URL ?? 'https://willbuy.dev/credits?cancelled=1',
+      });
+
+      return reply.code(200).send({ url: session.url });
+    },
+  );
+}
