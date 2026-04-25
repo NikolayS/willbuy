@@ -7,7 +7,7 @@
  * Otherwise requires ?t=<token>; validates via timingSafeEqual against
  * reports.share_token_hash (SHA-256 of the raw token).
  *
- * Returns 410 if expired, 404 if slug not found or token invalid.
+ * Returns 404 for expired, revoked, missing slug, and wrong token (§2 #20 — no existence leak).
  *
  * NOTE: The full §5.12 cookie-swap redirect (token → HttpOnly cookie) is
  * OUT OF SCOPE per issue #30. This endpoint returns the body directly.
@@ -77,9 +77,9 @@ export async function registerReportsRoutes(
         return reply.code(404).send({ error: 'report not found' });
       }
 
-      // Check expiry first (410 regardless of token).
+      // §2 #20: return 404 for expired reports to avoid leaking existence.
       if (report.expires_at && report.expires_at <= new Date()) {
-        return reply.code(410).send({ error: 'report expired' });
+        return reply.code(404).send({ error: 'report not found' });
       }
 
       // Public reports need no token.

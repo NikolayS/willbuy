@@ -7,7 +7,7 @@
  * POST /studies:
  *   - Validates body with zod (urls 1..2, icp, n_visits 1..100).
  *   - Checks each URL's eTLD+1 is in account.verified_domains (§2 #1).
- *   - Reserves estimated spend: N × 8¢ (§5.7) via reserveSpend.
+ *   - Reserves estimated spend: urls × N × 5¢ + 3¢ per spec §5.5 (§5.7 for algorithm overview).
  *   - Creates Study + N Backstory rows + visit queue rows in a transaction.
  *   - Returns 201 { study_id, status: 'capturing' }.
  *
@@ -24,8 +24,11 @@ import type { Pool } from 'pg';
 import { buildApiKeyMiddleware } from '../auth/api-key.js';
 import type { Env } from '../env.js';
 
-// Per-study estimated cost = N × 8¢ per spec §5.7.
-const CENTS_PER_VISIT_EST = 8;
+// Per-visit estimated cost ceiling = 5¢ per spec §5.5 (cost-model ceiling).
+// §5.7 (Algorithms) describes the broader cost-model overview.
+const CENTS_PER_VISIT_EST = 5;
+// Once-per-study cost for the cluster_label LLM call per spec §5.5.
+const CENTS_PER_STUDY_CLUSTER_LABEL = 3;
 
 // Preset ICP ids from spec §2 #9.
 const ICP_PRESETS = [
@@ -104,10 +107,11 @@ export async function registerStudiesRoutes(
       }
 
       const n = body.n_visits;
-      const estCents = n * CENTS_PER_VISIT_EST;
+      // §5.5: total reservation = urls × n_visits × 5¢ + 3¢ (once-per-study cluster_label).
+      const estCents = body.urls.length * n * CENTS_PER_VISIT_EST + CENTS_PER_STUDY_CLUSTER_LABEL;
       const today = new Date().toISOString().slice(0, 10);
 
-      // §5.7: Reserve estimated spend (N × 8¢).
+      // §5.5 / §5.7: Reserve estimated spend.
       // We import postgres (the slonik-like lib) for reserveSpend; but our pool
       // is a pg.Pool. To avoid spinning up a second client, we run the atomic
       // spend SQL directly via pg.Pool inline here. reserveSpend uses the
@@ -121,8 +125,8 @@ export async function registerStudiesRoutes(
       try {
         await client.query('BEGIN');
 
-        // Atomic spend reservation (spec §5.5 pattern).
-        // visit kind, estCents = total study budget.
+        // Atomic spend reservation per spec §5.5.
+        // estCents = urls × n_visits × 5¢ + 3¢ (cluster_label).
         const spendRows = await client.query<{ cents: number }>(
           `INSERT INTO llm_spend_daily (account_id, date, kind, cents)
              VALUES ($1, $2::date, 'visit', $3)

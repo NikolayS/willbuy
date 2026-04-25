@@ -313,7 +313,7 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
         [String(capAccount), `cap-topup-${uid()}`],
       );
       // Seed llm_spend_daily at 99% of the daily cap (9900 out of 10000 cents).
-      // The study request is n_visits=50 × 8¢ = 400¢. 9900 + 400 = 10300 > 10000 → 402.
+      // The study request is n_visits=50, 1 URL → 1×50×5¢ + 3¢ = 253¢. 9900 + 253 = 10153 > 10000 → 402.
       await client.query(
         `INSERT INTO llm_spend_daily (account_id, date, kind, cents)
          VALUES ($1, CURRENT_DATE, 'visit', $2)`,
@@ -323,7 +323,7 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
       await client.end();
     }
 
-    // n_visits=50 → estCents = 50 × 8¢ = 400¢; 9900 + 400 = 10300 > 10000 → 402.
+    // n_visits=50, 1 URL → 1×50×5¢ + 3¢ = 253¢; 9900 + 253 = 10153 > 10000 → 402.
     const res = await app.inject({
       method: 'POST',
       url: '/studies',
@@ -445,7 +445,7 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
     expect(typeof body.conv_score).toBe('number');
   });
 
-  it('410 when report is expired', async () => {
+  it('404 when report is expired (§2 #20 — no existence leak)', async () => {
     const client = new Client({ connectionString: dbUrl });
     await client.connect();
     let studyId: bigint;
@@ -474,6 +474,6 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
       method: 'GET',
       url: `/reports/${String(studyId)}?t=${shareToken}`,
     });
-    expect(res.statusCode).toBe(410);
+    expect(res.statusCode).toBe(404);
   });
 });
