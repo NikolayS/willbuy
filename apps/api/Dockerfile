@@ -3,7 +3,7 @@
 # --- deps ---
 FROM oven/bun:1.3.5-debian AS deps
 WORKDIR /app
-COPY bun.lockb package.json ./
+COPY bun.lock package.json ./
 COPY apps/api/package.json ./apps/api/package.json
 RUN bun install --frozen-lockfile --filter @willbuy/api
 

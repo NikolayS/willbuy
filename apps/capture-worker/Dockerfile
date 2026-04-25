@@ -50,7 +50,7 @@ WORKDIR /app
 
 # Copy only what we need (no .git, no node_modules from the dev host).
 # The build context is the monorepo root so we can pick up the lockfile.
-COPY --chown=capture:capture bun.lockb package.json ./
+COPY --chown=capture:capture bun.lock package.json ./
 COPY --chown=capture:capture apps/capture-worker ./apps/capture-worker
 
 # Production install (no devDeps; Playwright browsers come from the base

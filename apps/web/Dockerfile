@@ -5,7 +5,7 @@
 # ---------- deps ----------
 FROM oven/bun:1.3.5-alpine AS deps
 WORKDIR /repo
-COPY bun.lockb package.json ./
+COPY bun.lock package.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN bun install --frozen-lockfile --filter @willbuy/web
