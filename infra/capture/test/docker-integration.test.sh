@@ -101,11 +101,16 @@ pass "pause-container netns has default-deny OUTPUT DROP policy"
 # 4b. `docker run --network container:<pause>` accepts the pause name and
 #     the resulting capture container is attached to the SAME kernel netns.
 #     We verify by reading /proc/self/net/ns from inside the run.
+#
+#     Pre-pull the image so docker run stdout captures only the readlink
+#     output (no "Pulling..." progress lines). The pause image was already
+#     pulled above; alpine is the smallest image with readlink available.
+docker pull alpine:3.20 >/dev/null 2>&1 || true
 container_inode=$(docker run --rm \
   --network "container:${PAUSE_NAME}" \
   --cap-drop ALL \
   alpine:3.20 \
-  readlink /proc/self/ns/net 2>&1 || true)
+  readlink /proc/self/ns/net 2>/dev/null || true)
 host_pause_inode=$(readlink "/proc/${pause_pid}/ns/net" 2>/dev/null || true)
 [[ -n "$container_inode" && "$container_inode" == "$host_pause_inode" ]] \
   || fail "capture container netns inode (${container_inode}) != pause netns inode (${host_pause_inode}) — F1 wiring broken"
