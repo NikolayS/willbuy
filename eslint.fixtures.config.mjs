@@ -9,7 +9,15 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import reactPlugin from 'eslint-plugin-react';
-import willbuy from './eslint-rules/no-sandbox-flag.js';
+import noSandboxFlag from './eslint-rules/no-sandbox-flag.js';
+import noReservedLlmIdentifiers from './packages/llm-adapter/eslint-rule.js';
+
+const willbuy = {
+  rules: {
+    ...noSandboxFlag.rules,
+    ...noReservedLlmIdentifiers.rules,
+  },
+};
 
 export default tseslint.config(
   {
@@ -28,6 +36,7 @@ export default tseslint.config(
     },
     rules: {
       'willbuy/no-sandbox-flag': 'error',
+      'willbuy/no-reserved-llm-identifiers': 'error',
     },
   },
   {
@@ -45,9 +54,19 @@ export default tseslint.config(
     },
   },
   {
-    files: ['eslint-rules/**/*.js', 'tests/lint-rules.test.ts'],
+    // The single allow-list line for the AST rule itself: the rule source
+    // file, the lint-rule-test file, and (on the fixtures-only config)
+    // the lint fixtures themselves all legitimately mention banned names
+    // as patterns/diagnostics.
+    files: [
+      'eslint-rules/**/*.js',
+      'packages/llm-adapter/eslint-rule.js',
+      'tests/lint-rules.test.ts',
+      'packages/llm-adapter/test/lint-rule.test.ts',
+    ],
     rules: {
       'willbuy/no-sandbox-flag': 'off',
+      'willbuy/no-reserved-llm-identifiers': 'off',
     },
   },
 );
