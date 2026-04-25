@@ -681,4 +681,297 @@ describeIfDocker('migrations schema (issue #26)', () => {
       expect(balance).toBe('850');
     });
   });
+
+  // ── PR #46 review findings ─────────────────────────────────────────────────
+  // Tests added RED (before migration fixes) per TDD red→green discipline.
+  // Blocking: B1 visits columns, B2 credit_ledger.provider_attempt_id,
+  //           B3 reports columns, B4 backstory_leases.holder_visit_id.
+  // Non-blocking: NB5 studies comment, NB6 provider column comments.
+  // Spec refs: §4.3, §5.4, §5.18, §2 #19.
+
+  describe('PR-46 B1 — visits extended columns (spec §4.3)', () => {
+    it('visits has study_id int8 column', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='visits' and column_name='study_id';`,
+        'visits.study_id type',
+      );
+      expect(out).toBe('bigint');
+    });
+
+    it('visits has capture_id int8 column (FK to page_captures)', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='visits' and column_name='capture_id';`,
+        'visits.capture_id type',
+      );
+      expect(out).toBe('bigint');
+    });
+
+    it('visits has variant_idx int4 column (replaces side for spec §4.3 UNIQUE)', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='visits' and column_name='variant_idx';`,
+        'visits.variant_idx type',
+      );
+      expect(out).toBe('integer');
+    });
+
+    it('visits has provider text column', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='visits' and column_name='provider';`,
+        'visits.provider type',
+      );
+      expect(out).toBe('text');
+    });
+
+    it('visits has model text column', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='visits' and column_name='model';`,
+        'visits.model type',
+      );
+      expect(out).toBe('text');
+    });
+
+    it('visits has cost_cents int4 column', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='visits' and column_name='cost_cents';`,
+        'visits.cost_cents type',
+      );
+      expect(out).toBe('integer');
+    });
+
+    it('visits has terminal_reason text column', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='visits' and column_name='terminal_reason';`,
+        'visits.terminal_reason type',
+      );
+      expect(out).toBe('text');
+    });
+
+    it('visits has latency_ms int4 column', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='visits' and column_name='latency_ms';`,
+        'visits.latency_ms type',
+      );
+      expect(out).toBe('integer');
+    });
+
+    it('visits UNIQUE is (study_id, backstory_id, variant_idx) — spec §4.3', () => {
+      // Confirm the new triple-key unique exists by querying pg_indexes.
+      const out = expectSqlOk(
+        pg.container,
+        `select count(*) from pg_indexes
+         where tablename='visits'
+           and indexdef like '%study_id%backstory_id%variant_idx%';`,
+        'visits UNIQUE(study_id, backstory_id, variant_idx)',
+      );
+      expect(out).toBe('1');
+    });
+
+    it('visits.capture_id FK rejects missing parent', () => {
+      expectSqlError(
+        pg.container,
+        `insert into accounts (owner_email) values ('b1fk@example.com');
+         insert into studies (account_id, kind, status)
+           select id, 'single', 'pending' from accounts where owner_email='b1fk@example.com';
+         insert into backstories (study_id, idx, payload)
+           select id, 0, '{}'::jsonb from studies
+           where account_id=(select id from accounts where owner_email='b1fk@example.com');
+         insert into visits (study_id, backstory_id, variant_idx, capture_id, provider, model, status, repair_generation, transport_attempts, started_at)
+           select s.id, b.id, 0, 999999, 'anthropic', 'claude-haiku-4-5', 'started', 0, 0, now()
+           from backstories b
+           join studies s on s.id = b.study_id
+           where s.account_id=(select id from accounts where owner_email='b1fk@example.com');`,
+        /violates foreign key constraint/i,
+        'visits.capture_id FK',
+      );
+    });
+
+    it('visits.study_id FK rejects missing parent', () => {
+      expectSqlError(
+        pg.container,
+        `insert into accounts (owner_email) values ('b1sfk@example.com');
+         insert into studies (account_id, kind, status)
+           select id, 'single', 'pending' from accounts where owner_email='b1sfk@example.com';
+         insert into backstories (study_id, idx, payload)
+           select id, 0, '{}'::jsonb from studies
+           where account_id=(select id from accounts where owner_email='b1sfk@example.com');
+         insert into visits (study_id, backstory_id, variant_idx, provider, model, status, repair_generation, transport_attempts, started_at)
+           select 999999, b.id, 0, 'anthropic', 'claude-haiku-4-5', 'started', 0, 0, now()
+           from backstories b
+           join studies s on s.id = b.study_id
+           where s.account_id=(select id from accounts where owner_email='b1sfk@example.com');`,
+        /violates foreign key constraint/i,
+        'visits.study_id FK',
+      );
+    });
+  });
+
+  describe('PR-46 B2 — credit_ledger.provider_attempt_id FK (spec §4.3/§5.4)', () => {
+    it('credit_ledger has provider_attempt_id int8 column', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='credit_ledger' and column_name='provider_attempt_id';`,
+        'credit_ledger.provider_attempt_id type',
+      );
+      expect(out).toBe('bigint');
+    });
+
+    it('credit_ledger.provider_attempt_id FK rejects missing parent', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('b2fk@example.com');`);
+      expectSqlError(
+        pg.container,
+        `insert into credit_ledger (account_id, provider_attempt_id, kind, cents, idempotency_key)
+           select id, 999999, 'commit', -5, 'b2fk-commit-1' from accounts where owner_email='b2fk@example.com';`,
+        /violates foreign key constraint/i,
+        'credit_ledger.provider_attempt_id FK',
+      );
+    });
+
+    it('credit_ledger.provider_attempt_id accepts NULL (reserve rows have no attempt yet)', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('b2null@example.com');`);
+      const r = psql(
+        pg.container,
+        `insert into credit_ledger (account_id, provider_attempt_id, kind, cents, idempotency_key)
+           select id, null, 'reserve', -100, 'b2null-reserve-1' from accounts where owner_email='b2null@example.com';`,
+      );
+      expect(r.code, `NULL provider_attempt_id rejected: ${r.stderr}`).toBe(0);
+    });
+  });
+
+  describe('PR-46 B3 — reports extended columns (spec §4.3, §5.18, §2 #19)', () => {
+    it('reports has clusters_json jsonb column', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='reports' and column_name='clusters_json';`,
+        'reports.clusters_json type',
+      );
+      expect(out).toBe('jsonb');
+    });
+
+    it('reports has scores_json jsonb column', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='reports' and column_name='scores_json';`,
+        'reports.scores_json type',
+      );
+      expect(out).toBe('jsonb');
+    });
+
+    it('reports has paired_tests_disagreement boolean column (spec §2 #19 banner)', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='reports' and column_name='paired_tests_disagreement';`,
+        'reports.paired_tests_disagreement type',
+      );
+      expect(out).toBe('boolean');
+    });
+
+    it('reports has default_share_token_id int8 column (FK to future share_tokens)', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='reports' and column_name='default_share_token_id';`,
+        'reports.default_share_token_id type',
+      );
+      expect(out).toBe('bigint');
+    });
+
+    it('reports.paired_tests_disagreement accepts true/false (typed boolean)', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('b3bool@example.com');`);
+      psql(
+        pg.container,
+        `insert into studies (account_id, kind, status) select id, 'paired', 'aggregating' from accounts where owner_email='b3bool@example.com';`,
+      );
+      const r = psql(
+        pg.container,
+        `insert into reports (study_id, share_token_hash, conv_score, paired_delta_json, paired_tests_disagreement, ready_at)
+           select id, 'tok-b3bool', 0.5, '{}'::jsonb, true, now() from studies
+           where account_id=(select id from accounts where owner_email='b3bool@example.com');`,
+      );
+      expect(r.code, `boolean insert: ${r.stderr}`).toBe(0);
+      const out = expectSqlOk(
+        pg.container,
+        `select paired_tests_disagreement from reports
+           where study_id=(select id from studies where account_id=(select id from accounts where owner_email='b3bool@example.com'));`,
+        'reports.paired_tests_disagreement value',
+      );
+      expect(out).toBe('t');
+    });
+  });
+
+  describe('PR-46 B4 — backstory_leases.holder_visit_id typed FK (spec §4.3)', () => {
+    it('backstory_leases has holder_visit_id int8 column (not text lease_owner)', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns where table_name='backstory_leases' and column_name='holder_visit_id';`,
+        'backstory_leases.holder_visit_id type',
+      );
+      expect(out).toBe('bigint');
+    });
+
+    it('backstory_leases.holder_visit_id FK rejects missing parent', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('b4fk@example.com');`);
+      psql(
+        pg.container,
+        `insert into studies (account_id, kind, status) select id, 'paired', 'visiting' from accounts where owner_email='b4fk@example.com';`,
+      );
+      psql(
+        pg.container,
+        `insert into backstories (study_id, idx, payload) select id, 0, '{}'::jsonb from studies where account_id=(select id from accounts where owner_email='b4fk@example.com');`,
+      );
+      expectSqlError(
+        pg.container,
+        `insert into backstory_leases (backstory_id, study_id, holder_visit_id, lease_until, heartbeat_at)
+           select b.id, s.id, 999999, now()+interval '120s', now()
+           from backstories b join studies s on s.id=b.study_id
+           where s.account_id=(select id from accounts where owner_email='b4fk@example.com');`,
+        /violates foreign key constraint/i,
+        'backstory_leases.holder_visit_id FK',
+      );
+    });
+
+    it('backstory_leases no longer has lease_owner text column', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select count(*) from information_schema.columns where table_name='backstory_leases' and column_name='lease_owner';`,
+        'lease_owner should be absent',
+      );
+      // lease_owner was the old text column — should be gone after B4 fix
+      expect(out).toBe('0');
+    });
+  });
+
+  describe('PR-46 NB6 — comment on column for provider_circuit_state.provider and rate_tokens.provider', () => {
+    it('provider_circuit_state.provider has a column comment', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select count(*) from pg_description d
+           join pg_attribute a on a.attrelid = d.objoid and a.attnum = d.objsubid
+           join pg_class c on c.oid = a.attrelid
+           where c.relname = 'provider_circuit_state' and a.attname = 'provider'
+             and d.description is not null;`,
+        'provider_circuit_state.provider comment',
+      );
+      expect(out).toBe('1');
+    });
+
+    it('rate_tokens.provider has a column comment', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select count(*) from pg_description d
+           join pg_attribute a on a.attrelid = d.objoid and a.attnum = d.objsubid
+           join pg_class c on c.oid = a.attrelid
+           where c.relname = 'rate_tokens' and a.attname = 'provider'
+             and d.description is not null;`,
+        'rate_tokens.provider comment',
+      );
+      expect(out).toBe('1');
+    });
+  });
 });
