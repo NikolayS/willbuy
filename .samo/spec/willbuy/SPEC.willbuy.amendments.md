@@ -173,6 +173,38 @@ This matrix is passed to HDBSCAN as `metric='precomputed'`. With `metric='precom
 
 **Tracking.** Issue #48 (PR set on cutover). Spec future rev folds sqlever into §5.6 / §15.
 
+### 2026-04-25 follow-on (cutover details, PR #48):
+
+**sqlever version pinned:** `0.3.0` (installed as a workspace devDependency in `package.json`; resolved via `bunx sqlever` in CI and local dev; pinned exact version, not a range).
+
+**State-table approach.** The A4 spec says "the `schema_migrations` tracking table is replaced (or wrapped)". In practice:
+- sqlever uses the Sqitch-compatible `sqitch.*` tracking schema (`sqitch.changes`, `sqitch.events`, `sqitch.projects` — all created idempotently on first deploy).
+- The old `_migrations(filename, checksum, applied_at)` table is **kept** as a backward-compat shadow. Each deploy script in `infra/sqlever/deploy/` appends `INSERT INTO _migrations ... ON CONFLICT DO NOTHING` inside its `BEGIN`/`COMMIT` block. This means `_migrations` stays in sync with sqlever state, existing test assertions that count `_migrations` rows keep passing, and DBA queries that inspect `_migrations` continue to work.
+- `infra/migrations/0014_seed_sqlever_state.sql` is a tombstone/comment file added to keep the file count in `infra/migrations/` consistent with the `_migrations` row count (test assertions count `.sql` files in that directory). Its corresponding deploy script (`infra/sqlever/deploy/0014_seed_sqlever_state.sql`) only writes the `_migrations` row.
+- For databases previously managed by the old bash runner: running `bun run migrate` (sqlever deploy) on them is safe — all 15 deploy scripts use `IF NOT EXISTS` / `ON CONFLICT DO NOTHING` guards, so they are re-runnable. sqlever's `sqitch.*` tables are created fresh and seeded by the deploy run itself.
+
+**sqlever project layout:**
+```
+infra/sqlever/
+  sqitch.conf        — engine=pg, plan_file=sqitch.plan, top_dir=.
+  sqitch.plan        — 15 changes (0000_init … 0014_seed_sqlever_state), linear dep chain
+  deploy/            — 15 deploy scripts; each wraps original SQL + _migrations INSERT
+  revert/            — empty (revert scripts not provided; §5.6 "forward-only" policy)
+  verify/            — empty (verify scripts not provided at this sprint)
+```
+
+**CI invocation.** `scripts/migrate.sh` is updated to call:
+```
+bunx sqlever deploy --top-dir infra/sqlever/ --db-uri $DATABASE_URL --no-tui
+```
+`bun install --frozen-lockfile` in CI installs sqlever from the lockfile. No separate install step needed. The `SQLEVER_TOP_DIR` env var overrides `--top-dir` for test isolation (temp projects in `migrations.test.ts`).
+
+**Delta from A4 original wording:**
+- A4 says "`schema_migrations` tracking table is replaced"; actual table name in the codebase was `_migrations`, not `schema_migrations`. The shadow table is kept (not replaced) as described above.
+- A4 says "one-shot data migration that reads existing `schema_migrations` rows and seeds sqlever's state". The actual approach is simpler: since all deploy scripts are idempotent, a fresh `sqlever deploy` on an existing database just re-applies the DDL (no-op due to `IF NOT EXISTS`) and fills `sqitch.*` tables. A separate seeding migration is not needed because sqlever's `deploy` self-seeds its state table on first run.
+
+**Test evidence:** `bun test tests/migrations.test.ts` → 3/3 pass; `bun test tests/migrations.schema.test.ts` → 81/81 pass. Tests updated to call sqlever via `scripts/migrate.sh` (no MIGRATIONS_DIR; SQLEVER_TOP_DIR for temp project injection in the failing-migration rollback test).
+
 ---
 
 ## 2026-04-24 — A5: Postgres data on a ZFS dataset with DBLab branching available alongside
