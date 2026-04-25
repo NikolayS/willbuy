@@ -465,6 +465,7 @@ describe('Stripe checkout error-handling (issue #73)', () => {
             STRIPE_PRICE_ID_STARTER: 'price_test_starter',
             STRIPE_PRICE_ID_GROWTH: 'price_test_growth',
             STRIPE_PRICE_ID_SCALE: 'price_test_scale',
+            SHARE_TOKEN_HMAC_KEY: 'x'.repeat(64),
           },
           stripe: throwingStripe,
         });
