@@ -146,7 +146,7 @@ export async function registerStudiesRoutes(
         // urls[]: persisted so capture-worker can read studies.urls[variant_idx]
         // when leasing a visit (issue #84, PR #96 B3 fix). The 1..2 cardinality
         // CHECK constraint mirrors the zod schema above; the column was added
-        // in migration 0016_studies_urls.sql.
+        // in migration 0017_studies_urls.sql.
         const kind = body.urls.length === 2 ? 'paired' : 'single';
         const studyResult = await client.query<{ id: string }>(
           `INSERT INTO studies (account_id, kind, status, urls)

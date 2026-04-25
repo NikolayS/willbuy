@@ -9,12 +9,21 @@
 // Adapter `status: 'error'` short-circuits to failure_reason='transport'
 // without entering the schema-repair loop (transport retries belong to
 // the adapter, per §5.15).
+//
+// Terminal-commit invariant (spec §5.11): when RunVisitOptions.leaseRelease
+// is provided, releaseLease() is called in a finally block so the
+// per-backstory lease is released immediately on BOTH the ok and failed
+// paths — not held until the 120s lease_until expiry. This is required
+// for paired-A/B throughput: visit B cannot start until visit A's lease
+// is released.
 
 import { createHash } from 'node:crypto';
 
 import type { LLMProvider } from '@willbuy/llm-adapter';
 import { VisitorOutput } from '@willbuy/shared';
 import type { BackstoryT, VisitorOutputT } from '@willbuy/shared';
+import { releaseLease } from '@willbuy/api/leases/backstory-lease';
+import type { Pool } from '@willbuy/api/leases/backstory-lease';
 
 import {
   buildDynamicTail,
@@ -33,11 +42,24 @@ export interface VisitResult {
   failure_reason?: VisitFailureReason;
 }
 
+// Spec §5.11: caller passes this when a per-backstory lease was acquired
+// before the visit. runVisit() releases it in a finally block so the lease
+// is freed on BOTH ok and failed terminal paths.
+export interface LeaseReleaseContext {
+  pool: Pool;
+  backstory_id: bigint | number;
+  owner_visit_id: bigint | number;
+}
+
 export interface RunVisitOptions {
   provider: LLMProvider;
   backstory: BackstoryT;
   pageSnapshot: string;
   visitId: string;
+  // Optional: if provided, the per-backstory lease is released in the
+  // terminal-commit finally block (spec §5.11). Without this option,
+  // the lease is left to expire naturally (backward-compatible).
+  leaseRelease?: LeaseReleaseContext;
 }
 
 // Spec §2 #15 — the visitor call is capped at 800 output tokens.
@@ -114,70 +136,86 @@ export async function runVisit(opts: RunVisitOptions): Promise<VisitResult> {
   let lastRaw = '';
   let lastValidationError = '';
 
-  for (
-    let repairGeneration = 0;
-    repairGeneration <= MAX_REPAIR_GENERATION;
-    repairGeneration += 1
-  ) {
-    const dynamicTail =
-      repairGeneration === 0
-        ? buildDynamicTail(opts.backstory, opts.pageSnapshot)
-        : buildRepairTail(
-            opts.backstory,
-            opts.pageSnapshot,
-            lastRaw,
-            lastValidationError,
-          );
+  // Spec §5.11 terminal-commit invariant: release the per-backstory lease
+  // in a finally block so it fires on BOTH the ok path and ALL failure paths
+  // (transport + schema). This prevents a failed visit from holding the lease
+  // for the full 120s TTL and blocking the paired-A/B counterpart visit.
+  try {
+    for (
+      let repairGeneration = 0;
+      repairGeneration <= MAX_REPAIR_GENERATION;
+      repairGeneration += 1
+    ) {
+      const dynamicTail =
+        repairGeneration === 0
+          ? buildDynamicTail(opts.backstory, opts.pageSnapshot)
+          : buildRepairTail(
+              opts.backstory,
+              opts.pageSnapshot,
+              lastRaw,
+              lastValidationError,
+            );
 
-    const logicalRequestKey = computeLogicalRequestKey(
-      opts.visitId,
-      providerName,
-      modelName,
-      repairGeneration,
-    );
+      const logicalRequestKey = computeLogicalRequestKey(
+        opts.visitId,
+        providerName,
+        modelName,
+        repairGeneration,
+      );
 
-    attempts += 1;
-    const chatResult = await opts.provider.chat({
-      staticPrefix,
-      dynamicTail,
-      logicalRequestKey,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-    });
+      attempts += 1;
+      const chatResult = await opts.provider.chat({
+        staticPrefix,
+        dynamicTail,
+        logicalRequestKey,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+      });
 
-    if (chatResult.status === 'error') {
-      // Spec §5.15: transport retries are the adapter's job. The orchestrator
-      // does NOT schema-repair on a transport failure — the model never ran,
-      // so there is no prior raw output to feed back as repair input.
-      return {
-        status: 'failed',
-        attempts,
-        failure_reason: 'transport',
-        raw: chatResult.raw,
-      };
+      if (chatResult.status === 'error') {
+        // Spec §5.15: transport retries are the adapter's job. The orchestrator
+        // does NOT schema-repair on a transport failure — the model never ran,
+        // so there is no prior raw output to feed back as repair input.
+        return {
+          status: 'failed',
+          attempts,
+          failure_reason: 'transport',
+          raw: chatResult.raw,
+        };
+      }
+
+      // Both 'ok' and 'indeterminate' carry a raw payload we can try to parse;
+      // 'indeterminate' is treated as best-effort here because spec §5.15's
+      // pessimistic-debit + reconciliation flow is owned by the adapter and
+      // the API server's spend ledger, not by this orchestrator.
+      const parsed = tryParse(chatResult.raw);
+      if (parsed.ok) {
+        return {
+          status: 'ok',
+          parsed: parsed.parsed,
+          raw: chatResult.raw,
+          attempts,
+        };
+      }
+
+      lastRaw = chatResult.raw;
+      lastValidationError = parsed.error;
     }
 
-    // Both 'ok' and 'indeterminate' carry a raw payload we can try to parse;
-    // 'indeterminate' is treated as best-effort here because spec §5.15's
-    // pessimistic-debit + reconciliation flow is owned by the adapter and
-    // the API server's spend ledger, not by this orchestrator.
-    const parsed = tryParse(chatResult.raw);
-    if (parsed.ok) {
-      return {
-        status: 'ok',
-        parsed: parsed.parsed,
-        raw: chatResult.raw,
-        attempts,
-      };
+    return {
+      status: 'failed',
+      attempts,
+      failure_reason: 'schema',
+      raw: lastRaw,
+    };
+  } finally {
+    // Spec §5.11: release the per-backstory lease immediately on terminal
+    // commit. releaseLease is a no-op if leaseRelease is not provided or if
+    // the caller is no longer the holder (idempotent DELETE).
+    if (opts.leaseRelease) {
+      await releaseLease(opts.leaseRelease.pool, {
+        backstory_id: opts.leaseRelease.backstory_id,
+        owner_visit_id: opts.leaseRelease.owner_visit_id,
+      });
     }
-
-    lastRaw = chatResult.raw;
-    lastValidationError = parsed.error;
   }
-
-  return {
-    status: 'failed',
-    attempts,
-    failure_reason: 'schema',
-    raw: lastRaw,
-  };
 }

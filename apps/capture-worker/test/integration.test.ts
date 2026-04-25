@@ -113,6 +113,12 @@ afterAll(async () => {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+// Per-call counter so each seedStudyAndVisit() inserts a unique owner_email.
+// Required because PR #95 (auth magic-links) added a UNIQUE index on
+// accounts.owner_email; the previous shared 'test@willbuy.test' literal
+// caused the 2nd/3rd test in this file to fail with a duplicate-key error.
+let seedCounter = 0;
+
 async function seedStudyAndVisit(): Promise<{
   accountId: number;
   studyId: number;
@@ -123,14 +129,16 @@ async function seedStudyAndVisit(): Promise<{
   try {
     await client.query('BEGIN');
 
-    // Account
+    // Account — unique email per seed call (see seedCounter comment above).
+    const ownerEmail = `test+${++seedCounter}@willbuy.test`;
     const accRow = await client.query<{ id: string }>(
-      `INSERT INTO accounts (owner_email) VALUES ('test@willbuy.test') RETURNING id`,
+      `INSERT INTO accounts (owner_email) VALUES ($1) RETURNING id`,
+      [ownerEmail],
     );
     const accountId = Number(accRow.rows[0]!.id);
 
     // Study — starts with status='capturing' (matches POST /studies response).
-    // urls[] is persisted per migration 0016_studies_urls.sql (PR #96 B3 fix);
+    // urls[] is persisted per migration 0017_studies_urls.sql (PR #96 B3 fix);
     // the capture worker reads studies.urls[variant_idx] when leasing a visit.
     // The test still uses targetUrlOverride below to point at the local fixture
     // server, which takes precedence over the DB column — but seeding urls[]

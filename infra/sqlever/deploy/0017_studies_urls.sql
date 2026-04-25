@@ -1,9 +1,9 @@
--- Deploy 0016_studies_urls
+-- Deploy 0017_studies_urls
 -- Spec ref: §4.1, §4.3 — persist target URLs on studies (issue #84 / PR #96 B3 fix).
 
 BEGIN;
 
--- 0016_studies_urls.sql — persist target URLs on the studies row (spec §4.1, §4.3).
+-- 0017_studies_urls.sql — persist target URLs on the studies row (spec §4.1, §4.3).
 --
 -- Issue #84 / PR #96 follow-up. The studies table per 0002_studies.sql intentionally
 -- omitted spec §4.3 columns (urls, authorization_mode, icp_id, n, seed,
@@ -39,7 +39,7 @@ comment on column studies.urls is 'Target URL list (spec §4.3); 1 entry for sin
 
 -- sqlever-managed backward-compat row so _migrations stays in sync.
 INSERT INTO _migrations (filename, checksum, applied_at)
-VALUES ('0016_studies_urls.sql', 'sqlever-managed', NOW())
+VALUES ('0017_studies_urls.sql', 'sqlever-managed', NOW())
 ON CONFLICT (filename) DO NOTHING;
 
 COMMIT;
