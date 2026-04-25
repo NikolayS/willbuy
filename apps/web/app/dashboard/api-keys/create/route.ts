@@ -19,6 +19,14 @@
  * a query parameter, never persisted in the URL, and the page sets
  * Cache-Control: no-store so intermediaries cannot cache it.
  *
+ * Implementation note (CI fix): Next.js forbids `react-dom/server` inside
+ * Route Handlers ("imports react-dom/server. To fix it, render or return
+ * the content directly as a Server Component instead"). The result HTML
+ * is therefore built from plain template strings here, with strict
+ * HTML-entity escaping for user input. The ApiKeysView module remains
+ * the source of truth for the list/form views — only the one-time
+ * post-create page lives inline.
+ *
  * Spec refs:
  *   §4.1 — API-key auth UI
  *   §5.10 — CSP, no inline scripts, form-action='self'
@@ -26,9 +34,7 @@
  *   §2 #22 — keys masked in logs (we never log the raw key here)
  */
 
-import { renderToStaticMarkup } from 'react-dom/server';
 import { NextResponse, type NextRequest } from 'next/server';
-import { NewKeyResultView } from '../ApiKeysView';
 
 function apiBaseUrl(): string {
   const explicit = process.env['WILLBUY_API_URL'] ?? process.env['NEXT_PUBLIC_API_URL'];
@@ -41,13 +47,28 @@ function escapeRedirect(s: string): string {
   return encodeURIComponent(s.slice(0, 200));
 }
 
+// Tight HTML-entity escape — avoids pulling in a dependency. Safe for the
+// small set of values we interpolate (label, prefix, raw key).
+function esc(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /**
- * Wrap a presentational view in the same dashboard chrome that
- * /dashboard/layout.tsx applies. We can't reuse the layout from a Route
- * Handler (layouts only wrap pages), so the header is inlined here. The
- * minimal duplication is acceptable for the single one-off result page.
+ * Render the one-time "your new key" page as plain HTML. Mirrors
+ * NewKeyResultView from ApiKeysView.tsx so the rendered output is
+ * indistinguishable to the user — but built without React because Next.js
+ * 14 disallows `react-dom/server` in Route Handlers.
  */
-function wrapChrome(inner: string): string {
+function renderResultPage(input: { apiKey: string; label: string; prefix: string }): string {
+  const label = esc(input.label);
+  const prefix = esc(input.prefix);
+  const apiKey = esc(input.apiKey);
+
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -66,7 +87,33 @@ function wrapChrome(inner: string): string {
         </nav>
       </div>
     </header>
-    <main>${inner}</main>
+    <main>
+      <div class="mx-auto max-w-2xl px-6 py-16">
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">Your new API key</h1>
+        <p class="mt-2 text-sm text-gray-500">
+          Label: <span class="font-medium text-gray-700">${label}</span>
+          <span class="text-gray-400">(prefix ${prefix}…)</span>
+        </p>
+
+        <div role="alert" class="mt-6 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3">
+          <p class="text-sm font-semibold text-yellow-900">Save this key now — it will not be shown again.</p>
+          <p class="mt-1 text-sm text-yellow-800">
+            Treat it like a password. Store it in your secrets manager. If you lose it, revoke this key and create a new one.
+          </p>
+        </div>
+
+        <div class="mt-6">
+          <label for="api-key-display" class="block text-xs font-medium uppercase tracking-wide text-gray-500">API key</label>
+          <pre id="api-key-display" class="mt-2 overflow-x-auto rounded-md border border-gray-300 bg-gray-50 px-4 py-3 font-mono text-sm text-gray-900">${apiKey}</pre>
+        </div>
+
+        <div class="mt-8 flex items-center gap-3">
+          <a href="/dashboard/api-keys" class="inline-flex items-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2">
+            I have saved this key — done
+          </a>
+        </div>
+      </div>
+    </main>
   </body>
 </html>`;
 }
@@ -130,18 +177,13 @@ export async function POST(req: NextRequest): Promise<Response> {
     prefix: string;
   };
 
-  // Render the result view to static HTML. We use renderToStaticMarkup to
-  // skip React's data-reactroot etc. — pure HTML keeps the response tiny
-  // and CSP-strict (no client hydration).
-  const inner = renderToStaticMarkup(
-    NewKeyResultView({
-      apiKey: body.key,
-      label: body.label,
-      prefix: body.prefix,
-    }),
-  );
+  const html = renderResultPage({
+    apiKey: body.key,
+    label: body.label,
+    prefix: body.prefix,
+  });
 
-  return new NextResponse(wrapChrome(inner), {
+  return new NextResponse(html, {
     status: 200,
     headers: {
       'content-type': 'text/html; charset=utf-8',
