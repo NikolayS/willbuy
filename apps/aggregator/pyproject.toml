@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "willbuy-aggregator"
+version = "0.1.0"
+description = "willbuy.dev aggregator: clusters findings + paired stats. Spec §17, §5.7, §5.6, §2 #19."
+requires-python = "==3.12.*"
+# Versions pinned per issue #31 + spec §17. DO NOT bump without a spec amendment;
+# determinism is guaranteed only within a byte-identical Docker image digest.
+dependencies = [
+  "fastembed==0.3.6",
+  "numpy==1.26.4",
+  "scipy==1.11.4",
+  "hdbscan==0.8.33",
+  "scikit-learn==1.4.2",
+  "onnxruntime==1.18.0",
+  "psycopg[binary]==3.1.18",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.2.0",
+  "pytest-cov==5.0.0",
+]
+
+[project.scripts]
+aggregator = "aggregator.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
