@@ -1,8 +1,10 @@
 // Spec §2 #14, §2 #15, §5.15 — visitor orchestrator.
 //
-// At this step (acceptance #1): a single chat() call, parse the result
-// against VisitorOutput, return ok. Transport-error and schema-repair
-// branches arrive in subsequent red→green pairs.
+// At this step (acceptance #2): up to 1 schema-repair retry. On
+// validation failure we build a FRESH-CONTEXT repair call — prior bad
+// raw output passed back as user-role content only, NEVER as an
+// assistant turn — and retry once. The 2-repair upper bound and the
+// transport-error branch arrive in subsequent acceptance pairs.
 
 import { createHash } from 'node:crypto';
 
@@ -10,7 +12,11 @@ import type { LLMProvider } from '@willbuy/llm-adapter';
 import { VisitorOutput } from '@willbuy/shared';
 import type { BackstoryT, VisitorOutputT } from '@willbuy/shared';
 
-import { buildDynamicTail, buildStaticPrefix } from './prompt.js';
+import {
+  buildDynamicTail,
+  buildRepairTail,
+  buildStaticPrefix,
+} from './prompt.js';
 
 export type VisitStatus = 'ok' | 'failed';
 export type VisitFailureReason = 'schema' | 'transport' | 'cap';
@@ -33,6 +39,13 @@ export interface RunVisitOptions {
 // Spec §2 #15 — the visitor call is capped at 800 output tokens.
 const MAX_OUTPUT_TOKENS = 800;
 
+// Spec §2 #14: up to 2 schema-repair retries. With the initial attempt
+// that's 3 chat() calls maximum per visit (repair_generation = 0, 1, 2).
+// At this acceptance step we only need >= 1 to drive the test green;
+// acceptance #3 raises this to the spec maximum and adds the failed/
+// schema return path.
+const MAX_REPAIR_GENERATION = 1;
+
 // Spec §5.15 + issue #9: logical_request_key for the visit-kind call is
 // sha256(visitId || provider.name() || 'visit' || repair_generation).
 // Repair_generation increments on each schema-repair retry, yielding a
@@ -54,28 +67,87 @@ export function computeLogicalRequestKey(
   return h.digest('hex');
 }
 
+function tryParse(
+  raw: string,
+):
+  | { ok: true; parsed: VisitorOutputT }
+  | { ok: false; error: string } {
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(raw);
+  } catch (err) {
+    return {
+      ok: false,
+      error: `JSON.parse failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  const result = VisitorOutput.safeParse(candidate);
+  if (result.success) {
+    return { ok: true, parsed: result.data };
+  }
+  // Compact zod issue summary — keeps the repair prompt small. Each issue
+  // becomes "<path>: <message>" so the model can target the failing field.
+  const summary = result.error.issues
+    .map((iss) => `${iss.path.join('.') || '<root>'}: ${iss.message}`)
+    .join('; ');
+  return { ok: false, error: summary };
+}
+
 export async function runVisit(opts: RunVisitOptions): Promise<VisitResult> {
   const staticPrefix = buildStaticPrefix();
-  const dynamicTail = buildDynamicTail(opts.backstory, opts.pageSnapshot);
-  const logicalRequestKey = computeLogicalRequestKey(
-    opts.visitId,
-    opts.provider.name(),
-    0,
-  );
+  const providerName = opts.provider.name();
 
-  const chatResult = await opts.provider.chat({
-    staticPrefix,
-    dynamicTail,
-    logicalRequestKey,
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
-  });
+  let attempts = 0;
+  let lastRaw = '';
+  let lastValidationError = '';
 
-  const candidate: unknown = JSON.parse(chatResult.raw);
-  const parsed = VisitorOutput.parse(candidate);
+  for (
+    let repairGeneration = 0;
+    repairGeneration <= MAX_REPAIR_GENERATION;
+    repairGeneration += 1
+  ) {
+    const dynamicTail =
+      repairGeneration === 0
+        ? buildDynamicTail(opts.backstory, opts.pageSnapshot)
+        : buildRepairTail(
+            opts.backstory,
+            opts.pageSnapshot,
+            lastRaw,
+            lastValidationError,
+          );
+
+    const logicalRequestKey = computeLogicalRequestKey(
+      opts.visitId,
+      providerName,
+      repairGeneration,
+    );
+
+    attempts += 1;
+    const chatResult = await opts.provider.chat({
+      staticPrefix,
+      dynamicTail,
+      logicalRequestKey,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+    });
+
+    const parsed = tryParse(chatResult.raw);
+    if (parsed.ok) {
+      return {
+        status: 'ok',
+        parsed: parsed.parsed,
+        raw: chatResult.raw,
+        attempts,
+      };
+    }
+
+    lastRaw = chatResult.raw;
+    lastValidationError = parsed.error;
+  }
+
   return {
-    status: 'ok',
-    parsed,
-    raw: chatResult.raw,
-    attempts: 1,
+    status: 'failed',
+    attempts,
+    failure_reason: 'schema',
+    raw: lastRaw,
   };
 }

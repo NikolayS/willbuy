@@ -6,11 +6,21 @@
 // carve-out (the actual cache marker wiring is Sprint-2; here we just
 // guarantee determinism).
 //
-// The dynamic tail (per-visit) carries the persona-specific payload.
-// At this step the orchestrator only ever issues a single chat() call
-// per visit; the repair-tail builder lands with acceptance #2.
+// The dynamic tail (per-visit) and the repair tail (per-repair) carry
+// the persona-specific and prior-bad-output payloads. Per spec §2 #14
+// + §5.15, schema-repair retries are FRESH-CONTEXT calls: the prior
+// raw output is passed BACK as user-role content with a correction
+// instruction, NEVER as an assistant-role turn. This module builds
+// only user-role strings; the assertion that no assistant turn ever
+// reaches the model is therefore structural.
 
 import type { BackstoryT } from '@willbuy/shared';
+
+// Sentinel that lets tests grep the repair tail unambiguously to assert
+// the prior bad output is present as user content (not assistant role).
+// Public — used by tests in this package.
+export const PRIOR_BAD_OUTPUT_MARKER = 'PRIOR_BAD_OUTPUT_BEGIN';
+export const PRIOR_BAD_OUTPUT_END_MARKER = 'PRIOR_BAD_OUTPUT_END';
 
 // Spec §2 #14 carve-out: production prompt copy is tuned in the Sprint-3
 // 5-page benchmark. v0.1 ships a placeholder that is deterministic and
@@ -69,5 +79,32 @@ export function buildDynamicTail(
     '',
     'PAGE_SNAPSHOT:',
     pageSnapshot,
+  ].join('\n');
+}
+
+export function buildRepairTail(
+  backstory: BackstoryT,
+  pageSnapshot: string,
+  priorRawOutput: string,
+  validationError: string,
+): string {
+  // The repair payload is a SINGLE user-role string. The prior bad output
+  // is embedded between explicit markers so the model parses it as data,
+  // not as a continuation of its own prior turn. Per spec §2 #14 we never
+  // emit an assistant role — the orchestrator only ever calls chat() with
+  // staticPrefix + dynamicTail (one user payload), and chat() at the
+  // adapter level builds a single user-role message from those.
+  return [
+    buildDynamicTail(backstory, pageSnapshot),
+    '',
+    'PRIOR_ATTEMPT_FAILED_VALIDATION:',
+    `validation_error: ${validationError}`,
+    PRIOR_BAD_OUTPUT_MARKER,
+    priorRawOutput,
+    PRIOR_BAD_OUTPUT_END_MARKER,
+    '',
+    'Re-emit a fresh JSON object that obeys the VisitorOutput schema.',
+    'Do NOT echo the prior attempt. Do NOT reference your earlier output.',
+    'Output exactly one valid JSON object.',
   ].join('\n');
 }
