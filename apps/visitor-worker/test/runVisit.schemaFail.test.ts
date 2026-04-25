@@ -45,18 +45,34 @@ describe('runVisit — acceptance #3: invalid 3 times → failed/schema', () => 
 
     // Spec §5.15: each schema-repair generation gets a NEW logical key.
     // Three calls → three distinct keys, each matching the canonical
-    // sha256(visitId || providerName || 'visit' || generation) form.
+    // sha256(visit_id || provider || model || 'visit' || generation) form
+    // — model component added per issue #23 / B1.
     const keys = provider.calls.map((c) => c.logicalRequestKey);
     expect(new Set(keys).size).toBe(3);
 
     expect(keys[0]).toBe(
-      computeLogicalRequestKey('visit-acc-3', provider.name(), 0),
+      computeLogicalRequestKey(
+        'visit-acc-3',
+        provider.name(),
+        provider.model(),
+        0,
+      ),
     );
     expect(keys[1]).toBe(
-      computeLogicalRequestKey('visit-acc-3', provider.name(), 1),
+      computeLogicalRequestKey(
+        'visit-acc-3',
+        provider.name(),
+        provider.model(),
+        1,
+      ),
     );
     expect(keys[2]).toBe(
-      computeLogicalRequestKey('visit-acc-3', provider.name(), 2),
+      computeLogicalRequestKey(
+        'visit-acc-3',
+        provider.name(),
+        provider.model(),
+        2,
+      ),
     );
   });
 });

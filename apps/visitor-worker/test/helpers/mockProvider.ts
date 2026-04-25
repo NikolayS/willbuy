@@ -19,6 +19,7 @@ export interface RecordedChat {
 
 export interface MockProviderOptions {
   name?: string;
+  model?: string;
   capabilities?: LLMProviderCapabilities;
   responses: ReadonlyArray<LLMChatResult>;
 }
@@ -27,11 +28,13 @@ export class MockProvider implements LLMProvider {
   readonly calls: RecordedChat[] = [];
   private readonly responses: ReadonlyArray<LLMChatResult>;
   private readonly providerName: string;
+  private readonly modelName: string;
   private readonly caps: LLMProviderCapabilities;
 
   constructor(opts: MockProviderOptions) {
     this.responses = opts.responses;
     this.providerName = opts.name ?? 'mock-provider';
+    this.modelName = opts.model ?? 'mock-model';
     this.caps = opts.capabilities ?? {
       idempotency: false,
       zero_retention: false,
@@ -42,6 +45,9 @@ export class MockProvider implements LLMProvider {
 
   name(): string {
     return this.providerName;
+  }
+  model(): string {
+    return this.modelName;
   }
   capabilities(): LLMProviderCapabilities {
     return this.caps;

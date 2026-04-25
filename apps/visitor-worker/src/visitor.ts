@@ -1,10 +1,11 @@
 // Spec §2 #14, §2 #15, §5.15 — visitor orchestrator.
 //
-// At this step (acceptance #2): up to 1 schema-repair retry. On
-// validation failure we build a FRESH-CONTEXT repair call — prior bad
-// raw output passed back as user-role content only, NEVER as an
-// assistant turn — and retry once. The 2-repair upper bound and the
-// transport-error branch arrive in subsequent acceptance pairs.
+// On schema-validation failure we build a FRESH-CONTEXT repair call —
+// prior bad raw output passed back as user-role content only, NEVER as
+// an assistant turn — and retry up to MAX_REPAIR_GENERATION times. Each
+// repair generation gets a NEW logical_request_key (§5.15 line 253 form
+// `sha256(visit_id || provider || model || 'visit' || repair_generation)`);
+// transport retries inside the adapter share the key.
 
 import { createHash } from 'node:crypto';
 
@@ -43,20 +44,27 @@ const MAX_OUTPUT_TOKENS = 800;
 // that's 3 chat() calls maximum per visit (repair_generation = 0, 1, 2).
 const MAX_REPAIR_GENERATION = 2;
 
-// Spec §5.15 + issue #9: logical_request_key for the visit-kind call is
-// sha256(visitId || provider.name() || 'visit' || repair_generation).
+// Spec §5.15 line 253 + §5.1 step 7 line 131 + §2 #15:
+//   logical_request_key = sha256(
+//     visit_id || provider || model || request_kind || repair_generation
+//   )
 // Repair_generation increments on each schema-repair retry, yielding a
 // distinct logical key per generation; transport retries inside the
-// adapter share the key.
+// adapter share the key. The `model` component (added per issue #23 / B1)
+// guards the §5.15 collision case where a model bump on the same provider
+// would otherwise reuse a provider-side Idempotency-Key.
 export function computeLogicalRequestKey(
   visitId: string,
   providerName: string,
+  modelName: string,
   repairGeneration: number,
 ): string {
   const h = createHash('sha256');
   h.update(visitId);
   h.update('|');
   h.update(providerName);
+  h.update('|');
+  h.update(modelName);
   h.update('|');
   h.update('visit');
   h.update('|');
@@ -93,6 +101,11 @@ function tryParse(
 export async function runVisit(opts: RunVisitOptions): Promise<VisitResult> {
   const staticPrefix = buildStaticPrefix();
   const providerName = opts.provider.name();
+  // Spec §5.15: pin the model identity once per visit so all repair
+  // generations of one visit hash against the same model. A mid-visit
+  // env-var bump would otherwise produce non-comparable keys across
+  // generation 0 / 1 / 2 of the SAME logical visit.
+  const modelName = opts.provider.model();
 
   let attempts = 0;
   let lastRaw = '';
@@ -116,6 +129,7 @@ export async function runVisit(opts: RunVisitOptions): Promise<VisitResult> {
     const logicalRequestKey = computeLogicalRequestKey(
       opts.visitId,
       providerName,
+      modelName,
       repairGeneration,
     );
 

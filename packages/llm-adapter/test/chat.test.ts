@@ -124,6 +124,42 @@ describe('LocalCliProvider — chat() acceptance #3: logical_request_key passthr
   });
 });
 
+describe('LocalCliProvider — chat() acceptance #3b: model passthrough (issue #23 / B1, spec §5.15)', () => {
+  it('passes provider.model() through to the subprocess as WILLBUY_LLM_MODEL env var', async () => {
+    const recorderPath = join(workDir, 'recorder.jsonl');
+    const counterPath = join(workDir, 'counter.txt');
+
+    const prev = process.env.WILLBUY_LLM_MODEL;
+    process.env.WILLBUY_LLM_MODEL = 'local-cli/test-model';
+    try {
+      const provider = new LocalCliProvider({
+        argv: RECORD_BIN,
+        env: {
+          WILLBUY_TEST_COUNTER: counterPath,
+          WILLBUY_TEST_RECORDER: recorderPath,
+        },
+      });
+
+      await provider.chat({
+        staticPrefix: 'P',
+        dynamicTail: 'T',
+        logicalRequestKey: 'lk-model-test',
+        maxOutputTokens: 800,
+      });
+
+      const lines = readFileSync(recorderPath, 'utf8').trim().split('\n');
+      const first = JSON.parse(lines[0]!);
+      expect(first.model).toBe('local-cli/test-model');
+    } finally {
+      if (prev === undefined) {
+        delete process.env.WILLBUY_LLM_MODEL;
+      } else {
+        process.env.WILLBUY_LLM_MODEL = prev;
+      }
+    }
+  });
+});
+
 describe('LocalCliProvider — chat() acceptance #4: error paths', () => {
   it('subprocess exit non-zero → status="error", raw is empty', async () => {
     const provider = new LocalCliProvider({
