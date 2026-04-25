@@ -117,28 +117,37 @@ def cluster_findings(strings: Sequence[str]) -> list[Cluster]:
     import hdbscan  # noqa: WPS433 — heavy import, kept local.
 
     # Per spec §17 + §5.7.
-    # random_state=42: required by spec §17 verbatim; technically a no-op for
-    # the deterministic EOM selection path but present for explicit spec alignment.
-    # metric='cosine': spec §17 verbatim. Amendment A2 documents why euclidean on
-    # L2-normalized vectors is mathematically equivalent, BUT hdbscan 0.8.33 routes
-    # metric='euclidean' through _hdbscan_prims_kdtree → sklearn KDTree.__init__,
-    # which does NOT accept random_state as a kwarg (raises TypeError).
-    # algorithm='generic': hdbscan 0.8.33 default algorithm='best' selects
-    # boruvka_balltree for cosine, but sklearn's BallTree raises
-    # ValueError: Unrecognized metric 'euclidean' through _hdbscan_prims_kdtree
-    # (the old B5 bug) or ValueError: Unrecognized metric 'cosine' via BallTree.
-    # Forcing algorithm='generic' uses sklearn.metrics.pairwise.pairwise_distances
-    # which supports cosine AND forwards random_state correctly. See B5 fix + B8.
+    # metric='cosine' (spec §17 verbatim): we precompute the cosine distance
+    # matrix ourselves and pass metric='precomputed' to HDBSCAN.  This sidesteps
+    # two cascading incompatibilities in hdbscan 0.8.33 + scikit-learn 1.4.2:
+    #   B5: metric='euclidean' → _hdbscan_prims_kdtree → KDTree.__init__() does
+    #       not accept random_state → TypeError.
+    #   B8a: metric='cosine' + algorithm='best' → boruvka_balltree → BallTree
+    #        does not recognise 'cosine' → ValueError.
+    #   B8b: metric='cosine' + algorithm='generic' → _hdbscan_generic calls
+    #        pairwise_distances(X, metric='cosine', random_state=42) →
+    #        cosine_distances() does not accept random_state → TypeError.
+    # Precomputing avoids all three paths; hdbscan treats the input as an
+    # already-computed distance matrix and never calls any sklearn metric fn.
+    # Vectors are already L2-normalised by _embed, so
+    #   cosine_distance(u, v) = 1 - dot(u, v) = 1 - u @ v.T
+    # random_state=42: required by spec §17; safe here because with
+    # metric='precomputed' hdbscan does not forward it to any distance fn.
+    dot = embeddings @ embeddings.T
+    dot = np.clip(dot, -1.0, 1.0)
+    dist_matrix = (1.0 - dot).astype(np.float64)
+    # Ensure exact zero on the diagonal (floating-point noise guard).
+    np.fill_diagonal(dist_matrix, 0.0)
+
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=3,
         min_samples=3,
         cluster_selection_method="eom",
         approx_min_span_tree=False,
-        metric="cosine",  # spec §17 verbatim; see A2 + B5 fix for euclidean rationale
-        algorithm="generic",  # B8: force _hdbscan_generic; BallTree does not support cosine
-        random_state=42,
+        metric="precomputed",  # distance matrix supplied above; see B5/B8 comment
+        random_state=42,       # spec §17 verbatim; no-op for EOM path but kept for alignment
     )
-    labels = clusterer.fit_predict(embeddings)
+    labels = clusterer.fit_predict(dist_matrix)
 
     # Build cluster groups, ordered by label encounter — HDBSCAN labels are
     # arbitrary integers; we re-id by the lowest member index in each cluster

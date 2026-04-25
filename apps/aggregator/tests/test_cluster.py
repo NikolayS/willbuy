@@ -95,16 +95,22 @@ def test_cluster_findings_handles_empty_and_tiny_inputs() -> None:
 
 
 def test_hdbscan_metric_is_cosine_not_euclidean() -> None:
-    """B5 — HDBSCAN must be called with metric='cosine', not 'euclidean'.
+    """B5 — HDBSCAN must NOT use metric='euclidean'.
 
-    hdbscan 0.8.33 routes metric='euclidean' through sklearn KDTree which
-    does not accept random_state=42, raising TypeError. The cosine path
-    (_hdbscan_generic) does accept it.
+    hdbscan 0.8.33 has cascading incompatibilities (B5, B8a, B8b) with both
+    metric='euclidean' and metric='cosine' when passed directly.  The accepted
+    implementation uses metric='precomputed' with a cosine distance matrix that
+    is computed manually (1 − dot-product of L2-normalised embeddings), which
+    avoids all BallTree/KDTree routing issues.
 
     B7 fix: use AST inspection rather than a string search so that comments
     or docstrings mentioning 'euclidean' do not trigger a false positive.
     We walk the AST and find the actual ``metric`` keyword argument in the
     ``HDBSCAN(...)`` constructor call.
+
+    Accepted values: 'cosine' (direct — future-proof) or 'precomputed'
+    (manual cosine distance matrix — current workaround for hdbscan 0.8.33).
+    Rejected: 'euclidean' (causes TypeError with random_state=42 via KDTree).
     """
     import ast
     import inspect
@@ -126,10 +132,10 @@ def test_hdbscan_metric_is_cosine_not_euclidean() -> None:
                     if kw.arg == "metric":
                         if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
                             found_metric = kw.value.value
-    assert found_metric == "cosine", (
-        f"expected metric='cosine' in HDBSCAN call, got {found_metric!r} — "
-        "hdbscan 0.8.33 routes metric='euclidean' through KDTree which rejects "
-        "random_state=42 (see amendment A2 follow-on 2026-04-25 and B5 fix)"
+    assert found_metric in ("cosine", "precomputed"), (
+        f"expected metric='cosine' or metric='precomputed' in HDBSCAN call, "
+        f"got {found_metric!r} — 'euclidean' causes TypeError with random_state=42 "
+        "via KDTree in hdbscan 0.8.33 (see B5 fix, B8 precomputed workaround)"
     )
 
 
