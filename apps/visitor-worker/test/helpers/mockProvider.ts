@@ -46,7 +46,6 @@ export class MockProvider implements LLMProvider {
   capabilities(): LLMProviderCapabilities {
     return this.caps;
   }
-  // eslint-disable-next-line @typescript-eslint/require-await
   async chat(opts: LLMChatOptions): Promise<LLMChatResult> {
     this.calls.push({
       staticPrefix: opts.staticPrefix,
