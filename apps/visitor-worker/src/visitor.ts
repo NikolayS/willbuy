@@ -41,10 +41,7 @@ const MAX_OUTPUT_TOKENS = 800;
 
 // Spec §2 #14: up to 2 schema-repair retries. With the initial attempt
 // that's 3 chat() calls maximum per visit (repair_generation = 0, 1, 2).
-// At this acceptance step we only need >= 1 to drive the test green;
-// acceptance #3 raises this to the spec maximum and adds the failed/
-// schema return path.
-const MAX_REPAIR_GENERATION = 1;
+const MAX_REPAIR_GENERATION = 2;
 
 // Spec §5.15 + issue #9: logical_request_key for the visit-kind call is
 // sha256(visitId || provider.name() || 'visit' || repair_generation).
