@@ -32,4 +32,9 @@ describe('VisitorOutput (spec §2 #15)', () => {
     const outOfRange = { ...validFixture, will_to_buy: 11 };
     expect(() => VisitorOutput.parse(outOfRange)).toThrow();
   });
+
+  it('rejects a wrong enum value for next_action', () => {
+    const wrongEnum = { ...validFixture, next_action: 'signup_free' };
+    expect(() => VisitorOutput.parse(wrongEnum)).toThrow();
+  });
 });
