@@ -99,23 +99,37 @@ def test_hdbscan_metric_is_cosine_not_euclidean() -> None:
 
     hdbscan 0.8.33 routes metric='euclidean' through sklearn KDTree which
     does not accept random_state=42, raising TypeError. The cosine path
-    (_hdbscan_generic) does accept it. This test ensures the config is safe
-    by inspecting the source directly AND running HDBSCAN end-to-end with
-    random_state=42 and asserting no TypeError is raised.
+    (_hdbscan_generic) does accept it.
+
+    B7 fix: use AST inspection rather than a string search so that comments
+    or docstrings mentioning 'euclidean' do not trigger a false positive.
+    We walk the AST and find the actual ``metric`` keyword argument in the
+    ``HDBSCAN(...)`` constructor call.
     """
+    import ast
     import inspect
     import aggregator.cluster as cluster_mod
 
-    source = inspect.getsource(cluster_mod)
-    # Must NOT contain metric='euclidean' in an hdbscan.HDBSCAN() call.
-    assert 'metric="euclidean"' not in source, (
-        "cluster.py must not use metric='euclidean' — "
-        "hdbscan 0.8.33 routes that through KDTree which rejects random_state=42 "
-        "(see amendment A2 follow-on 2026-04-25 and B5 fix)"
-    )
-    assert "metric='euclidean'" not in source, (
-        "cluster.py must not use metric='euclidean' — "
-        "hdbscan 0.8.33 routes that through KDTree which rejects random_state=42"
+    src = inspect.getsource(cluster_mod)
+    tree = ast.parse(src)
+    found_metric = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = (
+                func.attr if isinstance(func, ast.Attribute)
+                else func.id if isinstance(func, ast.Name)
+                else None
+            )
+            if name == "HDBSCAN":
+                for kw in node.keywords:
+                    if kw.arg == "metric":
+                        if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                            found_metric = kw.value.value
+    assert found_metric == "cosine", (
+        f"expected metric='cosine' in HDBSCAN call, got {found_metric!r} — "
+        "hdbscan 0.8.33 routes metric='euclidean' through KDTree which rejects "
+        "random_state=42 (see amendment A2 follow-on 2026-04-25 and B5 fix)"
     )
 
 
