@@ -16,7 +16,8 @@ describe('VisitorOutput (spec §2 #15)', () => {
   });
 
   it('rejects when a required field is missing', () => {
-    const { reasoning: _omit, ...withoutReasoning } = validFixture;
+    const withoutReasoning: Record<string, unknown> = { ...validFixture };
+    delete withoutReasoning['reasoning'];
     expect(() => VisitorOutput.parse(withoutReasoning)).toThrow();
   });
 
