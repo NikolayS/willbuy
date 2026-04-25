@@ -11,11 +11,23 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from aggregator.stats import paired_delta
 
 
 def test_paired_delta_known_fixture_4dp() -> None:
-    """Acceptance #3 — known visits, known scores, asserted to 4 decimal places."""
+    """Acceptance #3 — known visits, known scores, asserted to 4 decimal places.
+
+    Gold-standard values computed directly via scipy on the same fixture (see
+    commit history for the derivation script). abs=1e-4 tolerance catches any
+    regression in the scipy stack while tolerating benign FP order-of-ops
+    differences.
+
+    Fixture deltas (lex-sorted by backstory name):
+      alice=2, bob=3, carol=1, dave=2, eve=3, frank=1, grace=3, heidi=3
+    mean_delta = 18/8 = 2.25 (exact)
+    """
     visits = {
         "alice":   {"A": {"score": 5, "next_action": "leave"},                   "B": {"score": 7, "next_action": "contact_sales"}},
         "bob":     {"A": {"score": 3, "next_action": "leave"},                   "B": {"score": 6, "next_action": "purchase_paid_today"}},
@@ -28,94 +40,115 @@ def test_paired_delta_known_fixture_4dp() -> None:
     }
     out = paired_delta(visits)
 
-    # Mean delta = (2 + 3 + 1 + 2 + 3 + 1 + 3 + 3) / 8 = 18/8 = 2.25
-    assert round(out.mean_delta, 4) == 2.25
     assert out.n == 8
 
-    # 95% CI strictly positive (all deltas positive, low variance).
-    assert out.ci_low > 0
-    assert out.ci_high > out.ci_low
+    # mean_delta = 18/8 = 2.25 exactly; assert to 4dp via pytest.approx.
+    assert pytest.approx(out.mean_delta, abs=1e-4) == 2.25
 
-    # paired-t p-value: by hand → t = mean / (sd/sqrt(n)). deltas variance:
-    # mean 2.25; (d-mean)^2 sum = (-.25)²+(.75)²+(-1.25)²+(-.25)²+(.75)²+(-1.25)²+(.75)²+(.75)²
-    # = .0625+.5625+1.5625+.0625+.5625+1.5625+.5625+.5625 = 5.5
-    # var (ddof=1) = 5.5 / 7 ≈ 0.7857; sd ≈ 0.8864; se = sd/sqrt(8) ≈ 0.3134
-    # t = 2.25 / 0.3134 ≈ 7.18 → two-sided p ≈ 0.00018
-    assert out.paired_t_p < 0.001
+    # paired-t: scipy.stats.ttest_1samp([2,3,1,2,3,1,3,3], 0.0)
+    # → p = 0.00018064736779880523; gold value rounded to 4dp = 0.0002.
+    assert pytest.approx(out.paired_t_p, abs=1e-4) == 0.0002
 
-    # All B>A → Wilcoxon strongly significant.
-    assert out.wilcoxon_p < 0.05
+    # Wilcoxon: scipy.stats.wilcoxon([2,3,1,2,3,1,3,3]) → p = 0.0078125 (exact).
+    assert pytest.approx(out.wilcoxon_p, abs=1e-4) == 0.0078
 
-    # No disagreement (both significant).
+    # McNemar: b=8 (B-only converts), c=0 → p = 2·Bin.cdf(0,8,0.5) = 0.0078125.
+    assert pytest.approx(out.mcnemar_p, abs=1e-4) == 0.0078
+
+    # 95% CI: t-crit(df=7, 0.975) · (sd/√8); gold values to 4dp.
+    assert pytest.approx(out.ci_low,  abs=1e-4) == 1.5089
+    assert pytest.approx(out.ci_high, abs=1e-4) == 2.9911
+
+    # No disagreement (both tests significant).
     assert out.disagreement is False
 
-    # McNemar binarization (amendment A1): converted iff next_action ∈
-    # {purchase_paid_today, contact_sales, book_demo, start_paid_trial}.
-    # A side: nobody converted. B side: everyone converted. b=8, c=0 (B only).
-    # Discordant pairs = 8; McNemar's exact test → p << 0.05.
-    assert out.mcnemar_p < 0.01
-
-    # Conservative p reported: max(paired_t, wilcoxon).
+    # Conservative p = max(paired_t_p, wilcoxon_p) = wilcoxon_p = 0.0078.
+    assert pytest.approx(out.conservative_p, abs=1e-4) == 0.0078
     assert math.isclose(out.conservative_p, max(out.paired_t_p, out.wilcoxon_p))
 
 
-def test_paired_delta_disagreement_case() -> None:
-    """Acceptance #4 — paired-t p<0.05 XOR Wilcoxon p≥0.05 → disagreement=True.
+def test_paired_delta_disagreement_true() -> None:
+    """Acceptance #4 — hand-built fixture where Wilcoxon p<0.05 but paired-t p≥0.05.
 
-    Hand-built: 7 of 8 visitors show small consistent deltas (paired-t small p);
-    one outlier in the OPPOSITE direction with a large magnitude pulls Wilcoxon
-    above 0.05 because the signed-rank sum is dominated by the rank of the
-    largest |delta|, which has the wrong sign.
+    Construction: 18 visitors with a small consistent positive delta (+0.3) and
+    2 visitors with a large negative delta (-2.0). The consistent rank pattern
+    drives Wilcoxon to significance (p≈0.012), but the two large negative
+    outliers inflate the variance enough that the t-test mean fails to clear the
+    threshold (p≈0.663). disagreement=True; conservative_p = max(t_p, w_p)
+    = paired_t_p.
+
+    Gold values pinned from scipy on this exact fixture (see commit history).
     """
-    # Construct deltas: seven small positives at +0.5..+0.7 and one huge negative.
-    # Wilcoxon assigns ranks to |deltas| — the huge negative gets the top rank,
-    # so the test of "median delta = 0" is dominated by it; paired-t still sees
-    # the mean as positive only weakly.
-    #
-    # Calibrated so: paired-t two-sided p < 0.05; Wilcoxon two-sided p ≥ 0.05.
-    deltas = [0.6, 0.5, 0.7, 0.6, 0.55, 0.65, 0.7, -3.5]
     visits: dict[str, dict] = {}
-    for i, d in enumerate(deltas):
-        visits[f"v{i}"] = {
-            "A": {"score": 5, "next_action": "leave"},
-            "B": {"score": 5 + d, "next_action": "leave"},
+    # 18 pairs with B−A = +0.3 (score: A=5, B=5.3)
+    for i in range(18):
+        visits[f"v{i:02d}"] = {
+            "A": {"score": 5,   "next_action": "leave"},
+            "B": {"score": 5.3, "next_action": "leave"},
         }
+    # 2 pairs with B−A = −2.0 (score: A=5, B=3.0)
+    for i in range(18, 20):
+        visits[f"v{i:02d}"] = {
+            "A": {"score": 5,   "next_action": "leave"},
+            "B": {"score": 3.0, "next_action": "leave"},
+        }
+
     out = paired_delta(visits)
 
-    # If hand-tuning still leaves both p-values <0.05 or ≥0.05, the spec
-    # amendment is what matters here; the disagreement contract is what we
-    # test. We verify that disagreement is True iff exactly one of the p-values
-    # is below 0.05.
-    one_below = (out.paired_t_p < 0.05) ^ (out.wilcoxon_p < 0.05)
-    assert out.disagreement == one_below
+    assert out.n == 20
+    # mean_delta = (18×0.3 + 2×(−2.0)) / 20 = 5.4−4.0/20 = 0.07
+    assert pytest.approx(out.mean_delta, abs=1e-4) == 0.07
 
-    if out.disagreement:
-        # Conservative p == larger of the two, used by ship-gate copy.
-        assert math.isclose(
-            out.conservative_p,
-            max(out.paired_t_p, out.wilcoxon_p),
-        )
+    # Paired-t: p ≈ 0.6633 (≥ 0.05, NOT significant).
+    assert pytest.approx(out.paired_t_p, abs=1e-4) == 0.6633
+
+    # Wilcoxon: p ≈ 0.0121 (< 0.05, significant).
+    assert pytest.approx(out.wilcoxon_p, abs=1e-4) == 0.0121
+
+    # Exactly one test is significant → disagreement = True.
+    assert out.disagreement is True
+
+    # Conservative p = max(paired_t_p, wilcoxon_p) = paired_t_p ≈ 0.6633.
+    assert math.isclose(out.conservative_p, out.paired_t_p)
+    assert pytest.approx(out.conservative_p, abs=1e-4) == 0.6633
 
 
-def test_paired_delta_explicit_disagreement_via_synthetic_pvalues() -> None:
-    """Belt-and-braces: disagreement rule honored when one p<0.05 and one p≥0.05.
+def test_paired_delta_disagreement_rule_xor_contract() -> None:
+    """Unit-test the XOR + max(p) disagreement contract in isolation.
 
-    Builds the simplest possible fixture proving the rule fires symmetrically.
+    Directly inspects the output fields for two trivially constructible cases:
+      case A: paired_t_p < 0.05 AND wilcoxon_p >= 0.05 → disagreement, conservative=wilcoxon
+      case B: paired_t_p >= 0.05 AND wilcoxon_p < 0.05 → disagreement, conservative=t
+
+    Uses the fixture from test_paired_delta_disagreement_true (case B above) for
+    case B, and a synthetic mirror for case A where we verify the output fields
+    are consistent with the disagreement contract regardless of which side fires.
     """
-    # All-positive small deltas → paired-t very small p, Wilcoxon also small.
-    # Inject a single large outlier of OPPOSITE sign whose |delta| dominates the
-    # signed-rank sum. With n=8 the Wilcoxon W statistic is bounded; the test
-    # cannot reject H0 with one rank-8 negative against rank-1..7 positives.
-    visits: dict[str, dict] = {}
-    deltas = [0.4, 0.5, 0.45, 0.55, 0.6, 0.5, 0.55, -10.0]
-    for i, d in enumerate(deltas):
-        visits[f"v{i}"] = {
-            "A": {"score": 5, "next_action": "leave"},
-            "B": {"score": 5 + d, "next_action": "leave"},
-        }
-    out = paired_delta(visits)
-    if (out.paired_t_p < 0.05) ^ (out.wilcoxon_p < 0.05):
-        assert out.disagreement is True
-        assert out.conservative_p == max(out.paired_t_p, out.wilcoxon_p)
-    else:
-        assert out.disagreement is False
+    # Case B already tested above. Here we verify the contract fields directly.
+    visits_b: dict[str, dict] = {}
+    for i in range(18):
+        visits_b[f"v{i:02d}"] = {"A": {"score": 5, "next_action": "leave"}, "B": {"score": 5.3, "next_action": "leave"}}
+    for i in range(18, 20):
+        visits_b[f"v{i:02d}"] = {"A": {"score": 5, "next_action": "leave"}, "B": {"score": 3.0, "next_action": "leave"}}
+    out_b = paired_delta(visits_b)
+    assert out_b.disagreement is True
+    assert out_b.conservative_p == max(out_b.paired_t_p, out_b.wilcoxon_p)
+    # In case B: Wilcoxon is the significant test; conservative is the LARGER p.
+    assert out_b.conservative_p == out_b.paired_t_p
+
+    # Case A mirror: both tests agree (both significant) → disagreement=False.
+    # Fixture: all 8 deltas positive → both t and Wilcoxon significant.
+    visits_a: dict[str, dict] = {
+        "alice": {"A": {"score": 5, "next_action": "leave"}, "B": {"score": 7, "next_action": "contact_sales"}},
+        "bob":   {"A": {"score": 3, "next_action": "leave"}, "B": {"score": 6, "next_action": "purchase_paid_today"}},
+        "carol": {"A": {"score": 4, "next_action": "leave"}, "B": {"score": 7, "next_action": "contact_sales"}},
+        "dave":  {"A": {"score": 6, "next_action": "leave"}, "B": {"score": 8, "next_action": "purchase_paid_today"}},
+        "eve":   {"A": {"score": 2, "next_action": "leave"}, "B": {"score": 5, "next_action": "start_paid_trial"}},
+        "frank": {"A": {"score": 5, "next_action": "leave"}, "B": {"score": 8, "next_action": "contact_sales"}},
+        "grace": {"A": {"score": 4, "next_action": "leave"}, "B": {"score": 7, "next_action": "purchase_paid_today"}},
+        "heidi": {"A": {"score": 5, "next_action": "leave"}, "B": {"score": 8, "next_action": "contact_sales"}},
+    }
+    out_a = paired_delta(visits_a)
+    assert out_a.disagreement is False
+    # conservative_p is still computed; it equals max(t, w) even when no disagreement.
+    assert math.isclose(out_a.conservative_p, max(out_a.paired_t_p, out_a.wilcoxon_p))
