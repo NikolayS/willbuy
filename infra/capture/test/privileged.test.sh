@@ -98,6 +98,12 @@ ip -n "$CAPTURE_NS" link set "$VETH_CAPTURE" up
 ip -n "$TARGET_NS"  link set lo up
 ip -n "$CAPTURE_NS" link set lo up
 
+# Default route for the capture netns via the target netns. Without this,
+# attempts to reach an off-net destination (e.g. 169.254.169.254 or 10.0.0.5)
+# return EHOSTUNREACH BEFORE iptables ever sees the packet — and the DROP
+# counter would stay at 0 even though our rule is correct.
+ip -n "$CAPTURE_NS" route add default via "$TARGET_HOST_IP"
+
 # 2. Start a tiny HTTP fixture in the target netns.
 ip netns exec "$TARGET_NS" python3 -m http.server 80 --bind "$TARGET_HOST_IP" \
   >/dev/null 2>&1 &
