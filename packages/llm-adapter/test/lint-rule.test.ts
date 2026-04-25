@@ -16,9 +16,8 @@ const repoRoot = resolve(here, '..', '..', '..');
 
 function lintFile(relPath: string): { code: number; stdout: string; stderr: string } {
   const result = spawnSync(
-    'pnpm',
+    'bunx',
     [
-      'exec',
       'eslint',
       '--config',
       'eslint.fixtures.config.mjs',

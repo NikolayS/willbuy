@@ -111,6 +111,12 @@ Use binary units (KiB, MiB, GiB, TiB) for memory, storage, and data sizes in pro
 ## Commands you'll use a lot
 
 ```sh
+# install all deps (uses Bun — see engines.bun in package.json)
+bun install
+
+# run the full check locally before pushing
+bun run typecheck && bun run lint && bun run build && bun run test
+
 # load all secrets into local env once (saves fingerprint per run)
 OP_ACCOUNT=my.1password.com op inject -i .env.op -o .env
 

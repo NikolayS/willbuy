@@ -5,7 +5,7 @@ import { captureUrl } from '../src/capture.js';
  * Live-network smoke test, gated by SMOKE_URL. Skipped by default so
  * CI doesn't reach out to the public internet on every PR.
  *
- *   SMOKE_URL=https://example.com pnpm --filter @willbuy/capture-worker run smoke
+ *   SMOKE_URL=https://example.com bun --cwd apps/capture-worker run smoke
  *
  * Inside the hardened container the equivalent invocation (docker line
  * pasted in the PR description) runs the same vitest target.
