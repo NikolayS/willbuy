@@ -406,7 +406,7 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
     expect(withTokenRes.headers['location']).toBe(`/r/${String(studyId)}`);
     const cookies = withTokenRes.headers['set-cookie'];
     const cookieArr = Array.isArray(cookies) ? cookies : cookies ? [cookies] : [];
-    const shareC = cookieArr.find((c: string) => c.startsWith(`willbuy_share_${String(studyId)}=`));
+    const shareC = cookieArr.find((c: string) => c.startsWith(`wb_rt_${String(studyId)}=`));
     expect(shareC).toBeTruthy();
     expect(shareC).toMatch(/HttpOnly/i);
   });
