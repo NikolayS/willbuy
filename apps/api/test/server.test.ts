@@ -19,6 +19,7 @@ describe('GET /health (spec §4.1)', () => {
         STRIPE_PRICE_ID_STARTER: 'price_not_used',
         STRIPE_PRICE_ID_GROWTH: 'price_not_used',
         STRIPE_PRICE_ID_SCALE: 'price_not_used',
+        SHARE_TOKEN_HMAC_KEY: 'dev-only-share-token-hmac-key-not-for-production-use',
       },
     });
   });

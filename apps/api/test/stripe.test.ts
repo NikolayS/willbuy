@@ -189,6 +189,7 @@ describeIfDocker('Stripe Checkout + webhook (issue #36, real DB)', () => {
         STRIPE_PRICE_ID_STARTER: 'price_test_starter_1000',
         STRIPE_PRICE_ID_GROWTH: 'price_test_growth_4000',
         STRIPE_PRICE_ID_SCALE: 'price_test_scale_15000',
+        SHARE_TOKEN_HMAC_KEY: 'dev-only-share-token-hmac-key-not-for-production-use',
       },
       stripe: buildStripeStub(),
     });

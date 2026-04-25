@@ -66,8 +66,8 @@ export async function buildServer(opts: BuildServerOptions): Promise<FastifyInst
   // Wire authenticated routes.
   await registerStudiesRoutes(app, pool, opts.env);
 
-  // Wire public report route.
-  await registerReportsRoutes(app, pool);
+  // Wire public report route (§5.12 share-token cookie redirect, issue #76).
+  await registerReportsRoutes(app, pool, opts.env.SHARE_TOKEN_HMAC_KEY);
 
   // Wire Stripe Checkout (authenticated) + webhook (unauthenticated) routes (§4.1, issue #36).
   await registerCheckoutRoutes(app, pool, opts.env, stripe);

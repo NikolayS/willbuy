@@ -28,6 +28,15 @@ export const EnvSchema = z.object({
   // Optional redirect URLs for Stripe Checkout (defaults are set in checkout.ts).
   STRIPE_SUCCESS_URL: z.string().url().optional(),
   STRIPE_CANCEL_URL: z.string().url().optional(),
+  // Share-token HMAC signing key (§5.12, issue #76).
+  // Used to sign opaque cookie values that represent a validated share token.
+  // Must be ≥ 32 hex chars. Loaded from 1Password in production:
+  //   op://willbuy/share-token-hmac-key/credential
+  // The default is a dev-only placeholder — override in production via op inject.
+  SHARE_TOKEN_HMAC_KEY: z
+    .string()
+    .min(32, 'SHARE_TOKEN_HMAC_KEY must be at least 32 chars (spec §5.12)')
+    .default('dev-only-share-token-hmac-key-not-for-production-use'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
