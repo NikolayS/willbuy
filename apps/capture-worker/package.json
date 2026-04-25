@@ -8,15 +8,20 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit --pretty",
-    "test": "vitest run --exclude test/smoke.test.ts",
+    "test": "vitest run --exclude test/smoke.test.ts --exclude test/integration.test.ts",
+    "test:integration": "vitest run test/integration.test.ts",
     "smoke": "vitest run test/smoke.test.ts"
   },
   "dependencies": {
+    "pg": "^8.20.0",
     "playwright": "1.45.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/pg": "^8.20.0",
+    "@willbuy/capture-broker": "workspace:*",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "zod": "^3.23.0"
   }
 }
