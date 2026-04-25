@@ -12,8 +12,8 @@
 
 // @vitest-environment jsdom
 
-import { describe, expect, it, beforeAll, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, expect, it, beforeAll, afterEach, vi } from 'vitest';
+import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import { Report, type ReportT } from '@willbuy/shared/report';
 import fixtureJson from './fixtures/report.fixture.json';
 import disagreementJson from './fixtures/report.disagreement.fixture.json';
@@ -45,6 +45,15 @@ beforeAll(() => {
 
 const fixture = Report.parse(fixtureJson) satisfies ReportT;
 const disagreementFixture = Report.parse(disagreementJson) satisfies ReportT;
+
+// React Testing Library mounts into document.body and does NOT auto-clean
+// between tests when used in vitest without the auto-cleanup hook (we
+// don't import @testing-library/jest-dom). Manual cleanup keeps each
+// `it` independent — otherwise testid lookups across tests fail with
+// "Found multiple elements".
+afterEach(() => {
+  cleanup();
+});
 
 describe('§5.18 — report visualization', () => {
   it('1. all 7 elements render with the fixture report payload', () => {
@@ -80,10 +89,9 @@ describe('§5.18 — report visualization', () => {
     expect(banner.textContent).toMatch(/0\.092/);
 
     // Negative case: the happy-path fixture has agreement and shows no banner.
-    const { queryByTestId } = render(
-      <ReportView report={fixture} mode="dashboard" />,
-    );
-    expect(queryByTestId('disagreement-banner')).toBeNull();
+    cleanup();
+    render(<ReportView report={fixture} mode="dashboard" />);
+    expect(screen.queryByTestId('disagreement-banner')).toBeNull();
   });
 
   it('3. CSP §5.10: no inline <script> emitted by any rendered component', () => {

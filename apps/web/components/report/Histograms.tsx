@@ -1,0 +1,62 @@
+'use client';
+
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+
+import type { ReportT, VariantId } from './types';
+
+// Spec §5.18 #3 — discrete 0–10 will-to-buy bins per variant; mean and
+// median annotated. Side-by-side; overlay toggle is v0.1.1 (out of scope).
+
+const VARIANT_COLOR: Record<VariantId, string> = {
+  A: '#475569', // slate
+  B: '#16a34a', // green (matches dot-plot "B wins")
+};
+
+function HistOne({ row }: { row: ReportT['histograms'][number] }) {
+  const data = row.bins.map((count, score) => ({ score, count }));
+  return (
+    <div
+      data-testid={`histogram-${row.variant}`}
+      className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+    >
+      <div className="flex items-baseline justify-between">
+        <h3 className="font-semibold text-gray-900">Variant {row.variant}</h3>
+        <span className="text-xs text-gray-600">
+          mean {row.mean.toFixed(2)} · median {row.median}
+        </span>
+      </div>
+      <div className="mt-2 h-48 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="score" tickCount={11} />
+            <YAxis allowDecimals={false} />
+            <Tooltip contentStyle={{ fontSize: 12 }} />
+            <Bar dataKey="count" fill={VARIANT_COLOR[row.variant]} />
+            <ReferenceLine x={row.mean} stroke="#dc2626" strokeDasharray="4 2" />
+            <ReferenceLine x={row.median} stroke="#2563eb" strokeDasharray="2 2" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+export function Histograms({ histograms }: { histograms: ReportT['histograms'] }) {
+  return (
+    <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {histograms.map((h) => (
+        <HistOne key={h.variant} row={h} />
+      ))}
+    </section>
+  );
+}
