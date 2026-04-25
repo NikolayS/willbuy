@@ -1,7 +1,8 @@
 /**
- * stripe.test.ts — TDD acceptance suite for issue #36.
+ * stripe.test.ts — TDD acceptance suite for issues #36 and #73.
  *
  * Tests §5.6 credit-pack tiers, §16 idempotent webhook, §4.1 Stripe Checkout.
+ * Issue #73 adds: Stripe try/catch hardening (502 on StripeAPIError).
  *
  * Real-DB integration via startPostgres helper.
  * Stripe API calls are stubbed — no real Stripe API calls in CI.
@@ -17,7 +18,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { Client } from 'pg';
-import type Stripe from 'stripe';
+import Stripe from 'stripe';
 
 import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgres.js';
 import { buildServer } from '../src/server.js';
@@ -189,6 +190,7 @@ describeIfDocker('Stripe Checkout + webhook (issue #36, real DB)', () => {
         STRIPE_PRICE_ID_STARTER: 'price_test_starter_1000',
         STRIPE_PRICE_ID_GROWTH: 'price_test_growth_4000',
         STRIPE_PRICE_ID_SCALE: 'price_test_scale_15000',
+        SHARE_TOKEN_HMAC_KEY: 'dev-only-share-token-hmac-key-not-for-production-use',
       },
       stripe: buildStripeStub(),
     });
@@ -380,4 +382,111 @@ describeIfDocker('Stripe Checkout + webhook (issue #36, real DB)', () => {
       await client.end();
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #73 — Stripe try/catch hardening (no Docker required).
+//
+// Verifies that when stripe.checkout.sessions.create throws a StripeAPIError,
+// POST /checkout/sessions returns 502 with a generic user-facing message and
+// does NOT leak internal Stripe error details to the client.
+// ---------------------------------------------------------------------------
+
+describe('Stripe checkout error-handling (issue #73)', () => {
+  let app: FastifyInstance;
+  const apiKey = 'sk_live_stripe_error_test_key_73xx';
+  const sha256hex = (s: string) => createHash('sha256').update(s).digest('hex');
+
+  beforeAll(async () => {
+    // Start a real Postgres via Docker if available; otherwise skip.
+    // This block is guarded by the same dockerAvailable flag used above.
+  });
+
+  // Use a separate describe that is conditionally skipped based on Docker.
+  it.skipIf(!dockerAvailable)(
+    'POST /checkout/sessions returns 502 when stripe.checkout.sessions.create throws StripeAPIError',
+    async () => {
+      // Build a stub Stripe that throws StripeAPIError on checkout creation.
+      const stripeErr = new Stripe.errors.StripeAPIError({
+        message: 'stripe internal details that must not leak',
+        type: 'api_error',
+      });
+
+      const throwingStripe = {
+        checkout: {
+          sessions: {
+            create: async () => {
+              throw stripeErr;
+            },
+          },
+        },
+        webhooks: {
+          constructEvent: () => {
+            throw new Error('not used in this test');
+          },
+        },
+      } as unknown as Stripe;
+
+      // Spin up a fresh server instance for this test.
+      const pg = await startPostgres({ containerPrefix: 'willbuy-stripe-err-test-' });
+      try {
+        // Apply migrations.
+        const migFiles = readdirSync(migrationsDir)
+          .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+          .sort();
+        const pgClient = new Client({ connectionString: pg.url });
+        await pgClient.connect();
+        for (const f of migFiles) {
+          await pgClient.query(readFileSync(resolve(migrationsDir, f), 'utf8'));
+        }
+        await pgClient.end();
+
+        // Seed account + api-key.
+        const seedClient = new Client({ connectionString: pg.url });
+        await seedClient.connect();
+        const acc = await seedClient.query<{ id: string }>(
+          `INSERT INTO accounts (owner_email) VALUES ('err-test@example.com') RETURNING id`,
+        );
+        await seedClient.query(
+          `INSERT INTO api_keys (account_id, key_hash, prefix) VALUES ($1, $2, $3)`,
+          [String(acc.rows[0]!.id), sha256hex(apiKey), 'sk_live_se'],
+        );
+        await seedClient.end();
+
+        app = await buildServer({
+          env: {
+            PORT: 0,
+            LOG_LEVEL: 'silent',
+            URL_HASH_SALT: 'x'.repeat(32),
+            DATABASE_URL: pg.url,
+            DAILY_CAP_CENTS: 10_000,
+            STRIPE_SECRET_KEY: 'sk_test_fake_not_used_because_stub_injected',
+            STRIPE_WEBHOOK_SECRET: 'whsec_not_used',
+            STRIPE_PRICE_ID_STARTER: 'price_test_starter',
+            STRIPE_PRICE_ID_GROWTH: 'price_test_growth',
+            STRIPE_PRICE_ID_SCALE: 'price_test_scale',
+            SHARE_TOKEN_HMAC_KEY: 'x'.repeat(64),
+          },
+          stripe: throwingStripe,
+        });
+
+        const res = await app.inject({
+          method: 'POST',
+          url: '/checkout/sessions',
+          headers: { authorization: `Bearer ${apiKey}` },
+          payload: { pack_id: 'starter' },
+        });
+
+        // Must return 502, not 500 and not a Stripe internal message.
+        expect(res.statusCode).toBe(502);
+        const body = res.json() as { error: string };
+        expect(body.error).toBe('payment provider unavailable, try again');
+        // Stripe internal message must NOT appear in the response body.
+        expect(res.body).not.toContain('stripe internal details that must not leak');
+      } finally {
+        await app?.close();
+        stopPostgres(pg.container);
+      }
+    },
+  );
 });

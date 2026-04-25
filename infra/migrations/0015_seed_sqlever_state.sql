@@ -1,0 +1,23 @@
+-- 0015_seed_sqlever_state.sql — one-shot state seed for NikolayS/sqlever (issue #48, amendment A4).
+--
+-- Context: PR #46 landed a bash migrate.sh that tracked applied migrations in
+-- _migrations(filename, checksum, applied_at). Amendment A4 (2026-04-24)
+-- replaces the bash runner with NikolayS/sqlever, which tracks state in the
+-- sqitch.* schema (sqitch.changes, sqitch.events, sqitch.projects).
+--
+-- For databases that ran the old bash runner (i.e. _migrations is already
+-- populated with rows 0000–0013), sqlever would otherwise try to re-apply
+-- every migration on the first `sqlever deploy` run.
+--
+-- This migration seeds sqlever's sqitch.* state tables with one row per
+-- existing _migrations entry so that sqlever sees 0000–0013 as already
+-- deployed and only applies genuinely new migrations going forward.
+--
+-- Idempotency: the INSERT uses ON CONFLICT DO NOTHING, so re-running this
+-- migration on a database that already has the sqitch.* rows is a no-op.
+-- The sqlever deploy scripts (infra/sqlever/deploy/) use IF NOT EXISTS /
+-- ON CONFLICT guards on all schema DDL, so they are also safe to re-run.
+--
+-- NOTE: This file is intentionally kept in infra/migrations/ so that the
+-- legacy _migrations table (and test assertions that count .sql files there)
+-- continues to reflect the full migration history.
