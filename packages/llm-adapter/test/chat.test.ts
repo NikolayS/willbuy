@@ -177,10 +177,15 @@ describe('LocalCliProvider — chat() acceptance #4: error paths', () => {
     expect(result.raw).toBe('');
   });
 
-  it('subprocess timeout → status="error" and the process is killed', async () => {
+  it('subprocess timeout → status="indeterminate" and the process is killed', async () => {
+    // Issue #27 / spec §5.15: an adapter-fired SIGKILL on timeout maps to
+    // `maybe_executed` — the request may have reached the model. For an
+    // idempotency:false provider, we classify indeterminate (no retry;
+    // pessimistic spend reservation; reconciliation resolves later).
     const provider = new LocalCliProvider({
       argv: SLEEP_BIN,
       timeoutMs: 250,
+      backoffMs: [0, 0, 0],
     });
 
     const start = Date.now();
@@ -192,7 +197,7 @@ describe('LocalCliProvider — chat() acceptance #4: error paths', () => {
     });
     const elapsed = Date.now() - start;
 
-    expect(result.status).toBe('error');
+    expect(result.status).toBe('indeterminate');
     expect(result.raw).toBe('');
     // Should resolve well before vitest's per-test timeout, proving the
     // adapter actually killed the child rather than waiting on EOF.
