@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, copyFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startPostgres, stopPostgres } from './helpers/start-postgres.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -15,85 +16,6 @@ const dockerCheck = spawnSync('docker', ['version', '--format', '{{.Server.Versi
 });
 const dockerAvailable = dockerCheck.status === 0;
 const describeIfDocker = dockerAvailable ? describe : describe.skip;
-
-// S-NB2: pin by digest; matches scripts/migrate.sh fallback image.
-const PG_IMAGE = 'postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50';
-const PG_PASSWORD = 'willbuy_test_pw';
-const CONTAINER_PREFIX = 'willbuy-migrate-test-';
-
-function uid(): string {
-  return `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-}
-
-function dockerRun(args: string[]): { code: number; stdout: string; stderr: string } {
-  const r = spawnSync('docker', args, { encoding: 'utf8' });
-  return { code: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-}
-
-function findFreePort(): number {
-  // Pick a random ephemeral port; let docker bind it. If conflict, retry once.
-  return 30000 + Math.floor(Math.random() * 30000);
-}
-
-async function startPostgres(): Promise<{ container: string; port: number; url: string }> {
-  const container = CONTAINER_PREFIX + uid();
-  let port = findFreePort();
-  let attempts = 0;
-  let started = false;
-  let lastErr = '';
-  while (attempts < 3 && !started) {
-    const r = dockerRun([
-      'run',
-      '-d',
-      '--rm',
-      '--name',
-      container,
-      // Faster startup: trust-mode skips md5 auth handshake during initdb.
-      '-e', `POSTGRES_PASSWORD=${PG_PASSWORD}`,
-      '-e', 'POSTGRES_INITDB_ARGS=--auth-host=trust',
-      // POSTGRES_SHARED_BUFFERS is not a valid postgres env var — postgres reads
-      // shared_buffers from postgresql.conf or -c flag, not from the environment.
-      // 128 MB is the default anyway; dropped (issue #62).
-      '--shm-size=256m',
-      '-p', `${port}:5432`,
-      PG_IMAGE,
-    ]);
-    if (r.code === 0) {
-      started = true;
-    } else {
-      lastErr = r.stderr;
-      port = findFreePort();
-      attempts += 1;
-    }
-  }
-  if (!started) {
-    throw new Error(`failed to start postgres container: ${lastErr}`);
-  }
-
-  // Wait strategy: first poll docker logs for the canonical "ready to accept connections"
-  // line — this fires only after initdb + WAL recovery completes, eliminating the race
-  // where pg_isready returns 0 during startup but before the postmaster accepts SQL.
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    const logs = dockerRun(['logs', container]);
-    const combined = logs.stdout + logs.stderr;
-    if (combined.includes('database system is ready to accept connections')) {
-      // Secondary sanity: confirm the port is actually accepting connections.
-      const ready = dockerRun(['exec', container, 'pg_isready', '-U', 'postgres']);
-      if (ready.code === 0) {
-        const url = `postgres://postgres:${PG_PASSWORD}@127.0.0.1:${port}/postgres`;
-        return { container, port, url };
-      }
-    }
-    await new Promise((res) => setTimeout(res, 300));
-  }
-  dockerRun(['rm', '-f', container]);
-  throw new Error('postgres container did not become ready in 60s');
-}
-
-function stopPostgres(container: string): void {
-  dockerRun(['rm', '-f', container]);
-}
 
 function runMigrate(opts: {
   databaseUrl: string;
@@ -132,7 +54,7 @@ describeIfDocker('migrations runner', () => {
   let workDir: string;
 
   beforeAll(async () => {
-    pg = await startPostgres();
+    pg = await startPostgres({ containerPrefix: 'willbuy-migrate-test-' });
     workDir = mkdtempSync(join(tmpdir(), 'willbuy-mig-'));
   }, 60_000);
 
