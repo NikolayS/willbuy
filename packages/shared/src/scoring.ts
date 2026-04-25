@@ -34,7 +34,7 @@ export const PAID_TIERS: ReadonlySet<string> = new Set([
 export function scoreVisit(
   parsed: VisitorOutputT,
   tierToday?: string,
-  _considered?: string,
+  considered?: string,
 ): number {
   if (parsed.next_action === 'purchase_paid_today') return 1.0;
   if (parsed.next_action === 'contact_sales') return 0.8;
@@ -42,6 +42,9 @@ export function scoreVisit(
   if (parsed.next_action === 'start_paid_trial') return 0.6;
   if (parsed.next_action === 'bookmark_compare_later') {
     return tierToday !== undefined && PAID_TIERS.has(tierToday) ? 0.3 : 0.0;
+  }
+  if (parsed.next_action === 'start_free_hobby') {
+    return considered !== undefined && PAID_TIERS.has(considered) ? 0.2 : 0.0;
   }
   return 0.0;
 }
