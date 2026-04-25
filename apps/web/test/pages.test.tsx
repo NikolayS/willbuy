@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import LandingPage from '../app/page';
-import DashboardPage from '../app/dashboard/page';
 import ReportPage, { metadata as reportMetadata } from '../app/r/[slug]/page';
 
 describe('marketing landing — GET /', () => {
@@ -16,12 +15,9 @@ describe('marketing landing — GET /', () => {
   });
 });
 
-describe('dashboard placeholder — GET /dashboard', () => {
-  it('renders "Sign in coming soon"', () => {
-    const html = renderToStaticMarkup(<DashboardPage />);
-    expect(html).toMatch(/sign in coming soon/i);
-  });
-});
+// Dashboard rendering is covered by apps/web/test/dashboard.test.tsx (issue #80).
+// The pre-#80 placeholder ("Sign in coming soon") was retired when the real
+// server-component dashboard landed.
 
 describe('public report — GET /r/[slug]', () => {
   it('renders a "not found" body when no report exists for the slug', async () => {
