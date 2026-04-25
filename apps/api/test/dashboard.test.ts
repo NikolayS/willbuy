@@ -56,9 +56,13 @@ async function applyMigrations(url: string): Promise<void> {
 // Stub Resend client; magic-link endpoint isn't exercised here but buildServer
 // requires one.
 function buildStubResend(): ResendClient {
+  let callCount = 0;
   return {
+    get callCount() {
+      return callCount;
+    },
     async sendMagicLink() {
-      // no-op
+      callCount += 1;
     },
   };
 }

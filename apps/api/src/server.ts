@@ -16,6 +16,7 @@ import { registerReportsRoutes } from './routes/reports.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerCheckoutRoutes } from './routes/checkout.js';
 import { registerStripeWebhookRoute } from './routes/stripe-webhook.js';
+import { registerDashboardRoutes } from './routes/dashboard.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // dist/ when built, src/ when run via tsx — both are one level below apps/api.
@@ -98,6 +99,9 @@ export async function buildServer(opts: BuildServerOptions): Promise<FastifyInst
 
   // Wire auth routes (magic-link sign-in, issue #79).
   await registerAuthRoutes(app, pool, env, resend);
+
+  // Wire account-dashboard routes (session-cookie auth, issue #80).
+  await registerDashboardRoutes(app, pool, env);
 
   // Wire authenticated routes.
   await registerStudiesRoutes(app, pool, env);
