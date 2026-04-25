@@ -15,6 +15,7 @@ import { registerStudiesRoutes } from './routes/studies.js';
 import { registerReportsRoutes } from './routes/reports.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerCheckoutRoutes } from './routes/checkout.js';
+import { registerDomainsRoutes } from './routes/domains.js';
 import { registerStripeWebhookRoute } from './routes/stripe-webhook.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -98,6 +99,9 @@ export async function buildServer(opts: BuildServerOptions): Promise<FastifyInst
 
   // Wire auth routes (magic-link sign-in, issue #79).
   await registerAuthRoutes(app, pool, env, resend);
+
+  // Wire domain verification routes (issue #82, §2 #1).
+  await registerDomainsRoutes(app, pool, env);
 
   // Wire authenticated routes.
   await registerStudiesRoutes(app, pool, env);
