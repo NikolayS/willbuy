@@ -1,9 +1,9 @@
 /**
  * Custom ESLint rule: bans the reserved continuation identifiers from
- * spec §2 #15 (`conversation_id`, `session_id`, `thread_id`,
+ * spec §2 #12 (`conversation_id`, `session_id`, `thread_id`,
  * `previous_response_id`, `cached_prompt_id`, `parent_message_id`,
- * `run_id`) ANYWHERE in the repo, with a single allow-list line for the
- * rule definition itself.
+ * `context_id`, `assistant_id`, `run_id`) ANYWHERE in the repo, with a
+ * single allow-list line for the rule definition itself.
  *
  * The rule walks the AST (typescript-eslint extends ESLint's AST so we
  * can intercept TS-only nodes the same way we intercept regular ones),
@@ -23,7 +23,7 @@
  * Issue #5 acceptance #6.
  */
 
-// Spec §2 #15. Keep the list narrow — it is the authoritative set the rule
+// Spec §2 #12. Keep the list narrow — it is the authoritative set the rule
 // blocks. The amendments file may add provider-specific aliases later;
 // when that happens, add them here, NOT in a separate config knob (the
 // rule is the single source of truth and reviewers grep for this list).
@@ -34,6 +34,8 @@ const FORBIDDEN = new Set([
   'previous_response_id',
   'cached_prompt_id',
   'parent_message_id',
+  'context_id',
+  'assistant_id',
   'run_id',
 ]);
 
@@ -64,12 +66,12 @@ const rule = {
     type: 'problem',
     docs: {
       description:
-        'Disallow reserved LLM continuation identifiers (spec §2 #15) anywhere in source — fresh-context guarantee.',
+        'Disallow reserved LLM continuation identifiers (spec §2 #12) anywhere in source — fresh-context guarantee.',
     },
     schema: [],
     messages: {
       banned:
-        "Reserved LLM continuation identifier '{{name}}' is forbidden anywhere in the repo (spec §2 #15 fresh-context guarantee). Use logical_request_key + transport_attempts instead.",
+        "Reserved LLM continuation identifier '{{name}}' is forbidden anywhere in the repo (spec §2 #12 fresh-context guarantee). Use logical_request_key + transport_attempts instead.",
     },
   },
   create(context) {

@@ -72,6 +72,22 @@ describe('willbuy/no-reserved-llm-identifiers — forbidden fixtures', () => {
     expect(out.stdout + out.stderr).toMatch(/no-reserved-llm-identifiers/);
     expect(out.stdout + out.stderr).toMatch(/run_id/);
   });
+
+  // Issue #20: `context_id` and `assistant_id` were missing from the FORBIDDEN
+  // Set (spec §2 #12 lists 9 identifiers; implementation had only 7).
+  it('flags `context_id` as an object-literal property key (issue #20)', () => {
+    const out = lintFile('packages/llm-adapter/lint-fixtures/forbidden-context-id.ts');
+    expect(out.code, `expected non-zero; got ${out.code}\n${out.stdout}\n${out.stderr}`).not.toBe(0);
+    expect(out.stdout + out.stderr).toMatch(/no-reserved-llm-identifiers/);
+    expect(out.stdout + out.stderr).toMatch(/context_id/);
+  });
+
+  it('flags `assistant_id` as a TS interface property signature (issue #20)', () => {
+    const out = lintFile('packages/llm-adapter/lint-fixtures/forbidden-assistant-id.ts');
+    expect(out.code, `expected non-zero; got ${out.code}\n${out.stdout}\n${out.stderr}`).not.toBe(0);
+    expect(out.stdout + out.stderr).toMatch(/no-reserved-llm-identifiers/);
+    expect(out.stdout + out.stderr).toMatch(/assistant_id/);
+  });
 });
 
 describe('willbuy/no-reserved-llm-identifiers — clean fixture', () => {

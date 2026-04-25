@@ -42,7 +42,7 @@ PRs that introduce behavior without a test will be sent back. PRs that add a tes
 - **Don't add error handling for impossible cases.** If a caller is internal and a value is guaranteed non-null by upstream code, don't add `if (x == null) throw` defensively.
 - **Don't add features the issue didn't ask for.** Bug fixes don't need surrounding cleanup. One-shot operations don't need helpers. No backwards-compat shims when you can just change the caller.
 - **No `--no-sandbox` for Chromium.** Ever. There's a CI grep-lint enforcing this.
-- **No reserved identifiers at LLM adapter call sites or in adapter type definitions.** Spec §2 #15 lists them; an AST lint enforces. If your code grep-matches `conversation_id|session_id|thread_id|previous_response_id|cached_prompt_id|parent_message_id|run_id` near an LLM call, you'll fail CI — by design, to preserve the fresh-context guarantee.
+- **No reserved identifiers at LLM adapter call sites or in adapter type definitions.** Spec §2 #12 lists them; an AST lint enforces. If your code grep-matches `conversation_id|session_id|thread_id|previous_response_id|cached_prompt_id|parent_message_id|context_id|assistant_id|run_id` near an LLM call, you'll fail CI — by design, to preserve the fresh-context guarantee.
 - **All LLM calls go through `LLMProvider` (chat) — only.** No direct subprocess to a CLI from worker code; no direct HTTP to a provider. The adapter is the seam where capability flags, idempotency keys, prompt-caching prefix isolation, and spend ledger writes happen. Bypassing the adapter breaks every guarantee in the spec at once.
 - **Embeddings are local in-process** via `fastembed` (`BAAI/bge-small-en-v1.5`). No external embedding provider, no API key, no adapter. Spec §17.
 

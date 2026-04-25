@@ -188,3 +188,19 @@ This matrix is passed to HDBSCAN as `metric='precomputed'`. With `metric='precom
 **Constraints.** (a) ZFS dataset properties: `recordsize=8K` (matches Postgres page size), `compression=lz4`, `atime=off`, `logbias=throughput`, `primarycache=metadata` per the postgres-ai standard ZFS-for-Postgres tuning. (b) WAL on a separate dataset with `recordsize=128K` is preferred but not blocking. (c) DBLab is not in the request hot path — it's a developer/CI primitive only; production reads/writes go straight to the primary Postgres instance. (d) Backup story: ZFS snapshots `+` `zfs send` to off-host storage, replacing whatever pg_dump cron we would otherwise run. (e) Capacity sizing on CPX21 (40 GB SSD) is tight for ZFS; the migration may bundle a VM upsize if monitoring shows the ARC + branching headroom is insufficient.
 
 **Tracking.** Issue #49 (PR set on cutover). Spec future rev folds the ZFS + DBLab deployment into §5.6 and adds a §10 amendment around test-time branching.
+
+---
+
+## 2026-04-25 — A6: `packages/adapters` renamed to `packages/llm-adapter`; forbidden identifiers inlined in `eslint-rule.js`
+
+**Affects:** §2 #12 (`packages/adapters/**` AST scope, `packages/adapters/forbidden-keys.ts` location), §6 (`packages/adapters/forbidden-keys.ts` reference).
+
+**Driver:** Sprint 1 implementation simplification — a single workspace with a single `eslint-rule.js` is shorter than a separate `forbidden-keys.ts` module that the rule has to import. Spec was written before the simpler shape was clear.
+
+**Amendment.** Wherever the spec says `packages/adapters/`, read `packages/llm-adapter/`. The forbidden identifier list lives inline in `packages/llm-adapter/eslint-rule.js` (the `FORBIDDEN` Set constant) instead of a separate `forbidden-keys.ts` file. AST lint scope is unchanged: still scans all TS files in `packages/llm-adapter/**` for forbidden identifier usage as keys, properties, parameters, and imports.
+
+**What is NOT changed.** The 9-identifier list itself (now correct after this PR per BD-1 fix: `conversation_id`, `session_id`, `thread_id`, `previous_response_id`, `cached_prompt_id`, `parent_message_id`, `context_id`, `assistant_id`, `run_id`), the AST-vs-grep authoritative ordering, the CI failure semantics on lint hit, the LLMProvider interface contract.
+
+**Constraints.** Adding more provider adapters in the future (e.g. a hypothetical OpenAI HTTP adapter) MUST live in `packages/llm-adapter/` and inherit the same `eslint-rule.js` Set. If a separate provider package is ever needed, the `eslint-rule.js` Set should be extracted to a shared module first.
+
+**Tracking.** PR #N (set on merge), issue #20.
