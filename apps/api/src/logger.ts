@@ -14,7 +14,6 @@ const REMOVE_FIELDS = new Set([
   'provider_payload',
   'password',
 ]);
-const URL_FIELD = 'url';
 const API_KEY_FIELD = 'api_key';
 
 export function hashUrl(salt: string, url: string): string {
