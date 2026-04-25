@@ -7,5 +7,6 @@
     "types": ["node"]
   },
   "include": ["tests/**/*", "scripts/**/*", "*.config.ts", "*.config.mjs"],
-  "exclude": ["node_modules", "dist", "build", ".next", "coverage", "tests/lint-fixtures"]
+  "exclude": ["node_modules", "dist", "build", ".next", "coverage", "tests/lint-fixtures"],
+  "references": [{ "path": "./apps/api" }]
 }
