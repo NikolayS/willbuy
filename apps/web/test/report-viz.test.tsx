@@ -18,6 +18,7 @@ import { Report, type ReportT } from '@willbuy/shared/report';
 import fixtureJson from './fixtures/report.fixture.json';
 import disagreementJson from './fixtures/report.disagreement.fixture.json';
 import { ReportView } from '../components/report/ReportView';
+import { PairedDots } from '../components/report/PairedDots';
 import { exportElementToPng } from '../lib/png-export';
 
 // Recharts uses ResizeObserver + element.getBoundingClientRect; jsdom
@@ -158,5 +159,23 @@ describe('§5.18 — report visualization', () => {
     render(<ReportView report={lowPowerFixture} mode="dashboard" />);
     const banner = screen.getByTestId('low-power-banner');
     expect(banner.textContent).toMatch(/low.power/i);
+  });
+
+  it('F1 — paired-dot plot renders one SVG <line> connector per backstory (§5.18 #2)', () => {
+    // Spec §5.18 #2: "Per-visitor dots showing A-score vs B-score with a
+    // thin connecting segment." The connector is the entire point of the
+    // paired-dot design — without it the viewer sees two disconnected
+    // scatter fields that don't make the per-backstory pairing legible.
+    //
+    // We render PairedDots directly with the fixture's paired_dots rows
+    // and assert that the DOM contains one <line> element per backstory.
+    const { container } = render(<PairedDots rows={fixture.paired_dots} />);
+    const lines = container.querySelectorAll('line[data-connector]');
+    // One connector line per backstory row.
+    expect(lines.length).toBe(fixture.paired_dots.length);
+    // Each line should carry the swing class for its coloring.
+    for (const line of lines) {
+      expect(line.getAttribute('stroke')).toBeTruthy();
+    }
   });
 });
