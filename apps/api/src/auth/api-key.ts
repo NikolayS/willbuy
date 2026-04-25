@@ -53,16 +53,27 @@ export function buildApiKeyMiddleware(pool: Pool) {
 
     const keyHash = sha256hex(token);
 
+    // UPDATE … RETURNING in a single round trip:
+    //   - matches the active key (revoked_at IS NULL) by hash
+    //   - bumps last_used_at to now() (closes #69 F5 — the api_keys.last_used_at
+    //     column was previously never written, so the dashboard always showed
+    //     "never used" even for keys that were actively in use)
+    //   - returns the joined account fields the request handler needs
     const result = await pool.query<{
       account_id: string;
       owner_email: string;
-      verified_domains: string[];
+      verified_domains: string[] | null;
     }>(
-      `SELECT k.account_id, a.owner_email, a.verified_domains
-         FROM api_keys k
-         JOIN accounts a ON a.id = k.account_id
-        WHERE k.key_hash = $1
-          AND k.revoked_at IS NULL`,
+      `WITH bumped AS (
+          UPDATE api_keys
+             SET last_used_at = now()
+           WHERE key_hash = $1
+             AND revoked_at IS NULL
+        RETURNING account_id
+       )
+       SELECT b.account_id::text, a.owner_email, a.verified_domains
+         FROM bumped b
+         JOIN accounts a ON a.id = b.account_id`,
       [keyHash],
     );
 
