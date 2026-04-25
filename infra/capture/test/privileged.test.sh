@@ -304,30 +304,32 @@ pass "scenario 4: ${REDIR_HOST_IP} DROP'd by default policy (cross-eTLD+1 DNS pi
 
 # — Acceptance scenario 5: host-budget enforcer ———————————————
 #
-# Synthesize 60 distinct conntrack entries by sending UDP datagrams to 60
-# distinct destinations. UDP entries appear in conntrack on the FIRST
-# transmitted packet (no handshake), so we don't need to wait per-flow for
-# any reply. We use bash's built-in `/dev/udp/<host>/<port>` so there's no
-# subprocess fan-out, no `ip netns exec` orphan-process risk, and no `wait`
-# stall — the kernel routes the UDP packet, conntrack creates a tuple, and
-# bash returns immediately.
-
-# Insert 60 conntrack tuples directly via `conntrack -I`. This avoids the
-# "neighbor unreachable -> packet silently dropped before conntrack" failure
-# mode we saw on the CI runner when relying on actual TCP/UDP probes —
-# `conntrack -I` writes to the conntrack table unconditionally, which is
-# what the host-budget enforcer reads from. The check we're proving is
-# "the enforcer correctly counts distinct-host conntrack tuples and trips
-# at >50" — that contract is independent of how the tuples got there.
+# Synthesize 60 distinct conntrack entries by injecting them directly via
+# `conntrack -I`. This avoids every prior failure mode:
+#   • bash /dev/udp — hung on iptables default-deny + no-route (F6 v1)
+#   • python3 sendto — created only 1 entry; ARP for 203.0.113.{1..60}
+#     never resolved so packets never reached conntrack (F6 v2)
+#   • conntrack -I with --orig-*/--reply-* flags — those flags are filter
+#     qualifiers, not create parameters; conntrack -I silently rejected all
+#     60 calls and returned only the 2 entries from earlier scenarios (F6 v3)
+#
+# Correct conntrack -I syntax: -s/-d/--sport/--dport/-t/-u only.
+# conntrack derives the reply tuple automatically from the original direction.
+# The `|| true` is kept so a single duplicate-key collision does not abort the
+# loop; we assert the count below.
 for i in $(seq 1 60); do
-  ip netns exec "$CAPTURE_NS" conntrack -I -p udp \
-    --orig-src "$CAPTURE_HOST_IP" --orig-dst "203.0.113.${i}" \
-    --orig-port-src "$((10000 + i))" --orig-port-dst 53 \
-    --reply-src "203.0.113.${i}" --reply-dst "$CAPTURE_HOST_IP" \
-    --reply-port-src 53 --reply-port-dst "$((10000 + i))" \
-    --timeout 60 -u UNREPLIED \
+  ip netns exec "$CAPTURE_NS" conntrack -I \
+    -p udp \
+    -s "$CAPTURE_HOST_IP" -d "203.0.113.${i}" \
+    --sport "$((10000 + i))" --dport 53 \
+    -t 120 \
     >/dev/null 2>&1 || true
 done
+
+# Diagnostic: show how many conntrack entries were actually inserted so a
+# future failure is immediately debuggable without a full reproduction.
+ct_count=$(ip netns exec "$CAPTURE_NS" conntrack -L 2>/dev/null | wc -l || echo 0)
+echo "conntrack entry count before enforcer: ${ct_count}"
 
 set +e
 out=$(timeout 5 "$INFRA_DIR/host-budget-enforcer.sh" "$CAPTURE_NS" 50)
