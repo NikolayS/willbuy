@@ -170,7 +170,6 @@ function redactLabeledSecrets(
 
     // The proximity window: [sepEnd, sepEnd + LABEL_PROXIMITY_CHARS)
     const windowEnd = sepEnd + LABEL_PROXIMITY_CHARS;
-    const window = input.slice(sepEnd, windowEnd);
 
     // Find the first 32+ char blob that STARTS inside the window. We search
     // the full string from sepEnd but only accept matches that start within
