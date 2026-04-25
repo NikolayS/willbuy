@@ -122,16 +122,20 @@ def cluster_findings(strings: Sequence[str]) -> list[Cluster]:
     # metric='cosine': spec §17 verbatim. Amendment A2 documents why euclidean on
     # L2-normalized vectors is mathematically equivalent, BUT hdbscan 0.8.33 routes
     # metric='euclidean' through _hdbscan_prims_kdtree → sklearn KDTree.__init__,
-    # which does NOT accept random_state as a kwarg (raises TypeError). The cosine
-    # path routes through _hdbscan_generic which DOES accept it. Reverting to
-    # 'cosine' until upstream fixes the kwarg forwarding; see A2 follow-on
-    # 2026-04-25 in SPEC.willbuy.amendments.md (B5 fix).
+    # which does NOT accept random_state as a kwarg (raises TypeError).
+    # algorithm='generic': hdbscan 0.8.33 default algorithm='best' selects
+    # boruvka_balltree for cosine, but sklearn's BallTree raises
+    # ValueError: Unrecognized metric 'euclidean' through _hdbscan_prims_kdtree
+    # (the old B5 bug) or ValueError: Unrecognized metric 'cosine' via BallTree.
+    # Forcing algorithm='generic' uses sklearn.metrics.pairwise.pairwise_distances
+    # which supports cosine AND forwards random_state correctly. See B5 fix + B8.
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=3,
         min_samples=3,
         cluster_selection_method="eom",
         approx_min_span_tree=False,
         metric="cosine",  # spec §17 verbatim; see A2 + B5 fix for euclidean rationale
+        algorithm="generic",  # B8: force _hdbscan_generic; BallTree does not support cosine
         random_state=42,
     )
     labels = clusterer.fit_predict(embeddings)
