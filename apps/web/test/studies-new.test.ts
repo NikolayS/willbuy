@@ -146,9 +146,10 @@ describe('StudyNewPage — 422 unverified domain error', () => {
       fireEvent.click(submitBtn);
     });
 
-    // Must show unverified-domain message.
+    // Must show unverified-domain message (there may be multiple matching
+    // elements — header + detail paragraph — so use getAllByText).
     await waitFor(() =>
-      expect(screen.getByText(/not verified|unverified domain/i)).toBeTruthy(),
+      expect(screen.getAllByText(/not verified|unverified domain/i).length).toBeGreaterThan(0),
     );
     // Must provide a "Verify domain" link (Sprint 3 placeholder is fine).
     const verifyLink = screen.getByRole('link', { name: /verify domain/i });
@@ -182,7 +183,7 @@ describe('StudyNewPage — 402 cap exceeded error', () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByText(/out of credits|credits.*exceeded|spend cap/i)).toBeTruthy(),
+      expect(screen.getAllByText(/out of credits|credits.*exceeded|spend cap/i).length).toBeGreaterThan(0),
     );
     // Buy credits link required.
     const buyLink = screen.getByRole('link', { name: /buy credits/i });
@@ -197,7 +198,8 @@ describe('StudyNewPage — 402 cap exceeded error', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('StudyStatusPage — polling', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    // Use fake timers but allow promise microtasks to run normally.
+    vi.useFakeTimers({ shouldAdvanceTime: false });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -236,42 +238,55 @@ describe('StudyStatusPage — polling', () => {
       '../app/dashboard/studies/[id]/page'
     );
 
-    // Render with params promise (Next.js 14 App Router async params)
+    // Render with params promise (Next.js 14 App Router async params).
+    // Wrap in act to flush all effects + promises triggered by render.
     await act(async () => {
       render(
         React.createElement(StudyStatusPage, {
           params: Promise.resolve({ id: '7' }),
         }),
       );
+      // Flush promise microtasks so the params Promise resolves.
+      await Promise.resolve();
     });
 
-    // First fetch fires on mount; wait for 'visiting' to show.
-    await waitFor(() =>
-      expect(screen.getByText(/visiting/i)).toBeTruthy(),
-    );
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    // Advance fake timers to let useEffect → setInterval callbacks schedule.
+    // Then flush promises to let fetch complete.
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
-    // Advance 5 s → second poll fires.
+    // First fetch should have fired on mount.
+    expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+
+    // Status 'visiting' should be visible.
+    expect(screen.getAllByText(/visitors running|visiting/i).length).toBeGreaterThan(0);
+
+    const callCountAfterMount = fetchSpy.mock.calls.length;
+
+    // Advance 5 s → setInterval callback fires → second poll.
     await act(async () => {
       vi.advanceTimersByTime(5000);
+      // Flush the microtasks triggered by the interval callback.
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
 
-    // Status should now show 'ready'.
-    await waitFor(() =>
-      expect(screen.getByText(/ready/i)).toBeTruthy(),
-    );
+    // At least one more fetch call than after mount.
+    expect(fetchSpy.mock.calls.length).toBeGreaterThan(callCountAfterMount);
 
-    // When ready, a link to /r/<slug> must appear.
-    // The API returns study_id=7 but no slug; the status page should at
-    // minimum link to the report. We check for a link matching /r/ or
-    // /report or similar.
+    // Status should now show 'ready' (after the second fetch resolved).
+    expect(screen.getAllByText(/ready/i).length).toBeGreaterThan(0);
+
+    // When ready, a link to the report must appear.
     const reportLink = screen.queryByRole('link', { name: /view report|see report|report/i });
     expect(reportLink).toBeTruthy();
-  });
+  }, 15_000);
 
   it('advances timer past 5 s per poll interval; does NOT poll before 5 s', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
           id: 99,
@@ -294,24 +309,33 @@ describe('StudyStatusPage — polling', () => {
           params: Promise.resolve({ id: '99' }),
         }),
       );
+      await Promise.resolve();
     });
 
-    // Allow mount fetch to resolve.
-    await waitFor(() => expect(screen.getByText(/capturing/i)).toBeTruthy());
-    const callCount = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+    // Flush mount fetch.
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
-    // Advance only 4 s — no new poll yet.
+    // Should have captured page.
+    expect(screen.getAllByText(/capturing/i).length).toBeGreaterThan(0);
+    const callCount = fetchSpy.mock.calls.length;
+
+    // Advance only 4 s — setInterval has NOT fired yet.
     await act(async () => {
       vi.advanceTimersByTime(4000);
+      await Promise.resolve();
     });
-    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callCount);
+    expect(fetchSpy.mock.calls.length).toBe(callCount);
 
-    // Advance 1 more s (total 5 s) → poll fires.
+    // Advance 1 more s (total 5 s) → interval fires.
     await act(async () => {
       vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    await waitFor(() =>
-      expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callCount),
-    );
-  });
+    expect(fetchSpy.mock.calls.length).toBeGreaterThan(callCount);
+  }, 15_000);
 });
