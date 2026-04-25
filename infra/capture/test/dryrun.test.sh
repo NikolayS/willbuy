@@ -176,4 +176,50 @@ grep -q 'exceeds host budget' err.log \
   || fail "expected 'exceeds host budget' error; got: $(cat err.log)"
 pass "host-budget enforced at resolution time"
 
+# 9. State file must record pause_container so run-with-netns.ts can attach
+#    with --network container:<pause_container> (F1 — production wiring).
+#    In dry-run the field must still be written (even as an empty placeholder)
+#    so the TS wrapper knows the bringup contract has been met.
+grep -q '^pause_container=' "$state_dir/test_ns.state" \
+  || fail "state file missing pause_container= field (F1: docker --network container wiring)"
+pass "state file contains pause_container= field"
+
+# 10. extract_host() must appear BEFORE main() in the source (F2 — shell style).
+#     CLAUDE.md: 'Scripts with functions have main() at the bottom; last line is main "$@".'
+main_line=$(grep -n '^main()' "$INFRA_DIR/netns-bringup.sh" | tail -1 | cut -d: -f1)
+exthost_line=$(grep -n '^extract_host()' "$INFRA_DIR/netns-bringup.sh" | head -1 | cut -d: -f1)
+[[ -n "$main_line" ]]    || fail "main() not found in netns-bringup.sh"
+[[ -n "$exthost_line" ]] || fail "extract_host() not found in netns-bringup.sh"
+[[ "$exthost_line" -lt "$main_line" ]] \
+  || fail "extract_host() (line $exthost_line) must appear BEFORE main() (line $main_line) per CLAUDE.md shell style (F2)"
+pass "extract_host() is defined before main()"
+
+# 11. extract_host() must handle scheme-less inputs without emitting the full
+#     raw string — it must return an empty string (or strip to just the
+#     hostname fragment) rather than blindly propagating 'example.com/path'
+#     as a host.  A scheme-less URL like 'example.com/path?q=1#f' SHOULD
+#     return an empty string so the caller's [[ -n "$host" ]] guard triggers
+#     a clean die(), not a mysterious getent failure.
+#     (F5 — input validation on URL parsing in extract_host().)
+run_in_helpers() {
+  bash -c "
+    set -Eeuo pipefail
+    IFS=\$'\n\t'
+    helpers_src=\$(sed '\$ d' '$INFRA_DIR/netns-bringup.sh')
+    eval \"\$helpers_src\"
+    $1
+  "
+}
+scheme_less_out=$(run_in_helpers 'extract_host "example.com/path?q=1#f"')
+# Scheme-less input: extract_host should return empty string (no scheme → no host).
+[[ -z "$scheme_less_out" ]] \
+  || fail "extract_host should return empty for scheme-less input; got '$scheme_less_out' (F5)"
+pass "extract_host returns empty for scheme-less input (F5)"
+
+# Verify that a valid https URL still works.
+valid_out=$(run_in_helpers 'extract_host "https://sub.example.com:443/path?q=1#frag"')
+[[ "$valid_out" == "sub.example.com" ]] \
+  || fail "extract_host returned '$valid_out'; expected 'sub.example.com'"
+pass "extract_host handles https URL with port, path, query, fragment"
+
 printf '\nALL DRY-RUN TESTS PASSED\n'

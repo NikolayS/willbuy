@@ -110,4 +110,24 @@ for ip in 8.8.8.8 1.1.1.1 203.0.113.10 2001:db1::1 2606:4700::1; do
 done
 pass "public IPs do not match the canonical deny list"
 
+# v4_to_int input validation (F5 — defense-in-depth at trust boundary).
+# Malformed octet (> 255) must cause v4_to_int to die() rather than silently
+# computing a nonsense integer that bypasses the deny-list check.
+if run_in_helpers 'v4_to_int 999.0.0.1 2>/dev/null'; then
+  fail "v4_to_int must reject octet > 255 (got exit 0)"
+fi
+pass "v4_to_int rejects octet > 255 (F5)"
+
+# Non-numeric garbage must also be rejected.
+if run_in_helpers 'v4_to_int garbage 2>/dev/null'; then
+  fail "v4_to_int must reject non-IP input (got exit 0)"
+fi
+pass "v4_to_int rejects non-numeric input (F5)"
+
+# Fewer than 4 octets must be rejected.
+if run_in_helpers 'v4_to_int 10.0.1 2>/dev/null'; then
+  fail "v4_to_int must reject < 4 octets (got exit 0)"
+fi
+pass "v4_to_int rejects fewer than 4 octets (F5)"
+
 printf '\nALL CIDR TESTS PASSED\n'

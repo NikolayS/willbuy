@@ -41,6 +41,13 @@ readonly TARGET_NS="wb-target-test"
 readonly CAPTURE_NS="wb-capture-test"
 readonly VETH_TARGET="veth-tgt-tst"
 readonly VETH_CAPTURE="veth-cap-tst"
+# Redirect host IP — used for the F3 scenario 4 positive-control topology.
+# 198.51.100.0/24 is RFC5737 TEST-NET-2 — NOT in egress-deny.txt — so iptables
+# must DROP it via the DEFAULT POLICY, not via a CIDR rule.
+# REDIR_HOST_IP is added as a secondary address on TARGET_NS so the positive
+# control (reaching it without iptables) and the negative assertion (DROP from
+# CAPTURE_NS with default-deny) use the same address.
+readonly REDIR_HOST_IP="198.51.100.42"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -110,6 +117,10 @@ ip -n "$CAPTURE_NS" link set lo up
 # so DROP rules for RFC1918 / link-local / etc. actually fire.
 ip -n "$CAPTURE_NS" route add 198.51.100.0/24 dev "$VETH_CAPTURE"
 ip -n "$CAPTURE_NS" route add default dev "$VETH_CAPTURE"
+# Positive-control topology for scenario 4 (F3): add REDIR_HOST_IP as a
+# secondary address on TARGET_NS so we can start an HTTP server there and
+# prove connectivity WITHOUT iptables (via TARGET_NS directly).
+ip -n "$TARGET_NS" addr add "${REDIR_HOST_IP}/24" dev "$VETH_TARGET"
 
 # 2. Start a tiny HTTP fixture in the target netns.
 ip netns exec "$TARGET_NS" python3 -m http.server 80 --bind "$TARGET_HOST_IP" \
@@ -237,23 +248,59 @@ assert_unreachable v6 fd00:ec2::254 "scenario 3 (v6 cloud-metadata alias)"
 pass "scenario 3: IPv6 cloud-metadata alias DROP'd"
 
 # — Acceptance scenario 4: cross-eTLD+1 redirect re-check ————————
+#
+# Design (F3 fix): the test now has a POSITIVE CONTROL to prove that
+# 198.51.100.42 IS reachable via the network WITHOUT iptables enforcement,
+# so the subsequent DROP assertion from CAPTURE_NS distinguishes "iptables
+# blocked it" from "no route / topology gap."
+#
+# Topology: TARGET_NS has REDIR_HOST_IP (198.51.100.42) as a secondary address
+# (added above). CAPTURE_NS has an on-link route to 198.51.100.0/24 via
+# $VETH_CAPTURE, so packets sent from CAPTURE_NS reach TARGET_NS. A fixture
+# HTTP server in TARGET_NS bound to REDIR_HOST_IP serves as the reachability
+# oracle.
 
-# Build a state file as if bring-up had pinned only TARGET_HOST_IP, then
-# attempt a connection to a DIFFERENT public IP. The DROP must fire because
-# only TARGET_HOST_IP is in the allow-list.
-ip netns exec "$CAPTURE_NS" iptables -Z OUTPUT
-ip netns exec "$CAPTURE_NS" timeout 1 nc -w 1 198.51.100.42 80 </dev/null >/dev/null 2>&1 || true
-# 198.51.100.0/24 is RFC5737 docs but is NOT in our deny list, so it won't
-# match a DROP CIDR — it must be DROP'd by the DEFAULT POLICY (-P OUTPUT DROP).
-# We assert outcome (connection refused) rather than reading per-rule counters,
-# because the default-policy counter is at the table level and not directly
-# addressable by `iptables -L`.
-if ip netns exec "$CAPTURE_NS" timeout 1 \
-     python3 -c "import socket; s=socket.socket(); s.settimeout(1); s.connect(('198.51.100.42', 80))" \
-     >/dev/null 2>&1; then
-  fail "cross-eTLD+1 redirect target was reachable!"
+# Start a fixture HTTP server in TARGET_NS bound to REDIR_HOST_IP.
+ip netns exec "$TARGET_NS" python3 -m http.server 81 --bind "$REDIR_HOST_IP" \
+  >/tmp/wb-redir-fixture.log 2>&1 &
+redir_http_pid=$!; export redir_http_pid
+for _ in $(seq 1 20); do
+  if ip netns exec "$TARGET_NS" ss -ltn 2>/dev/null \
+       | awk -v ip="$REDIR_HOST_IP" '$4 == ip":81" {found=1} END {exit !found}'; then
+    break
+  fi
+  sleep 0.2
+done
+if ! ip netns exec "$TARGET_NS" ss -ltn 2>/dev/null \
+     | awk -v ip="$REDIR_HOST_IP" '$4 == ip":81" {found=1} END {exit !found}'; then
+  cat /tmp/wb-redir-fixture.log >&2 || true
+  fail "redirect fixture HTTP server failed to bind ${REDIR_HOST_IP}:81"
 fi
-pass "scenario 4: redirect target (not pre-resolved) is unreachable (DNS pinning enforced at netns)"
+
+# POSITIVE CONTROL: from TARGET_NS itself (no iptables there), reach
+# the fixture at REDIR_HOST_IP. This proves the address + server are up.
+pos_ctrl=$(ip netns exec "$TARGET_NS" timeout 2 \
+             python3 -c "
+import socket, sys
+s = socket.socket(); s.settimeout(1.5)
+s.connect(('${REDIR_HOST_IP}', 81))
+s.sendall(b'GET / HTTP/1.0\r\nHost: ${REDIR_HOST_IP}\r\n\r\n')
+sys.stdout.write('OK' if s.recv(8).startswith(b'HTTP/') else 'BAD')
+" 2>/dev/null || printf 'TIMEOUT')
+[[ "$pos_ctrl" == "OK" ]] \
+  || fail "scenario 4 positive control FAILED (${REDIR_HOST_IP}:81 unreachable from TARGET_NS; got '$pos_ctrl') — topology problem, fix before testing DROP"
+pass "scenario 4 positive control: ${REDIR_HOST_IP}:81 reachable from TARGET_NS (no iptables)"
+
+# NEGATIVE ASSERTION: CAPTURE_NS (with default-deny + allow only TARGET_HOST_IP)
+# must DROP packets to REDIR_HOST_IP even though a route exists.
+# 198.51.100.0/24 is NOT in egress-deny.txt, so the packet must hit the default
+# OUTPUT policy DROP — not a CIDR rule. We use port 81 to match the fixture.
+if ip netns exec "$CAPTURE_NS" timeout 1 \
+     python3 -c "import socket; s=socket.socket(); s.settimeout(0.5); s.connect(('${REDIR_HOST_IP}', 81))" \
+     >/dev/null 2>&1; then
+  fail "scenario 4: cross-eTLD+1 redirect target ${REDIR_HOST_IP} was reachable from CAPTURE_NS — default-deny policy not enforced!"
+fi
+pass "scenario 4: ${REDIR_HOST_IP} DROP'd by default policy (cross-eTLD+1 DNS pinning enforced)"
 
 # — Acceptance scenario 5: host-budget enforcer ———————————————
 
@@ -278,5 +325,76 @@ echo "$out" | grep -q 'breach_reason=host_count' \
 count=$(echo "$out" | sed -n 's/.*host_count=\([0-9]*\).*/\1/p')
 [[ "$count" -gt 50 ]] || fail "expected host_count > 50, got $count"
 pass "scenario 5: host-budget enforcer aborts at >50 distinct hosts (count=$count)"
+
+# — Sanity: iptables-flush causes enforced DROP to vanish (F4) ———————
+#
+# Purpose: prove the CI job has actual signal strength. We flush all rules from
+# a scratch netns (no production state), confirm a formerly-DROP'd address is
+# now REACHABLE, then restore. This guarantees the test suite FAILS when
+# iptables misconfiguration leaves rules absent.
+SANITY_NS="wb-sanity-tst"
+SANITY_TARGET="wb-sanity-tgt"
+VETH_SAN_CAP="veth-san-cap"
+VETH_SAN_TGT="veth-san-tgt"
+readonly SANITY_HOST_IP="203.0.113.200"
+readonly SANITY_CAP_IP="203.0.113.201"
+
+ip netns add "$SANITY_NS"
+ip netns add "$SANITY_TARGET"
+ip link add "$VETH_SAN_CAP" type veth peer name "$VETH_SAN_TGT"
+ip link set "$VETH_SAN_CAP" netns "$SANITY_NS"
+ip link set "$VETH_SAN_TGT" netns "$SANITY_TARGET"
+ip -n "$SANITY_NS"     addr add "${SANITY_CAP_IP}/30" dev "$VETH_SAN_CAP"
+ip -n "$SANITY_TARGET" addr add "${SANITY_HOST_IP}/30" dev "$VETH_SAN_TGT"
+ip -n "$SANITY_NS"     link set "$VETH_SAN_CAP" up
+ip -n "$SANITY_TARGET" link set "$VETH_SAN_TGT" up
+ip -n "$SANITY_NS"     link set lo up
+ip -n "$SANITY_TARGET" link set lo up
+
+# Start a fixture server in the sanity target.
+ip netns exec "$SANITY_TARGET" python3 -m http.server 80 --bind "$SANITY_HOST_IP" \
+  >/dev/null 2>&1 &
+sanity_http_pid=$!
+sleep 0.3
+[[ -d /proc/$sanity_http_pid ]] || fail "sanity fixture HTTP server failed to start"
+
+# Apply default-deny in the sanity netns — only TARGET_HOST_IP is allowed
+# (using the production rule shape, not SANITY_HOST_IP).  SANITY_HOST_IP
+# is therefore DROP'd by the default OUTPUT policy.
+bash -c "
+  set -Eeuo pipefail; IFS=\$'\n\t'
+  helpers_src=\$(sed '\$ d' '$INFRA_DIR/netns-bringup.sh')
+  eval \"\$helpers_src\"
+  apply_rules '$SANITY_NS' '${TARGET_HOST_IP}' '' '$INFRA_DIR/egress-deny.txt'
+"
+
+# Verify SANITY_HOST_IP is DROP'd while rules are active.
+if ip netns exec "$SANITY_NS" timeout 1 \
+     python3 -c "import socket; s=socket.socket(); s.settimeout(0.5); s.connect(('${SANITY_HOST_IP}', 80))" \
+     >/dev/null 2>&1; then
+  fail "sanity check: ${SANITY_HOST_IP} should be DROP'd with rules active"
+fi
+pass "sanity (F4): ${SANITY_HOST_IP} DROP'd with iptables rules active"
+
+# FLUSH all rules — now the address MUST be reachable (proving rules mattered).
+ip netns exec "$SANITY_NS" iptables -F OUTPUT
+ip netns exec "$SANITY_NS" iptables -P OUTPUT ACCEPT
+flushed_result=$(ip netns exec "$SANITY_NS" timeout 2 \
+  python3 -c "
+import socket, sys
+s = socket.socket(); s.settimeout(1.5)
+s.connect(('${SANITY_HOST_IP}', 80))
+s.sendall(b'GET / HTTP/1.0\r\nHost: ${SANITY_HOST_IP}\r\n\r\n')
+sys.stdout.write('OK' if s.recv(8).startswith(b'HTTP/') else 'BAD')
+" 2>/dev/null || printf 'TIMEOUT')
+[[ "$flushed_result" == "OK" ]] \
+  || fail "sanity (F4): after iptables flush, ${SANITY_HOST_IP} should be reachable (got '$flushed_result') — test has no enforcement signal"
+pass "sanity (F4): after iptables flush, ${SANITY_HOST_IP} is reachable — proves rules provide actual signal"
+
+# Cleanup sanity topology.
+ip netns pids "$SANITY_NS"     2>/dev/null | xargs -r kill 2>/dev/null || true
+ip netns pids "$SANITY_TARGET" 2>/dev/null | xargs -r kill 2>/dev/null || true
+ip netns delete "$SANITY_NS"     2>/dev/null || true
+ip netns delete "$SANITY_TARGET" 2>/dev/null || true
 
 printf '\nALL PRIVILEGED TESTS PASSED\n'
