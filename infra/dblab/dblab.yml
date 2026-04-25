@@ -1,0 +1,161 @@
+# infra/dblab/dblab.yml — DBLab Engine server configuration for willbuy-v01
+#
+# Spec ref: SPEC.willbuy.amendments.md §A5
+# Doc ref:  https://postgres.ai/docs/reference-guides/database-lab-engine-configuration-reference
+#
+# install-dblab.sh copies this file to /home/dblab/configs/server.yml and
+# replaces __DBLAB_VERIFICATION_TOKEN__ with the value from
+# /etc/willbuy/secrets.env (DBLAB_VERIFICATION_TOKEN).
+#
+# SECURITY: This file is committed to the repo — it contains NO real tokens.
+# The __DBLAB_VERIFICATION_TOKEN__ placeholder is replaced at deploy time.
+#
+# VERSION: Targeting DBLab Engine 4.1.1 (bumped from 3.6.0, PR #65 M-1 fix).
+# Schema reviewed against the 4.x configuration reference. Key 4.x changes
+# reflected here: top-level `pools` list replaces `poolManager` singleton;
+# `databaseContainer`/`databaseConfigs` YAML anchors retained (4.x compatible).
+# See: https://postgres.ai/docs/database-lab-engine
+
+server:
+  # Replaced by install-dblab.sh with the value from secrets.env
+  verificationToken: "__DBLAB_VERIFICATION_TOKEN__"
+  port: 2345
+  disableConfigModification: false
+
+embeddedUI:
+  enabled: true
+  dockerImage: "postgresai/ce-ui:latest"
+  host: "127.0.0.1"   # UI bound to loopback only; expose via SSH tunnel or Nginx
+  port: 2346
+
+global:
+  engine: postgres
+  debug: false
+  database:
+    # supabase/postgres runs as supabase_admin (superuser) — use that for
+    # management connections so DBLab can inspect roles, schemas, etc.
+    username: supabase_admin
+    dbname: postgres
+
+# DBLab 4.x: `poolManager` singleton replaced by `pools` list.
+# Each entry configures one ZFS pool. We have one pool (tank/willbuy/pgdata).
+pools:
+  - name: "willbuy"
+    # ZFS pool mountpoint — tank/willbuy/pgdata is mounted here by setup-zfs-pgdata.sh
+    mountDir: /var/lib/postgresql
+    # 'data' is the subdirectory inside the mountpoint where Postgres PGDATA lives
+    dataSubDir: data
+    clonesMountSubDir: clones
+    socketSubDir: sockets
+    observerSubDir: observer
+    preSnapshotSuffix: "_pre"
+
+# Postgres container image for clones.
+# Must match the major version of the production Postgres (Supabase Postgres 15.x).
+# postgresai/extended-postgres ships with pg_stat_statements, auto_explain,
+# and other useful extensions pre-installed.
+databaseContainer: &db_container
+  dockerImage: "postgresai/extended-postgres:15"
+  containerConfig:
+    "shm-size": 256mb
+
+databaseConfigs: &db_configs
+  configs:
+    shared_buffers: "256MB"
+    # CPX21 has 4 GB RAM — keep clone buffers modest so multiple clones fit
+    work_mem: "16MB"
+    maintenance_work_mem: "128MB"
+    shared_preload_libraries: "pg_stat_statements, auto_explain"
+    # Tuning for ZFS (matches production dataset tuning)
+    effective_io_concurrency: "1"
+    random_page_cost: "1.1"
+
+provision:
+  <<: *db_container
+  portPool:
+    # Clones get ports 6000–6019 (20 clones max; CPX21 is RAM-limited anyway)
+    from: 6000
+    to: 6019
+  useSudo: false
+  # Keep passwords for ease of use in dev/CI — clones are not externally reachable
+  keepUserPasswords: true
+  # Clones accessible only from localhost (SSH tunnel for remote access)
+  cloneAccessAddresses: "127.0.0.1"
+
+retrieval:
+  # Physical mode: DBLab reads PGDATA directly from the ZFS dataset.
+  # The sync container keeps a hot-standby replica of production Postgres
+  # so snapshots stay up-to-date without stopping Postgres.
+  refresh:
+    # Full refresh weekly (Sunday midnight).  Adjust once data volume grows.
+    timetable: "0 0 * * 0"
+    skipStartRefresh: true   # Don't refresh on first DBLab startup (data is already there)
+  jobs:
+    - physicalRestore
+    - physicalSnapshot
+  spec:
+    physicalRestore:
+      options:
+        <<: *db_container
+        tool: customTool
+        sync:
+          # sync container keeps an async replica from the production Postgres
+          enabled: true
+          healthCheck:
+            interval: 5
+            maxRetries: 120
+          configs:
+            shared_buffers: "256MB"
+        envs:
+          PGUSER: "supabase_admin"
+          # PGPASSWORD is injected from /etc/willbuy/secrets.env at container startup
+          PGPASSWORD: ""
+          PGHOST: "127.0.0.1"
+          PGPORT: "54322"
+        customTool:
+          # pg_basebackup from the production Postgres socket (loopback).
+          # -X stream: WAL included in the backup.
+          # -D: must match the DBLab pool data path.
+          command: "pg_basebackup -X stream -D /var/lib/postgresql/data"
+          restore_command: ""
+    physicalSnapshot:
+      options:
+        skipStartSnapshot: false
+        <<: *db_configs
+        promotion:
+          <<: *db_container
+          enabled: true
+          healthCheck:
+            interval: 5
+            maxRetries: 120
+          configs:
+            shared_buffers: "256MB"
+        scheduler:
+          snapshot:
+            # New snapshot every 6 hours
+            timetable: "0 */6 * * *"
+          retention:
+            timetable: "0 * * * *"
+            # Keep the 4 most recent snapshots (~24 h of history on CPX21)
+            limit: 4
+
+cloning:
+  accessHost: "localhost"
+  # Auto-delete idle clones after 4 hours (CI clones should be short-lived)
+  maxIdleMinutes: 240
+  # Default protection: 1 day
+  protectionLeaseDurationMinutes: 1440
+  # Max protection: 7 days
+  protectionMaxDurationMinutes: 10080
+  protectionExpiryWarningMinutes: 1440
+
+diagnostic:
+  logsRetentionDays: 7
+
+platform:
+  url: "https://postgres.ai/api/general"
+  enableTelemetry: true
+  # Uncomment and fill if connecting to postgres.ai Console:
+  # projectName: "willbuy"
+  # orgKey: "postgresai"
+  # accessToken: "__PLATFORM_ACCESS_TOKEN__"
