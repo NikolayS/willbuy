@@ -3,16 +3,36 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "willbuy.dev shared types/utils — see SPEC §4.1",
+  "description": "Shared zod schemas + scoring weights for willbuy.dev (visitor output, backstory, scoreVisit).",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./visitor": {
+      "types": "./src/visitor.ts",
+      "default": "./src/visitor.ts"
+    },
+    "./scoring": {
+      "types": "./src/scoring.ts",
+      "default": "./src/scoring.ts"
+    },
+    "./backstory": {
+      "types": "./src/backstory.ts",
+      "default": "./src/backstory.ts"
+    }
   },
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
   "devDependencies": {
+    "vitest": "^2.1.8",
     "typescript": "^5.7.2"
   }
 }
