@@ -189,6 +189,52 @@ This matrix is passed to HDBSCAN as `metric='precomputed'`. With `metric='precom
 
 **Tracking.** Issue #49 (PR set on cutover). Spec future rev folds the ZFS + DBLab deployment into §5.6 and adds a §10 amendment around test-time branching.
 
+### **2026-04-25 follow-on (provisioning details):**
+
+**ZFS pool and dataset structure (willbuy-v01, Hetzner CPX21, Ubuntu 24.04):**
+
+```
+ZFS pool name:  tank
+Backed by:      /var/lib/zfs-tank/tank.img  (sparse loopback, up to 30 GB)
+                v0.2: replace with Hetzner Volume or dedicated disk
+
+Datasets:
+  tank/willbuy/pgdata
+    mountpoint:     /var/lib/postgresql/data
+    recordsize:     8K        (matches Postgres 8 KB heap page)
+    compression:    lz4
+    atime:          off
+    logbias:        throughput
+    primarycache:   metadata
+
+  tank/willbuy/pgwal
+    mountpoint:     /var/lib/postgresql/wal
+    recordsize:     128K      (matches WAL segment write pattern)
+    compression:    lz4
+    atime:          off
+    logbias:        throughput
+    primarycache:   all       (WAL reads benefit from full ARC caching)
+```
+
+**WAL placement decision:** Separate `tank/willbuy/pgwal` dataset is created by default (`CREATE_WAL_DATASET=yes`). This is the preferred layout per constraint (b) of A5. The WAL bind-mount (`/var/lib/postgresql/wal`) must be mapped into the Supabase `db` container via the compose override if a non-default `wal_level` / `archive_command` is used. For the v0.1 default (WAL inside PGDATA), no additional compose change is required.
+
+**VM upsize decision:** CPX21 has 80 GB SSD (README table corrected). 30 GB loopback pool + ~50 GB remaining for OS + Docker layers is acceptable for v0.1. No upsize is needed before PR #49 merge. Upsize to CPX31 (8 GB RAM) and attach a Hetzner Volume for v0.2/launch when production data volume grows.
+
+**Migration strategy chosen:** shutdown-rsync (stop `docker compose down`, rsync Docker volume `_data` → ZFS mount, write compose override, bring stack back up). Rationale: no production data exists at Sprint 2; rsync is instantaneous. For production migrations (v0.2+), switch to `pg_basebackup`-based hot migration.
+
+**DBLab configuration:**
+- Config file: `infra/dblab/dblab.yml` (committed; token placeholder replaced at deploy time).
+- Physical mode with `pg_basebackup` for initial data provisioning.
+- Snapshot schedule: every 6 hours; retention: 4 snapshots.
+- Clone ports: 6000–6019 (localhost only).
+- Idle clone TTL: 240 minutes.
+
+**Scripts shipped in this PR:**
+- `infra/zfs/setup-zfs-pgdata.sh` — idempotent ZFS pool + dataset creation.
+- `infra/zfs/migrate-pgdata.sh`   — PGDATA migration + compose override.
+- `infra/dblab/install-dblab.sh`  — DBLab Engine Docker install + CLI init.
+- `infra/dblab/dblab.yml`         — DBLab server configuration template.
+
 ---
 
 ## 2026-04-25 — A6: `packages/adapters` renamed to `packages/llm-adapter`; forbidden identifiers inlined in `eslint-rule.js`
