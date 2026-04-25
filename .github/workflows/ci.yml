@@ -15,24 +15,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    services:
-      # Shared Postgres for apps/api/test/leases.integration.test.ts.
-      # Using a service container avoids launching a fourth ephemeral Docker
-      # container (the migration tests already spin two) which causes OOM kills
-      # on the 7 GB GitHub Actions runner.  The test reads TEST_DATABASE_URL
-      # and skips Docker-container-start when the env var is set.
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_PASSWORD: willbuy_lease_test_pw
-          POSTGRES_DB: willbuy_lease_test
-        ports:
-          - 54399:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,19 +51,16 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Apply migrations for lease integration tests
-        # Applies the full schema to the service container before tests run.
-        # The lease integration tests read TEST_DATABASE_URL and skip Docker-start.
-        run: bash scripts/migrate.sh
-        env:
-          DATABASE_URL: postgres://postgres:willbuy_lease_test_pw@127.0.0.1:54399/willbuy_lease_test
+      - name: Pre-pull Postgres image
+        # Pull postgres:16-alpine before running tests.
+        # tests/migrations.test.ts, tests/migrations.schema.test.ts, and
+        # apps/api/test/leases.integration.test.ts all start postgres:16-alpine
+        # containers in beforeAll; pre-pulling ensures the image layers are in
+        # the Docker cache so concurrent container starts don't race on I/O.
+        run: docker pull postgres:16-alpine
 
       - name: Test
         run: pnpm test
-        env:
-          # Tells leases.integration.test.ts to use this pre-migrated DB
-          # instead of spinning its own Docker container (prevents OOM on runner).
-          TEST_DATABASE_URL: postgres://postgres:willbuy_lease_test_pw@127.0.0.1:54399/willbuy_lease_test
 
   aggregator:
     runs-on: ubuntu-latest
