@@ -80,17 +80,30 @@ Paste the output into `infra/dev/.env`. None of these values are committed.
 
 ## Migrations
 
-`scripts/migrate.sh` (wired as `bun run migrate`):
+`scripts/migrate.sh` (wired as `bun run migrate`) is a thin wrapper around
+[NikolayS/sqlever](https://github.com/NikolayS/sqlever) v0.3.0 (amendment A4, issue #48):
 
 - reads `DATABASE_URL` from the environment
-- finds every `*.sql` in `infra/migrations/` (override with `MIGRATIONS_DIR`)
-- skips files already recorded in the `_migrations` tracking table
-- applies the rest in lexicographic order, **one transaction per file** (`--single-transaction` + `ON_ERROR_STOP=1`)
-- exits non-zero AND rolls back the transaction (no partial state, no tracking row) if any file errors mid-way
+- delegates to `bunx sqlever deploy --top-dir infra/sqlever/ --db-uri $DATABASE_URL`
+- sqlever applies pending changes in plan order (lexicographic, per `infra/sqlever/sqitch.plan`)
+- tracks applied changes in the `sqitch.*` schema (Sqitch-compatible)
+- each deploy script also writes a backward-compat row into `_migrations` for tools that read it
+- exits non-zero and rolls back the failing change's transaction if any SQL errors mid-way
 
-Re-running `bun run migrate` against the same DB is a no-op.
+Re-running `bun run migrate` against the same DB is a no-op — sqlever skips already-applied changes.
 
-The runner uses a locally-installed `psql` if present; otherwise it falls back to `docker run --rm postgres:16-alpine psql`, so contributors without postgres client tools still work.
+**What sqlever adds over the old bash runner:**
+- 43 static-analysis rules that catch dangerous migration patterns before deploy
+- `bunx sqlever status` — see which changes are pending vs deployed
+- `bunx sqlever analyze infra/sqlever/deploy/` — lint any migration file for safety issues
+- Machine-readable output (`--format json`) for CI integration
+
+**Migrating an existing database** (one that ran the old bash `migrate.sh`): the `_migrations` table
+already exists. Run `bun run migrate` — sqlever seeds its `sqitch.*` tracking from the deploy
+scripts, which are idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING` guards on all DDL).
+
+**psql prerequisite:** sqlever shells out to psql for script execution. Install `postgresql-client`
+(`brew install libpq` on macOS, `apt-get install postgresql-client` on Ubuntu).
 
 ## Tearing it all down
 

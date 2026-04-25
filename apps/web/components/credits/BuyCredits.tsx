@@ -3,11 +3,12 @@
 /**
  * BuyCredits — credit-pack selection + Stripe Checkout redirect.
  *
- * Spec §5.6: starter=$29/1000c, growth=$99/4000c, scale=$299/15000c.
+ * Spec §5.6: starter=$29/2900¢, growth=$99/9900¢, scale=$299/29900¢.
+ * Visit estimate derived from pack.cents / 5 (spec §5.5 per-visit cost ceiling).
  * POSTs to /checkout/sessions with the selected pack_id.
  * Redirects to the Stripe Checkout URL returned by the API.
  *
- * Issue #36.
+ * Issue #36. Fix #73: correct visit-estimate derivation.
  */
 
 import { useState } from 'react';
@@ -18,8 +19,15 @@ interface Pack {
   id: PackId;
   label: string;
   usd: number;
+  /** Pack price in USD cents; visit estimate = cents / 5 (spec §5.5). */
+  cents: number;
   credits: number;
-  description: string;
+}
+
+/** Derive visit-estimate description from pack cents (spec §5.5: 5¢/visit ceiling). */
+function visitEstimate(cents: number): string {
+  const visits = Math.floor(cents / 5);
+  return `≈ ${visits.toLocaleString()} visits`;
 }
 
 const PACKS: Pack[] = [
@@ -27,22 +35,22 @@ const PACKS: Pack[] = [
     id: 'starter',
     label: 'Starter',
     usd: 29,
+    cents: 2900,
     credits: 1000,
-    description: '≈ 285 visits',
   },
   {
     id: 'growth',
     label: 'Growth',
     usd: 99,
+    cents: 9900,
     credits: 4000,
-    description: '≈ 1,140 visits',
   },
   {
     id: 'scale',
     label: 'Scale',
     usd: 299,
+    cents: 29900,
     credits: 15000,
-    description: '≈ 4,280 visits',
   },
 ];
 
@@ -106,7 +114,7 @@ export function BuyCredits({ apiKey, apiBaseUrl }: BuyCreditsProps) {
             <span className="text-sm text-gray-600">
               {pack.credits.toLocaleString()} credits
             </span>
-            <span className="text-xs text-gray-500">{pack.description}</span>
+            <span className="text-xs text-gray-500">{visitEstimate(pack.cents)}</span>
           </button>
         ))}
       </div>
