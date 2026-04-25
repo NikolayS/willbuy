@@ -58,8 +58,9 @@ chmod +x "$shim_dir/getent"
 # Ensure Docker is available.
 docker info >/dev/null 2>&1 || fail "Docker not available"
 
-# Pull the pause image (small; cached after first run).
-docker pull gcr.io/pause:3.9 >/dev/null 2>&1 || \
+# Pull the pause image (small; cached after first run). registry.k8s.io is
+# the current canonical mirror; the older gcr.io path was deprecated in 2022.
+docker pull registry.k8s.io/pause:3.9 >/dev/null 2>&1 || \
   docker pull k8s.gcr.io/pause:3.9 >/dev/null 2>&1 || \
   fail "could not pull pause image"
 

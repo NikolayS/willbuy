@@ -437,11 +437,17 @@ main() {
   docker rm -f "$pause_name" 2>/dev/null || true
 
   log "starting pause container: $pause_name"
+  # `pause` is the standard Kubernetes pause image: a tiny binary that just
+  # sleeps. We try multiple known registries because (a) gcr.io/pause was
+  # deprecated in 2022 and may 404, (b) registry.k8s.io is the current
+  # canonical mirror, (c) docker.io/registry/pause works as a fallback on
+  # hosts that already have an authenticated docker hub session.
+  local pause_image="${WILLBUY_PAUSE_IMAGE:-registry.k8s.io/pause:3.9}"
   docker run -d \
     --name "$pause_name" \
     --network none \
     --rm \
-    gcr.io/pause:3.9 \
+    "$pause_image" \
     >/dev/null
 
   # Extract the pause container's init PID so we can nsenter its netns.

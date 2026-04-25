@@ -303,19 +303,25 @@ fi
 pass "scenario 4: ${REDIR_HOST_IP} DROP'd by default policy (cross-eTLD+1 DNS pinning enforced)"
 
 # — Acceptance scenario 5: host-budget enforcer ———————————————
+#
+# Synthesize 60 distinct conntrack entries by sending UDP datagrams to 60
+# distinct destinations. UDP entries appear in conntrack on the FIRST
+# transmitted packet (no handshake), so we don't need to wait per-flow for
+# any reply. We use bash's built-in `/dev/udp/<host>/<port>` so there's no
+# subprocess fan-out, no `ip netns exec` orphan-process risk, and no `wait`
+# stall — the kernel routes the UDP packet, conntrack creates a tuple, and
+# bash returns immediately.
 
-# Synthesize 60 distinct destination flows in the target netns by attempting
-# a connection to 60 distinct IPs. Each attempt creates a conntrack entry
-# even if the SYN is DROP'd, because conntrack hooks fire BEFORE iptables.
-# Fan out in parallel to keep the suite under the CI job timeout budget.
-for i in $(seq 1 60); do
-  ip netns exec "$CAPTURE_NS" timeout 1 nc -w 1 "203.0.113.${i}" 80 \
-    </dev/null >/dev/null 2>&1 &
-done
-wait || true
+# shellcheck disable=SC2016 # the single-quoted body MUST defer $i expansion
+# until the bash sub-shell runs inside `ip netns exec`.
+ip netns exec "$CAPTURE_NS" bash -c '
+  for i in $(seq 1 60); do
+    : >/dev/udp/203.0.113.${i}/53 2>/dev/null || true
+  done
+'
 
 set +e
-out=$("$INFRA_DIR/host-budget-enforcer.sh" "$CAPTURE_NS" 50)
+out=$(timeout 5 "$INFRA_DIR/host-budget-enforcer.sh" "$CAPTURE_NS" 50)
 rc=$?
 set -e
 echo "host-budget enforcer output: $out (exit $rc)"
