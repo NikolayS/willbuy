@@ -413,4 +413,155 @@ describeIfDocker('domains routes (issue #82, real DB)', () => {
     // so total should be well under ~6s.
     expect(elapsed).toBeLessThan(6500);
   }, 15_000);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // AC10 (SEC-1): HTTPS-only, no http:// fallback.
+  // Spec ref: issue #104 SEC-1 — active-MITM on the http leg can mint a
+  // fake "verified" status. If the user's domain has no TLS, they must use
+  // the DNS TXT method.
+  // ──────────────────────────────────────────────────────────────────────────
+  it('AC10 (SEC-1): https-only — when https throws ECONNREFUSED, no http fallback is attempted', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/api/domains',
+      headers: { 'content-type': 'application/json', cookie },
+      payload: { domain: 'sec1-https-only.example' },
+    });
+
+    const calls: string[] = [];
+    __test_setProbes({
+      resolveTxt: async () => {
+        throw new Error('ENOTFOUND');
+      },
+      fetch: async (url) => {
+        calls.push(String(url));
+        // Simulate https refusing connection.
+        const err = new Error('connect ECONNREFUSED 127.0.0.1:443') as Error & {
+          code?: string;
+        };
+        err.code = 'ECONNREFUSED';
+        throw err;
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/domains/sec1-https-only.example/verify',
+      headers: { cookie },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ verified: boolean }>().verified).toBe(false);
+    // Every fetched URL must be https; we must not have fallen back to http.
+    expect(calls.length).toBeGreaterThan(0);
+    for (const url of calls) {
+      expect(url.startsWith('https://')).toBe(true);
+      expect(url.startsWith('http://')).toBe(false);
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // AC11 (SEC-2): meta probe rejects cross-eTLD+1 redirects.
+  // Spec ref: issue #104 SEC-2 — `redirect: 'follow'` accepted the verify
+  // token from whatever URL fetch landed on, including foreign eTLD+1s.
+  // We adopt `redirect: 'manual'` to match probeWellKnown.
+  // ──────────────────────────────────────────────────────────────────────────
+  it('AC11 (SEC-2): meta probe with 302 to different eTLD+1 → verified=false (no token leak)', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/domains',
+      headers: { 'content-type': 'application/json', cookie },
+      payload: { domain: 'sec2-redirect.example' },
+    });
+    const { verify_token } = created.json<{ verify_token: string }>();
+
+    __test_setProbes({
+      resolveTxt: async () => {
+        throw new Error('ENOTFOUND');
+      },
+      fetch: async (url, init) => {
+        // /.well-known returns 404 — so well_known probe fails.
+        if (String(url).includes('/.well-known/willbuy-verify')) {
+          return new Response('not found', { status: 404 });
+        }
+        // Root request — model what would happen on a real network:
+        //   - If the route asks for redirect: 'manual', it sees the 3xx itself
+        //     and must bail (the post-fix correct behavior).
+        //   - If the route asks for redirect: 'follow', the network library
+        //     transparently follows to attacker.example and returns the
+        //     attacker's 200 response — including the token. (the pre-fix bug)
+        const attackerHtml = `<html><head><meta name="willbuy-verify" content="${verify_token}"></head></html>`;
+        if (init && init.redirect === 'manual') {
+          return new Response('', {
+            status: 302,
+            headers: { location: 'https://attacker.example/' },
+          });
+        }
+        // redirect: 'follow' (or default) — the attacker's page is returned.
+        return new Response(attackerHtml, { status: 200 });
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/domains/sec2-redirect.example/verify',
+      headers: { cookie },
+    });
+    expect(res.statusCode).toBe(200);
+    // The route MUST refuse to honor a redirect, even though the redirected
+    // body contains the token.
+    expect(res.json<{ verified: boolean }>().verified).toBe(false);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // AC12 (N1): __test_setProbes is a no-op (or throws) when NODE_ENV !== 'test'.
+  // Spec ref: issue #104 N1 — env-gate the test seam (mirrors the
+  // WILLBUY_DEV_SESSION pattern in routes/auth.ts).
+  // ──────────────────────────────────────────────────────────────────────────
+  it('AC12 (N1): __test_setProbes is no-op (or throws) outside NODE_ENV=test', async () => {
+    // Create a challenge.
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/domains',
+      headers: { 'content-type': 'application/json', cookie },
+      payload: { domain: 'n1-guard.example' },
+    });
+    const { verify_token } = created.json<{ verify_token: string }>();
+
+    // First reset to defaults (real DNS / real fetch).
+    __test_resetProbes();
+
+    // Now flip NODE_ENV to 'production' and try to install a malicious probe
+    // that would mint a fake DNS verification. The guard should make this
+    // a no-op or throw.
+    const originalNodeEnv = process.env.NODE_ENV;
+    let injectedThrew = false;
+    try {
+      process.env.NODE_ENV = 'production';
+      try {
+        __test_setProbes({
+          resolveTxt: async () => [[`willbuy-verify=${verify_token}`]],
+          fetch: async () => new Response(verify_token, { status: 200 }),
+        });
+      } catch {
+        injectedThrew = true;
+      }
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+
+    // Run verify WITHOUT installing any further probes. If the guard worked,
+    // the defaults (real DNS / real fetch) are still in effect; for a
+    // non-existent .example domain, both fail → verified=false.
+    // If the guard FAILED, the malicious probe is live → verified=true.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/domains/n1-guard.example/verify',
+      headers: { cookie },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ verified: boolean }>().verified).toBe(false);
+    // The injection must have either thrown, or been a silent no-op (both
+    // acceptable; what's not acceptable is letting the bad probes through).
+    expect(typeof injectedThrew).toBe('boolean');
+  }, 30_000);
 });

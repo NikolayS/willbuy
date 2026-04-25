@@ -47,13 +47,21 @@
  *     the magic-link token in routes/auth.ts. Cleartext storage is fine here:
  *     the token is meant to be published by the user.
  *   - Probes are stubbable via __test_setProbes() so the integration test
- *     can drive each method without depending on real DNS/HTTP.
- *   - The HTTP probes prefer https://<domain> first, then fall back to
- *     http://<domain> (some users won't have TLS yet during onboarding).
- *     5s timeout applies per-attempt.
- *   - We do NOT follow redirects on /.well-known (the file should be served
- *     directly from the origin). Default fetch() follows redirects; we set
- *     redirect: 'manual' for the well-known probe to detect this.
+ *     can drive each method without depending on real DNS/HTTP. The setter
+ *     is NODE_ENV-gated (no-op outside 'test') — see issue #104 N1 and the
+ *     WILLBUY_DEV_SESSION pattern in routes/auth.ts.
+ *   - HTTPS-only (issue #104 SEC-1): probeWellKnown and probeMeta both use
+ *     https:// exclusively. There is NO http:// fallback. An active
+ *     network attacker on the http leg can mint a fake "verified" status;
+ *     domains without TLS must use the DNS TXT method, which is not
+ *     vulnerable to in-path HTTP injection in the same way.
+ *   - Redirect policy (issue #104 SEC-2): BOTH http probes use
+ *     redirect: 'manual' and treat any 3xx as a probe failure. The
+ *     verification target document — the well-known file or the root
+ *     page's <meta> — MUST be served directly from the requested origin.
+ *     An attacker who can mint a redirect (e.g. via a hijacked path or a
+ *     path-handling bug) must not be allowed to leak a verified status
+ *     by serving the token from a foreign eTLD+1.
  *   - Cross-account constraint: the route only operates on the
  *     (req.account.id, domain) pair, so two different accounts can each
  *     verify the same domain independently. accounts.verified_domains is
@@ -84,15 +92,27 @@ const DEFAULT_FETCH: FetchFn = (url, init) => fetch(url, init);
 let _resolveTxt: ResolveTxtFn = DEFAULT_RESOLVE_TXT;
 let _fetch: FetchFn = DEFAULT_FETCH;
 
+/**
+ * Test-only seam: inject mock resolveTxt / fetch implementations.
+ *
+ * NODE_ENV-gated (issue #104 N1): in any non-'test' environment this is a
+ * no-op. The export remains so test files can import it unconditionally,
+ * but a misuse in production cannot mint a fake "verified" status by
+ * swapping in a permissive probe. Mirrors the WILLBUY_DEV_SESSION pattern
+ * in routes/auth.ts.
+ */
 export function __test_setProbes(opts: {
   resolveTxt?: ResolveTxtFn;
   fetch?: FetchFn;
 }): void {
+  if (process.env.NODE_ENV !== 'test') return;
   if (opts.resolveTxt) _resolveTxt = opts.resolveTxt;
   if (opts.fetch) _fetch = opts.fetch;
 }
 
+/** Test-only seam: restore default probes. NODE_ENV-gated, like setProbes. */
 export function __test_resetProbes(): void {
+  if (process.env.NODE_ENV !== 'test') return;
   _resolveTxt = DEFAULT_RESOLVE_TXT;
   _fetch = DEFAULT_FETCH;
 }
@@ -159,33 +179,54 @@ async function probeDns(domain: string, token: string): Promise<boolean> {
   return false;
 }
 
-async function fetchWithFallback(
-  paths: string[],
+/**
+ * HTTPS-only fetch with per-attempt 5s abort timeout.
+ *
+ * Returns the Response on a 2xx, or null on:
+ *   - non-2xx (including any 3xx — see redirect policy below)
+ *   - network/timeout errors
+ *
+ * Redirect policy (issue #104 SEC-2): both probes call this with
+ * redirect: 'manual'. A 3xx response has res.ok === false, so it is
+ * treated as a probe failure and the route does NOT read or scan the
+ * body. This prevents a redirect-to-attacker (foreign eTLD+1) from
+ * leaking a verified status.
+ *
+ * HTTPS-only (issue #104 SEC-1): the URL is required to be https://;
+ * there is no http:// fallback. Domains without TLS must use the DNS
+ * TXT method.
+ */
+async function httpsProbeFetch(
+  url: string,
   init?: RequestInit,
 ): Promise<Response | null> {
-  // Try https first, then http, for each candidate path.
-  for (const url of paths) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
-    try {
-      const res = await _fetch(url, { ...init, signal: ctrl.signal });
-      clearTimeout(timer);
-      if (res.ok) return res;
-    } catch {
-      // Try the next candidate.
-      clearTimeout(timer);
-    }
+  if (!url.startsWith('https://')) {
+    // Defense-in-depth — callers below construct https:// URLs literally,
+    // but we re-check here so a future refactor cannot accidentally
+    // re-introduce an http:// path.
+    return null;
   }
-  return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+  try {
+    const res = await _fetch(url, { ...init, signal: ctrl.signal });
+    clearTimeout(timer);
+    if (res.ok) return res;
+    return null;
+  } catch {
+    clearTimeout(timer);
+    return null;
+  }
 }
 
 async function probeWellKnown(domain: string, token: string): Promise<boolean> {
-  const candidates = [
-    `https://${domain}/.well-known/willbuy-verify`,
-    `http://${domain}/.well-known/willbuy-verify`,
-  ];
+  // HTTPS-only; well-known probe requires HTTPS. See issue #104 SEC-1.
+  // redirect: 'manual' — well-known file must be served directly from
+  // origin; a 3xx (e.g. redirect to attacker eTLD+1) is rejected. See
+  // issue #104 SEC-2.
+  const url = `https://${domain}/.well-known/willbuy-verify`;
   const res = await withTimeout(
-    fetchWithFallback(candidates, { redirect: 'manual' }),
+    httpsProbeFetch(url, { redirect: 'manual' }),
     PROBE_TIMEOUT_MS,
   );
   if (!res) return false;
@@ -195,9 +236,14 @@ async function probeWellKnown(domain: string, token: string): Promise<boolean> {
 }
 
 async function probeMeta(domain: string, token: string): Promise<boolean> {
-  const candidates = [`https://${domain}/`, `http://${domain}/`];
+  // HTTPS-only; meta probe requires HTTPS. See issue #104 SEC-1.
+  // redirect: 'manual' — the meta tag must be served directly from the
+  // requested origin (matches probeWellKnown). A 3xx — even one whose
+  // body would have contained the token, e.g. via a foreign eTLD+1 —
+  // is treated as a probe failure. See issue #104 SEC-2.
+  const url = `https://${domain}/`;
   const res = await withTimeout(
-    fetchWithFallback(candidates, { redirect: 'follow' }),
+    httpsProbeFetch(url, { redirect: 'manual' }),
     PROBE_TIMEOUT_MS,
   );
   if (!res) return false;
