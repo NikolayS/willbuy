@@ -27,6 +27,7 @@ dist/
 build/
 .next/
 coverage/
+*.tsbuildinfo
 
 # python
 __pycache__/
