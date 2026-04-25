@@ -15,6 +15,11 @@ export default tseslint.config(
       '**/coverage/**',
       'pnpm-lock.yaml',
       'tests/lint-fixtures/**',
+      // Same exclusion pattern as tests/lint-fixtures: files here are
+      // negative-test inputs for `apps/web` lint rules (SPEC §5.10 +
+      // issue #7 acceptance #4). They are linted explicitly by
+      // apps/web/test/lint-scoping.test.ts via `eslint --no-ignore`.
+      'apps/web/_lint-fixtures/**',
     ],
   },
   js.configs.recommended,
