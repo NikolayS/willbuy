@@ -1,0 +1,20 @@
+{
+  "first_impression": "The pricing page leads with a managed Postgres pitch. Tiers are clear; the difference between Starter and Scale is mostly storage and connection limits.",
+  "will_to_buy": 7,
+  "questions": [
+    "Is there a self-hosted option, or only managed?",
+    "How is data residency handled in EU?"
+  ],
+  "confusions": [
+    "I cannot tell from the page whether 'connections' means client connections or pooled connections."
+  ],
+  "objections": [
+    "$99/mo feels steep for a 2-engineer team that already runs RDS."
+  ],
+  "unanswered_blockers": [
+    "No mention of SOC2 or HIPAA — blocker for our fintech use case."
+  ],
+  "next_action": "contact_sales",
+  "confidence": 8,
+  "reasoning": "Strong pricing-page clarity but missing compliance signals; for a regulated fintech buyer the next step is a sales conversation to confirm SOC2 status and EU data residency before a paid trial."
+}

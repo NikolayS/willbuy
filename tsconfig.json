@@ -8,5 +8,5 @@
   },
   "include": ["tests/**/*", "scripts/**/*", "*.config.ts", "*.config.mjs"],
   "exclude": ["node_modules", "dist", "build", ".next", "coverage", "tests/lint-fixtures"],
-  "references": [{ "path": "./apps/api" }]
+  "references": [{ "path": "./apps/api" }, { "path": "./packages/shared" }]
 }
