@@ -27,4 +27,9 @@ describe('VisitorOutput (spec §2 #15)', () => {
     };
     expect(() => VisitorOutput.parse(oversized)).toThrow();
   });
+
+  it('rejects an out-of-range integer (will_to_buy must be 0–10 per §2 #15)', () => {
+    const outOfRange = { ...validFixture, will_to_buy: 11 };
+    expect(() => VisitorOutput.parse(outOfRange)).toThrow();
+  });
 });
