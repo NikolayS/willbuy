@@ -10,8 +10,10 @@ import Stripe from 'stripe';
 import type { Env } from './env.js';
 import { buildLogger } from './logger.js';
 import { initPacks } from './billing/packs.js';
+import { buildResendClient, type ResendClient } from './email/resend.js';
 import { registerStudiesRoutes } from './routes/studies.js';
 import { registerReportsRoutes } from './routes/reports.js';
+import { registerAuthRoutes } from './routes/auth.js';
 import { registerCheckoutRoutes } from './routes/checkout.js';
 import { registerStripeWebhookRoute } from './routes/stripe-webhook.js';
 
@@ -21,41 +23,72 @@ const pkgPath = resolve(here, '..', 'package.json');
 const pkgVersion = (JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string }).version;
 
 export interface BuildServerOptions {
-  env: Env;
+  /**
+   * Parsed environment. May be a full Env or a partial record — missing fields
+   * fall back to the schema defaults defined in env.ts (e.g. RESEND_TEST_MODE,
+   * SESSION_HMAC_KEY). This keeps older tests that only supply a subset of
+   * env vars from breaking after new optional-but-defaulted fields are added.
+   */
+  env: Partial<Env> & Pick<Env, 'DATABASE_URL' | 'URL_HASH_SALT'>;
   /**
    * Optional Stripe client override — used in tests to inject a stub so no
    * real Stripe API calls are made. When omitted, a real Stripe client is
    * constructed from env.STRIPE_SECRET_KEY.
    */
   stripe?: Stripe;
+  /**
+   * Optional Resend client override — used in tests to inject a stub so no
+   * real emails are sent. When omitted, a client is built from env vars.
+   */
+  resend?: ResendClient;
 }
 
+// Default values for fields added after initial release — keeps older test
+// fixtures that supply only a subset of env vars working without modification.
+const ENV_DEFAULTS: Partial<Env> = {
+  RESEND_API_KEY: 're_not_configured',
+  RESEND_TEST_MODE: 'stub',
+  SESSION_HMAC_KEY: 'dev_hmac_key_not_configured_replace_in_production_abc123',
+  NODE_ENV: 'development',
+};
+
 export async function buildServer(opts: BuildServerOptions): Promise<FastifyInstance> {
+  // Merge in defaults for any missing env fields.
+  const env: Env = { ...ENV_DEFAULTS, ...opts.env } as Env;
+
   const logger = buildLogger({
-    level: opts.env.LOG_LEVEL,
-    urlHashSalt: opts.env.URL_HASH_SALT,
+    level: env.LOG_LEVEL,
+    urlHashSalt: env.URL_HASH_SALT,
   });
 
   const app = Fastify({
     loggerInstance: logger as unknown as FastifyBaseLogger,
-    disableRequestLogging: opts.env.LOG_LEVEL === 'silent',
+    disableRequestLogging: env.LOG_LEVEL === 'silent',
   });
 
   await app.register(sensible);
 
   // Postgres connection pool — shared across all routes.
-  const pool = new Pool({ connectionString: opts.env.DATABASE_URL });
+  const pool = new Pool({ connectionString: env.DATABASE_URL });
 
   // Initialize credit-pack tiers with price IDs from env (§5.6, issue #36).
   initPacks({
-    starterPriceId: opts.env.STRIPE_PRICE_ID_STARTER,
-    growthPriceId: opts.env.STRIPE_PRICE_ID_GROWTH,
-    scalePriceId: opts.env.STRIPE_PRICE_ID_SCALE,
+    starterPriceId: env.STRIPE_PRICE_ID_STARTER,
+    growthPriceId: env.STRIPE_PRICE_ID_GROWTH,
+    scalePriceId: env.STRIPE_PRICE_ID_SCALE,
   });
 
   // Stripe client — test mode (STRIPE_SECRET_KEY starts with sk_test_ in test mode).
   // opts.stripe overrides for test-mode stub injection (no real API calls in CI).
-  const stripe = opts.stripe ?? new Stripe(opts.env.STRIPE_SECRET_KEY, { apiVersion: '2026-04-22.dahlia' });
+  const stripe = opts.stripe ?? new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2026-04-22.dahlia' });
+
+  // Resend email client — opts.resend overrides for test-mode stub injection.
+  const resend =
+    opts.resend ??
+    buildResendClient({
+      apiKey: env.RESEND_API_KEY,
+      testMode: env.RESEND_TEST_MODE === 'stub',
+    });
 
   app.get('/health', async () => ({
     status: 'ok',
@@ -63,15 +96,18 @@ export async function buildServer(opts: BuildServerOptions): Promise<FastifyInst
     version: pkgVersion,
   }));
 
+  // Wire auth routes (magic-link sign-in, issue #79).
+  await registerAuthRoutes(app, pool, env, resend);
+
   // Wire authenticated routes.
-  await registerStudiesRoutes(app, pool, opts.env);
+  await registerStudiesRoutes(app, pool, env);
 
   // Wire public report route.
   await registerReportsRoutes(app, pool);
 
   // Wire Stripe Checkout (authenticated) + webhook (unauthenticated) routes (§4.1, issue #36).
-  await registerCheckoutRoutes(app, pool, opts.env, stripe);
-  await registerStripeWebhookRoute(app, pool, stripe, opts.env.STRIPE_WEBHOOK_SECRET);
+  await registerCheckoutRoutes(app, pool, env, stripe);
+  await registerStripeWebhookRoute(app, pool, stripe, env.STRIPE_WEBHOOK_SECRET);
 
   // Close pool on server shutdown.
   app.addHook('onClose', async () => {
