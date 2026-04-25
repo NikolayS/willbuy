@@ -37,4 +37,12 @@ describe('VisitorOutput (spec §2 #15)', () => {
     const wrongEnum = { ...validFixture, next_action: 'signup_free' };
     expect(() => VisitorOutput.parse(wrongEnum)).toThrow();
   });
+
+  it('rejects a non-array array (questions must be string[])', () => {
+    const notAnArray = {
+      ...validFixture,
+      questions: 'one big string instead of array',
+    };
+    expect(() => VisitorOutput.parse(notAnArray)).toThrow();
+  });
 });
