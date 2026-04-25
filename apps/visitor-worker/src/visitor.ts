@@ -127,6 +127,22 @@ export async function runVisit(opts: RunVisitOptions): Promise<VisitResult> {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
     });
 
+    if (chatResult.status === 'error') {
+      // Spec §5.15: transport retries are the adapter's job. The orchestrator
+      // does NOT schema-repair on a transport failure — the model never ran,
+      // so there is no prior raw output to feed back as repair input.
+      return {
+        status: 'failed',
+        attempts,
+        failure_reason: 'transport',
+        raw: chatResult.raw,
+      };
+    }
+
+    // Both 'ok' and 'indeterminate' carry a raw payload we can try to parse;
+    // 'indeterminate' is treated as best-effort here because spec §5.15's
+    // pessimistic-debit + reconciliation flow is owned by the adapter and
+    // the API server's spend ledger, not by this orchestrator.
     const parsed = tryParse(chatResult.raw);
     if (parsed.ok) {
       return {
