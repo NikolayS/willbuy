@@ -34,4 +34,15 @@ describe('scoreVisit (growth/ab/pricing-page-2026apr/scoring.md mirror)', () => 
   it('returns 0.6 for start_paid_trial', () => {
     expect(scoreVisit(visitWith('start_paid_trial'))).toBe(0.6);
   });
+
+  it('returns 0.3 for bookmark_compare_later when tier_picked is paid', () => {
+    expect(scoreVisit(visitWith('bookmark_compare_later'), 'starter')).toBe(
+      0.3,
+    );
+  });
+
+  it('returns 0.0 for bookmark_compare_later when tier_picked is not paid', () => {
+    expect(scoreVisit(visitWith('bookmark_compare_later'), 'hobby')).toBe(0.0);
+    expect(scoreVisit(visitWith('bookmark_compare_later'))).toBe(0.0);
+  });
 });
