@@ -21,3 +21,4 @@
 0016_auth_magic_links [0015_seed_sqlever_state] 2026-04-25T00:16:00Z willbuy <team@willbuy.dev> # auth_magic_links table for magic-link sign-in (issue #79)
 0017_studies_urls [0016_auth_magic_links] 2026-04-25T22:00:00Z willbuy <team@willbuy.dev> # persist target URLs on studies (issue #84, PR #96 B3 fix)
 0018_domain_verifications [0017_studies_urls] 2026-04-25T23:00:00Z willbuy <team@willbuy.dev> # domain verification challenges (issue #82, Sprint 3 Auth #2)
+0019_api_keys_label [0018_domain_verifications] 2026-04-25T23:30:00Z willbuy <team@willbuy.dev> # add label column to api_keys (issue #81, Sprint 3 Auth #3)
