@@ -977,4 +977,71 @@ describeIfDocker('migrations schema (issue #26)', () => {
       expect(out).toBe('1');
     });
   });
+
+  describe('PR-46 B2 (partial) — credit_ledger CHECK: commit/refund require provider_attempt_id NOT NULL (spec §5.4)', () => {
+    it('inserting kind=commit with provider_attempt_id=NULL is rejected (CHECK violation)', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('b2check-commit@example.com');`);
+      expectSqlError(
+        pg.container,
+        `insert into credit_ledger (account_id, provider_attempt_id, kind, cents, idempotency_key)
+           select id, null, 'commit', -5, 'b2check-commit-1' from accounts where owner_email='b2check-commit@example.com';`,
+        /violates check constraint/i,
+        'commit with NULL provider_attempt_id must be rejected',
+      );
+    });
+
+    it('inserting kind=refund with provider_attempt_id=NULL is rejected (CHECK violation)', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('b2check-refund@example.com');`);
+      expectSqlError(
+        pg.container,
+        `insert into credit_ledger (account_id, provider_attempt_id, kind, cents, idempotency_key)
+           select id, null, 'refund', 50, 'b2check-refund-1' from accounts where owner_email='b2check-refund@example.com';`,
+        /violates check constraint/i,
+        'refund with NULL provider_attempt_id must be rejected',
+      );
+    });
+
+    it('inserting kind=reserve with provider_attempt_id=NULL succeeds (reserve precedes any attempt)', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('b2check-reserve@example.com');`);
+      const r = psql(
+        pg.container,
+        `insert into credit_ledger (account_id, provider_attempt_id, kind, cents, idempotency_key)
+           select id, null, 'reserve', -100, 'b2check-reserve-1' from accounts where owner_email='b2check-reserve@example.com';`,
+      );
+      expect(r.code, `reserve with NULL provider_attempt_id should be accepted: ${r.stderr}`).toBe(0);
+    });
+
+    it('inserting kind=top_up with provider_attempt_id=NULL succeeds (Stripe webhook — no provider attempt)', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('b2check-topup@example.com');`);
+      const r = psql(
+        pg.container,
+        `insert into credit_ledger (account_id, provider_attempt_id, kind, cents, idempotency_key)
+           select id, null, 'top_up', 1000, 'b2check-topup-1' from accounts where owner_email='b2check-topup@example.com';`,
+      );
+      expect(r.code, `top_up with NULL provider_attempt_id should be accepted: ${r.stderr}`).toBe(0);
+    });
+
+    it('inserting kind=commit with a valid provider_attempt_id succeeds', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('b2check-ok@example.com');`);
+      psql(
+        pg.container,
+        `insert into studies (account_id, kind, status) select id, 'single', 'pending' from accounts where owner_email='b2check-ok@example.com';`,
+      );
+      psql(
+        pg.container,
+        `insert into provider_attempts (account_id, study_id, kind, logical_request_key, provider, model, transport_attempts, status, cost_cents, started_at)
+           select a.id, s.id, 'visit', 'b2check-ok-lk', 'anthropic', 'claude-haiku-4-5', 0, 'ended', 50, now()
+           from accounts a join studies s on s.account_id = a.id where a.owner_email='b2check-ok@example.com';`,
+      );
+      const r = psql(
+        pg.container,
+        `insert into credit_ledger (account_id, provider_attempt_id, kind, cents, idempotency_key)
+           select a.id, pa.id, 'commit', -50, 'b2check-ok-commit-1'
+           from accounts a
+           join provider_attempts pa on pa.account_id = a.id
+           where a.owner_email='b2check-ok@example.com';`,
+      );
+      expect(r.code, `commit with valid provider_attempt_id should be accepted: ${r.stderr}`).toBe(0);
+    });
+  });
 });
