@@ -23,13 +23,17 @@ import type postgres from 'postgres';
 
 export type SpendKind = 'visit' | 'embedding' | 'cluster_label' | 'probe';
 
-/** Hard per-kind est_cents ceilings from spec §5.5. */
-const KIND_CEILING: Record<SpendKind, number> = {
+/**
+ * Hard per-kind est_cents ceilings from spec §5.5.
+ * Callers MUST cap est_cents to these values before calling reserveSpend.
+ * Exported so callers can apply the ceiling without duplicating the values.
+ */
+export const KIND_CEILING: Readonly<Record<SpendKind, number>> = {
   visit: 5,
   cluster_label: 3,
   embedding: 0,
   probe: 0,
-};
+} as const;
 
 export type ReserveSpendInput = {
   sql: ReturnType<typeof postgres>;
@@ -37,7 +41,13 @@ export type ReserveSpendInput = {
   /** ISO date string e.g. '2099-01-01'. */
   date: string;
   kind: SpendKind;
-  /** Estimated cents to reserve. Clamped to KIND_CEILING[kind] internally. */
+  /**
+   * Estimated cents to reserve. Caller is responsible for applying the
+   * per-kind hard ceiling before calling (visit=5¢, cluster_label=3¢,
+   * embedding=0¢, probe=0¢ per spec §5.5). We validate here as defence-in-
+   * depth and clamp to the ceiling so that a misbehaving caller can never
+   * exceed the per-visit hard cap.
+   */
   est_cents: number;
   daily_cap_cents: number;
 };
@@ -54,20 +64,14 @@ export type ReserveSpendResult =
  * when the new total ≤ daily_cap. If the WHERE fails, Postgres returns zero
  * rows (no error) — that is our signal for cap_exceeded.
  *
- * See spec §5.5 and the cap_warnings note about the 50% gate; the 50% gate
- * is a SEPARATE call to maybeWarnCap in cap-warning.ts.
+ * Embeddings (est_cents=0) always succeed and write a row for observability
+ * without debiting the cap (spec §5.5).
  */
 export async function reserveSpend(input: ReserveSpendInput): Promise<ReserveSpendResult> {
-  const { sql, account_id, date, kind, daily_cap_cents } = input;
+  const { sql, account_id, date, kind, daily_cap_cents, est_cents } = input;
 
-  // Enforce per-kind ceiling
-  const ceiling = KIND_CEILING[kind];
-  const est_cents = Math.min(input.est_cents, ceiling);
-
-  // Embeddings cost 0¢ — they still write a row for observability but never
-  // debit the cap (spec §5.5). We skip the cap-check for 0¢ kinds.
+  // Embeddings cost 0¢ — write row for observability, never debit cap.
   if (est_cents === 0) {
-    // Upsert without the cap WHERE so zero-cost calls always succeed.
     await sql`
       INSERT INTO llm_spend_daily (account_id, date, kind, cents)
         VALUES (${String(account_id)}, ${date}, ${kind}, 0)
@@ -76,7 +80,7 @@ export async function reserveSpend(input: ReserveSpendInput): Promise<ReserveSpe
     return { ok: true, ledger_row_id: null };
   }
 
-  const rows = await sql<[{ cents: number }?]>`
+  const rows = await sql<{ cents: number }[]>`
     INSERT INTO llm_spend_daily (account_id, date, kind, cents)
       VALUES (${String(account_id)}, ${date}, ${kind}, ${est_cents})
       ON CONFLICT (account_id, date, kind)
