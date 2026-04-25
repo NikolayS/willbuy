@@ -45,4 +45,17 @@ describe('scoreVisit (growth/ab/pricing-page-2026apr/scoring.md mirror)', () => 
     expect(scoreVisit(visitWith('bookmark_compare_later'), 'hobby')).toBe(0.0);
     expect(scoreVisit(visitWith('bookmark_compare_later'))).toBe(0.0);
   });
+
+  it('returns 0.2 for start_free_hobby when considered tier is paid', () => {
+    expect(
+      scoreVisit(visitWith('start_free_hobby'), undefined, 'express'),
+    ).toBe(0.2);
+  });
+
+  it('returns 0.0 for start_free_hobby when considered tier is not paid', () => {
+    expect(
+      scoreVisit(visitWith('start_free_hobby'), undefined, 'hobby'),
+    ).toBe(0.0);
+    expect(scoreVisit(visitWith('start_free_hobby'))).toBe(0.0);
+  });
 });
