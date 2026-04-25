@@ -11,7 +11,7 @@
  *    - On valid: set HttpOnly scoped cookie (HMAC-signed opaque value), 302
  *      redirect to /r/<slug> with Cache-Control: no-store.
  *
- * 2. Else if cookie willbuy_share_<slug> present:
+ * 2. Else if cookie wb_rt_<slug> present:
  *    - Verify HMAC. On invalid: 404.
  *    - Re-check DB (revoked_at / expires_at). On stale: 404.
  *    - On valid: 200 with report body + Cache-Control: no-store.
@@ -25,11 +25,25 @@
  * NOTE: Set-Cookie uses manual reply.header() — @fastify/cookie is not required
  * for HttpOnly cookies set by the server (only needed if reading cookies via
  * req.cookies shorthand). We parse the incoming cookie header manually.
+ *
+ * Two-tier TTL (Sprint 3 retro F2, spec §2 #20):
+ *  - The underlying SHARE TOKEN row in DB has a long expiry (default 90 days)
+ *    so revocation/rotation flows make sense and links remain shareable.
+ *  - The BROWSER COOKIE issued after the cookie-swap is capped at 2 hours.
+ *    After that, the browser drops the cookie and the user must re-present
+ *    the original `?t=<token>` URL (which is still valid in DB) to get a
+ *    fresh 2-hour cookie. This limits the blast radius of a stolen browser
+ *    profile / sticky session and matches §2 #20's "2-hour session TTL".
  */
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
+
+// Spec §2 #20: cookie has a 2-hour session TTL regardless of the underlying
+// share-token row's `expires_at` (which may be up to 90 days). See file-level
+// "Two-tier TTL" note above. Sprint 3 retro audit finding F2.
+const MAX_COOKIE_SECONDS = 2 * 60 * 60; // 2 hours per spec §2 #20
 
 // ---------------------------------------------------------------------------
 // Crypto helpers
@@ -233,9 +247,17 @@ export async function registerReportsRoutes(
         }
 
         // Token is valid — build HMAC cookie, set it, 302 redirect.
+        // Spec §2 #20: cookie name is `wb_rt_<slug>` (Sprint 3 retro F1).
         const cookieValue = buildCookieValue(slug, st.expires_at, st.account_id, hmacKey);
-        const cookieName = `willbuy_share_${slug}`;
-        const maxAgeSec = Math.max(0, Math.floor((st.expires_at.getTime() - Date.now()) / 1000));
+        const cookieName = `wb_rt_${slug}`;
+        // Spec §2 #20: cookie TTL is capped at 2h even if the underlying token
+        // has a much longer DB expiry (default 90 days). Sprint 3 retro F2.
+        // See file-level "Two-tier TTL" comment for rationale.
+        const tokenSecondsRemaining = Math.max(
+          0,
+          Math.floor((st.expires_at.getTime() - Date.now()) / 1000),
+        );
+        const maxAgeSec = Math.min(tokenSecondsRemaining, MAX_COOKIE_SECONDS);
 
         void reply.header(
           'set-cookie',
@@ -248,8 +270,9 @@ export async function registerReportsRoutes(
 
       // ------------------------------------------------------------------
       // Path 2: Cookie present.
+      // Spec §2 #20: cookie name is `wb_rt_<slug>` (Sprint 3 retro F1).
       // ------------------------------------------------------------------
-      const cookieName = `willbuy_share_${slug}`;
+      const cookieName = `wb_rt_${slug}`;
       const cookieHeader = req.headers['cookie'] as string | undefined;
       const cookieValue = parseCookie(cookieHeader, cookieName);
 

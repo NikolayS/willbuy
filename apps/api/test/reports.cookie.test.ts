@@ -69,9 +69,9 @@ async function applyMigrations(url: string): Promise<void> {
 // Shared HMAC key used in all test cases — must match what the server uses.
 const TEST_HMAC_KEY = 'a'.repeat(64); // 64 hex chars = 32 bytes
 
-// Cookie name helper — mirrors server implementation.
+// Cookie name helper — mirrors server implementation (spec §2 #20).
 function cookieName(slug: string): string {
-  return `willbuy_share_${slug}`;
+  return `wb_rt_${slug}`;
 }
 
 // Build a valid HMAC cookie value for a slug+expiresAt+accountId combination.
@@ -216,8 +216,8 @@ describeIfDocker('§5.12 share-token HttpOnly cookie redirect (issue #76)', () =
     const cookies = parseCookieHeader(res.headers['set-cookie'] as string | string[]);
     expect(cookies.length, 'at least one Set-Cookie header').toBeGreaterThan(0);
 
-    const cookieStr = cookies.find((c) => c.startsWith(`willbuy_share_${slug}=`));
-    expect(cookieStr, 'correct cookie name').toBeTruthy();
+    const cookieStr = cookies.find((c) => c.startsWith(`wb_rt_${slug}=`));
+    expect(cookieStr, 'correct cookie name (wb_rt_<slug> per spec §2 #20)').toBeTruthy();
     expect(cookieStr, 'HttpOnly flag').toMatch(/HttpOnly/i);
     expect(cookieStr, 'Secure flag').toMatch(/Secure/i);
     expect(cookieStr, 'SameSite=Lax').toMatch(/SameSite=Lax/i);
