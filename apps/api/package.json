@@ -4,6 +4,16 @@
   "private": true,
   "type": "module",
   "description": "willbuy.dev API server (Fastify + structured logging + health) — see SPEC §4.1",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./leases/backstory-lease": {
+      "types": "./src/leases/backstory-lease.ts",
+      "default": "./src/leases/backstory-lease.ts"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "bun --watch src/index.ts",

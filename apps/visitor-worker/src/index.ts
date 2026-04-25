@@ -14,4 +14,5 @@ export type {
   RunVisitOptions,
   VisitFailureReason,
   VisitStatus,
+  LeaseReleaseContext,
 } from './visitor.js';
