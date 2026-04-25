@@ -18,7 +18,7 @@ describe('captureUrl host-count ceiling (spec §2 #5 + §2 #6)', () => {
     // counts unique hosts; the ceiling is enforced from the same code
     // path the production listener uses.
     let i = 0;
-    const result = await captureUrl(server.url('/simple.html'), {
+    const result = await captureUrl(server.url('/many-hosts.html'), {
       hostCountBudget: 3,
       hostExtractor: () => `synthetic-host-${i++}.example`,
     });

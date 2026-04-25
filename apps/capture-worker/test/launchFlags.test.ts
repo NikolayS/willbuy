@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { LAUNCH_FLAGS } from '../src/launchFlags.js';
 
 describe('LAUNCH_FLAGS (spec §2 #2 — Chromium sandbox enabled)', () => {
-  it('does not contain --no-sandbox', () => {
+  it('does not contain the banned sandbox-disabling flag', () => {
     // The CI lint (`willbuy/no-sandbox-flag`) catches a raw literal in
     // source. This test catches a runtime composition (template-literal
     // concat, env interpolation, etc.) that the lint can't see.
