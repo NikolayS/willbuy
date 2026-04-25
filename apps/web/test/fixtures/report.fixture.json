@@ -1,0 +1,176 @@
+{
+  "meta": {
+    "slug": "test-fixture",
+    "low_power": false
+  },
+  "headline": {
+    "mean_delta": 1.4,
+    "ci95_low": 0.6,
+    "ci95_high": 2.2,
+    "n_paired": 30,
+    "paired_t_p": 0.012,
+    "wilcoxon_p": 0.018,
+    "mcnemar_p": 0.041,
+    "verdict": "better",
+    "disagreement": false
+  },
+  "paired_dots": [
+    { "backstory_id": "bs-001", "backstory_name": "Persona One",   "role": "founder_or_eng_lead", "score_a": 4, "score_b": 7, "swing": "b_wins" },
+    { "backstory_id": "bs-002", "backstory_name": "Persona Two",   "role": "ic_engineer",        "score_a": 6, "score_b": 6, "swing": "tie"    },
+    { "backstory_id": "bs-003", "backstory_name": "Persona Three", "role": "founder_or_eng_lead", "score_a": 3, "score_b": 5, "swing": "b_wins" },
+    { "backstory_id": "bs-004", "backstory_name": "Persona Four",  "role": "ic_engineer",        "score_a": 8, "score_b": 5, "swing": "a_wins" },
+    { "backstory_id": "bs-005", "backstory_name": "Persona Five",  "role": "founder_or_eng_lead", "score_a": 2, "score_b": 6, "swing": "b_wins" },
+    { "backstory_id": "bs-006", "backstory_name": "Persona Six",   "role": "ic_engineer",        "score_a": 5, "score_b": 7, "swing": "b_wins" },
+    { "backstory_id": "bs-007", "backstory_name": "Persona Seven", "role": "founder_or_eng_lead", "score_a": 7, "score_b": 8, "swing": "b_wins" },
+    { "backstory_id": "bs-008", "backstory_name": "Persona Eight", "role": "ic_engineer",        "score_a": 4, "score_b": 4, "swing": "tie"    },
+    { "backstory_id": "bs-009", "backstory_name": "Persona Nine",  "role": "founder_or_eng_lead", "score_a": 6, "score_b": 8, "swing": "b_wins" },
+    { "backstory_id": "bs-010", "backstory_name": "Persona Ten",   "role": "ic_engineer",        "score_a": 5, "score_b": 6, "swing": "b_wins" }
+  ],
+  "histograms": [
+    { "variant": "A", "bins": [0, 1, 2, 2, 3, 5, 7, 6, 3, 1, 0], "mean": 5.4, "median": 6 },
+    { "variant": "B", "bins": [0, 0, 1, 2, 2, 4, 6, 8, 5, 2, 0], "mean": 6.8, "median": 7 }
+  ],
+  "next_actions": [
+    {
+      "variant": "A",
+      "counts": {
+        "purchase_paid_today":     2,
+        "contact_sales":           3,
+        "book_demo":               1,
+        "start_paid_trial":        4,
+        "bookmark_compare_later":  6,
+        "start_free_hobby":        7,
+        "ask_teammate":            4,
+        "leave":                   3
+      }
+    },
+    {
+      "variant": "B",
+      "counts": {
+        "purchase_paid_today":     5,
+        "contact_sales":           5,
+        "book_demo":               3,
+        "start_paid_trial":        6,
+        "bookmark_compare_later":  4,
+        "start_free_hobby":        3,
+        "ask_teammate":            2,
+        "leave":                   2
+      }
+    }
+  ],
+  "tier_picked": [
+    {
+      "variant": "A",
+      "counts": { "none": 8, "hobby": 6, "express": 5, "starter": 6, "scale": 3, "enterprise": 2 }
+    },
+    {
+      "variant": "B",
+      "counts": { "none": 4, "hobby": 4, "express": 7, "starter": 8, "scale": 5, "enterprise": 2 }
+    }
+  ],
+  "theme_board": {
+    "blockers": [
+      { "cluster_id": "blk-1", "label": "Self-hosted vs managed unclear",     "count": 9 },
+      { "cluster_id": "blk-2", "label": "Pricing tier limits opaque",         "count": 7 },
+      { "cluster_id": "blk-3", "label": "No SOC 2 mention on pricing page",   "count": 4 }
+    ],
+    "objections": [
+      { "cluster_id": "obj-1", "label": "Per-seat math gets expensive fast",  "count": 8 },
+      { "cluster_id": "obj-2", "label": "Lock-in concern with proprietary format", "count": 5 }
+    ],
+    "confusions": [
+      { "cluster_id": "cnf-1", "label": "Express vs Starter difference",      "count": 6 },
+      { "cluster_id": "cnf-2", "label": "Where is the free tier described",   "count": 4 }
+    ],
+    "questions": [
+      { "cluster_id": "qst-1", "label": "Does the trial require a card",      "count": 7 },
+      { "cluster_id": "qst-2", "label": "Can I self-host the OSS variant",    "count": 5 }
+    ]
+  },
+  "personas": [
+    {
+      "backstory_id": "bs-005",
+      "backstory_name": "Persona Five",
+      "role": "founder_or_eng_lead",
+      "stage": "seed",
+      "team_size": 6,
+      "stack": "supabase",
+      "current_pain": "slow_queries",
+      "entry_point": "hacker_news",
+      "score_a": 2,
+      "score_b": 6,
+      "verdict_a": "Pricing page doesn't tell me what I'd pay at my volume; bounce.",
+      "verdict_b": "Numbers line up with my Supabase bill; would start a paid trial."
+    },
+    {
+      "backstory_id": "bs-001",
+      "backstory_name": "Persona One",
+      "role": "founder_or_eng_lead",
+      "stage": "seed+",
+      "team_size": 12,
+      "stack": "rds",
+      "current_pain": "cost_creep",
+      "entry_point": "newsletter",
+      "score_a": 4,
+      "score_b": 7,
+      "verdict_a": "I get the value but the tier breakpoints feel arbitrary.",
+      "verdict_b": "Tier comparison table makes the upgrade path obvious."
+    },
+    {
+      "backstory_id": "bs-003",
+      "backstory_name": "Persona Three",
+      "role": "founder_or_eng_lead",
+      "stage": "seed",
+      "team_size": 2,
+      "stack": "neon",
+      "current_pain": "bad_migration_fear",
+      "entry_point": "google_search",
+      "score_a": 3,
+      "score_b": 5,
+      "verdict_a": "Need a clearer guarantee around schema changes.",
+      "verdict_b": "Migration story is plausible at my size; would bookmark."
+    },
+    {
+      "backstory_id": "bs-009",
+      "backstory_name": "Persona Nine",
+      "role": "founder_or_eng_lead",
+      "stage": "series_a",
+      "team_size": 20,
+      "stack": "aurora",
+      "current_pain": "upcoming_scale_event",
+      "entry_point": "vc_referral",
+      "score_a": 6,
+      "score_b": 8,
+      "verdict_a": "Solid but I'd want to talk to sales first.",
+      "verdict_b": "Contact sales CTA is finally above the fold."
+    },
+    {
+      "backstory_id": "bs-004",
+      "backstory_name": "Persona Four",
+      "role": "ic_engineer",
+      "stage": "seed+",
+      "team_size": 6,
+      "stack": "rds",
+      "current_pain": "recent_outage",
+      "entry_point": "postgres_blog_footer",
+      "score_a": 8,
+      "score_b": 5,
+      "verdict_a": "Clean explanation of failover behavior; would push to my lead.",
+      "verdict_b": "New layout buries the ops detail I cared about."
+    },
+    {
+      "backstory_id": "bs-006",
+      "backstory_name": "Persona Six",
+      "role": "ic_engineer",
+      "stage": "series_a",
+      "team_size": 12,
+      "stack": "cloud_sql",
+      "current_pain": "slow_queries",
+      "entry_point": "conference_booth_followup",
+      "score_a": 5,
+      "score_b": 7,
+      "verdict_a": "Performance claims are vague.",
+      "verdict_b": "p95 numbers and a workload-shape note close the gap."
+    }
+  ]
+}

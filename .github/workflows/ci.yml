@@ -80,3 +80,70 @@ jobs:
             --entrypoint /opt/venv/bin/pytest \
             willbuy-aggregator:ci \
             /app/tests -v
+
+  # Issue #33 / spec §5.13 + §2 #5 — capture egress isolation acceptance
+  # tests. These exercise real Linux network namespaces + iptables rules and
+  # therefore need NET_ADMIN. The default `ubuntu-latest` runner runs jobs
+  # as a passwordless-sudoer user, which gives us the capability we need
+  # without `--privileged` containers.
+  #
+  # Local reproduction:
+  #   sudo WILLBUY_PRIVILEGED=1 infra/capture/test/privileged.test.sh
+  #
+  # Why this is a separate job (not folded into `build`):
+  #  - it runs as root (via sudo) and we don't want to run the rest of the
+  #    test suite with elevated privileges,
+  #  - it must be Linux (the suite skips itself on macOS / Windows),
+  #  - it has narrow OS-package prerequisites (`iproute2`, `iptables`,
+  #    `conntrack-tools`, `netcat-openbsd`, `python3`) that the rest of the
+  #    suite does not need.
+  egress-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install netns + iptables prereqs
+        # `nsenter` ships in `util-linux`, not its own package — it's already
+        # present on every ubuntu runner. We list `util-linux` defensively
+        # (it's almost always pre-installed; apt-get is a no-op when it is).
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            iproute2 iptables conntrack netcat-openbsd python3 util-linux
+
+      - name: Verify ip / iptables / ip6tables / conntrack / nc / nsenter
+        run: |
+          which ip && ip -V
+          which iptables && sudo iptables -V
+          which ip6tables && sudo ip6tables -V
+          which conntrack && sudo conntrack -V
+          which nc
+          which nsenter && nsenter --version
+
+      - name: Load conntrack kernel modules
+        # `apply_rules` uses `-m conntrack --ctstate ESTABLISHED,RELATED`,
+        # which auto-loads nf_conntrack on the first invocation, but loading
+        # explicitly here makes the failure surface obvious if the runner's
+        # kernel ever ships without it. nf_conntrack_ipv6 is auto-pulled by
+        # nf_conntrack on modern kernels.
+        run: |
+          sudo modprobe nf_conntrack || true
+          lsmod | grep -E '^nf_conntrack' || true
+
+      - name: Run dry-run shell suites (no NET_ADMIN required)
+        run: |
+          bash infra/capture/test/dryrun.test.sh
+          bash infra/capture/test/cidr.test.sh
+          bash infra/capture/test/redirect.test.sh
+
+      - name: Run privileged netns + iptables acceptance suite
+        run: sudo WILLBUY_PRIVILEGED=1 bash infra/capture/test/privileged.test.sh
+
+      # F1 integration test: verify the full docker-run codepath works end-to-end.
+      # The pause container approach (netns-bringup.sh → pause-<name> → docker run
+      # --network container:pause-<name>) is exercised here with a real docker run.
+      # This test FAILS without the pause container fix in netns-bringup.sh.
+      - name: Run pause-container docker integration test
+        run: sudo bash infra/capture/test/docker-integration.test.sh
