@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Many subresources</title>
+  </head>
+  <body>
+    <h1>Many subresources</h1>
+    <!--
+      Triggers 60 GET requests against the local fixture server. Each
+      one is the same /__ok endpoint, but combined with the host-count
+      test's `hostExtractor` (which returns a unique synthetic host per
+      call) this exceeds the §2 #5 budget and exercises the breach path
+      without needing 60 real DNS endpoints.
+    -->
+    <script>
+      for (let i = 0; i < 60; i++) {
+        const im = new Image();
+        im.src = '/__ok?i=' + i + '&t=' + Date.now();
+        document.body.appendChild(im);
+      }
+    </script>
+  </body>
+</html>

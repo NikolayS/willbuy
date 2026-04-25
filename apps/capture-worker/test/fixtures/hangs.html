@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hangs</title>
+  </head>
+  <body>
+    <h1>Loading…</h1>
+    <!--
+      Holds an open keep-alive XHR forever. The test server backing this
+      fixture leaves the response stream open, so Playwright's networkidle
+      never fires within the wall-clock budget. This exercises the §2 #6
+      wall-clock ceiling abort path.
+    -->
+    <script>
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', '/__hang', true);
+      xhr.send();
+    </script>
+  </body>
+</html>

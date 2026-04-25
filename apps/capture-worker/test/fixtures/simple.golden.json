@@ -1,0 +1,122 @@
+{
+  "status": "ok",
+  "a11y_tree": [
+    {
+      "role": "RootWebArea",
+      "name": "Simple capture fixture",
+      "children": [
+        {
+          "role": "banner",
+          "name": "",
+          "children": [
+            {
+              "role": "heading",
+              "name": "Pricing that scales with you",
+              "level": 1,
+              "children": [
+                {
+                  "role": "StaticText",
+                  "name": "Pricing that scales with you",
+                  "children": [
+                    {
+                      "role": "InlineTextBox",
+                      "name": "",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "paragraph",
+              "name": "",
+              "children": [
+                {
+                  "role": "StaticText",
+                  "name": "Pick the plan that fits your team.",
+                  "children": [
+                    {
+                      "role": "InlineTextBox",
+                      "name": "",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "role": "main",
+          "name": "",
+          "children": [
+            {
+              "role": "image",
+              "name": "Postgres logo",
+              "children": []
+            },
+            {
+              "role": "region",
+              "name": "Plans",
+              "children": [
+                {
+                  "role": "heading",
+                  "name": "Plans",
+                  "level": 2,
+                  "children": [
+                    {
+                      "role": "StaticText",
+                      "name": "Plans",
+                      "children": [
+                        {
+                          "role": "InlineTextBox",
+                          "name": "",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "role": "button",
+                  "name": "Start free",
+                  "children": [
+                    {
+                      "role": "StaticText",
+                      "name": "Start free",
+                      "children": [
+                        {
+                          "role": "InlineTextBox",
+                          "name": "",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "role": "link",
+                  "name": "Talk to sales",
+                  "children": [
+                    {
+                      "role": "StaticText",
+                      "name": "Talk to sales",
+                      "children": [
+                        {
+                          "role": "InlineTextBox",
+                          "name": "",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "banner_selectors_matched": []
+}
