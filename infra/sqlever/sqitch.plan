@@ -16,4 +16,5 @@
 0011_global_inflight [0010_late_arrivals] 2026-04-01T00:11:00Z willbuy <team@willbuy.dev> # global backpressure tables (spec §5.14)
 0012_accounts_verified_domains [0011_global_inflight] 2026-04-01T00:12:00Z willbuy <team@willbuy.dev> # add verified_domains to accounts (spec §2 #1)
 0013_late_arrivals_unique [0012_accounts_verified_domains] 2026-04-01T00:13:00Z willbuy <team@willbuy.dev> # schema-enforce idempotency on late_arrivals (issue #58)
-0014_seed_sqlever_state [0013_late_arrivals_unique] 2026-04-25T00:14:00Z willbuy <team@willbuy.dev> # seed sqlever state from legacy _migrations rows (issue #48, amendment A4)
+0014_share_tokens [0013_late_arrivals_unique] 2026-04-25T00:13:30Z willbuy <team@willbuy.dev> # share-token table for §5.12 cookie redirect (issue #76, PR #89; sqlever deploy added in #97 hotfix)
+0015_seed_sqlever_state [0014_share_tokens] 2026-04-25T00:15:00Z willbuy <team@willbuy.dev> # seed sqlever state from legacy _migrations rows (issue #48, amendment A4) — renumbered from 0014 to resolve collision with 0014_share_tokens

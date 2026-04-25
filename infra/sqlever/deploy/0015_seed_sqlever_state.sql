@@ -1,4 +1,4 @@
--- Deploy 0014_seed_sqlever_state
+-- Deploy 0015_seed_sqlever_state
 -- Spec ref: issue #48, amendment A4 — one-shot sqlever state seed.
 --
 -- This deploy script is a no-op when applied via `sqlever deploy` on a fresh
@@ -15,7 +15,7 @@ BEGIN;
 
 -- sqlever-managed backward-compat row so _migrations stays in sync.
 INSERT INTO _migrations (filename, checksum, applied_at)
-VALUES ('0014_seed_sqlever_state.sql', 'sqlever-managed', NOW())
+VALUES ('0015_seed_sqlever_state.sql', 'sqlever-managed', NOW())
 ON CONFLICT (filename) DO NOTHING;
 
 COMMIT;
