@@ -29,6 +29,7 @@ create table if not exists provider_circuit_state (
 );
 
 comment on table provider_circuit_state is 'Per-provider circuit breaker state (spec §5.14)';
+comment on column provider_circuit_state.provider is 'Provider identifier (e.g. anthropic); PK — one row per provider (spec §5.14)';
 comment on column provider_circuit_state.state is 'closed = healthy; open = fail fast; half_open = single probe in flight';
 comment on column provider_circuit_state.opened_at is 'Set when transitioning to open; cleared on closed';
 comment on column provider_circuit_state.last_5xx_at is 'Most recent 5xx; used by the 5-in-60-s rule';
@@ -40,4 +41,5 @@ create table if not exists rate_tokens (
 );
 
 comment on table rate_tokens is 'Per-provider token bucket bounded at 0.8× published rate (spec §5.14)';
+comment on column rate_tokens.provider is 'Provider identifier (e.g. anthropic); PK — one token bucket per provider (spec §5.14)';
 comment on column rate_tokens.tokens is 'Current available tokens; drained on every provider call, refilled periodically';

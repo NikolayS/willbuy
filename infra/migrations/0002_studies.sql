@@ -1,4 +1,4 @@
--- 0002_studies.sql — studies table (spec §4.1, §5.3).
+-- 0002_studies.sql — studies table (spec §4.1, §4.3, §5.3).
 --
 -- studies.kind: single | paired (paired = exactly two URLs, A and B).
 -- studies.status flow per spec §5.3:
@@ -7,6 +7,13 @@
 -- The single-writer aggregator lock (spec §5.11) is taken via
 --   `select 1 from studies where id = $1 and status = 'aggregating' for update skip locked`
 -- — no extra column needed; the row lock + status filter are the lock.
+--
+-- NB5 (PR #46 review): spec §4.3 lists additional columns for studies:
+--   urls[], authorization_mode, icp_id, n, seed, screenshots_enabled, cost_cents.
+-- These are intentionally omitted from this migration — issue #26 scoped the
+-- schema batch to infrastructure tables only. The API migration (issue #xx,
+-- which adds the REST endpoints and worker config) will add these columns via
+-- ALTER TABLE. This is a deliberate scope split, not an oversight.
 
 create table if not exists studies (
   id            int8        generated always as identity primary key,

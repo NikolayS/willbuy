@@ -275,9 +275,10 @@ describeIfDocker('migrations schema (issue #26)', () => {
          insert into studies (account_id, kind, status) select id, 'single', 'pending' from accounts where owner_email='enum4@example.com';
          insert into backstories (study_id, idx, payload) select id, 0, '{}'::jsonb from studies
            where account_id = (select id from accounts where owner_email='enum4@example.com');
-         insert into visits (backstory_id, side, status, repair_generation, transport_attempts, started_at)
-           select id, 'A', 'unknown_terminal', 0, 0, now() from backstories
-           where study_id = (select id from studies where account_id = (select id from accounts where owner_email='enum4@example.com'));`,
+         insert into visits (study_id, backstory_id, variant_idx, status, repair_generation, transport_attempts, started_at)
+           select s.id, b.id, 0, 'unknown_terminal', 0, 0, now()
+           from backstories b join studies s on s.id = b.study_id
+           where s.account_id = (select id from accounts where owner_email='enum4@example.com');`,
         /invalid input value|violates check constraint/i,
         'visits.status enum',
       );
@@ -358,8 +359,8 @@ describeIfDocker('migrations schema (issue #26)', () => {
     it('visits.backstory_id rejects missing parent', () => {
       expectSqlError(
         pg.container,
-        `insert into visits (backstory_id, side, status, repair_generation, transport_attempts, started_at)
-           values (999999, 'A', 'started', 0, 0, now());`,
+        `insert into visits (study_id, backstory_id, variant_idx, status, repair_generation, transport_attempts, started_at)
+           values (999999, 999999, 0, 'started', 0, 0, now());`,
         /violates foreign key constraint/i,
         'visits FK',
       );
@@ -450,7 +451,7 @@ describeIfDocker('migrations schema (issue #26)', () => {
       );
     });
 
-    it('visits (backstory_id, side) unique', () => {
+    it('visits (study_id, backstory_id, variant_idx) unique', () => {
       psql(pg.container, `insert into accounts (owner_email) values ('uniq4@example.com');`);
       psql(
         pg.container,
@@ -464,18 +465,20 @@ describeIfDocker('migrations schema (issue #26)', () => {
       );
       const seed = psql(
         pg.container,
-        `insert into visits (backstory_id, side, status, repair_generation, transport_attempts, started_at)
-           select id, 'A', 'started', 0, 0, now() from backstories
-           where study_id = (select id from studies where account_id = (select id from accounts where owner_email='uniq4@example.com'));`,
+        `insert into visits (study_id, backstory_id, variant_idx, status, repair_generation, transport_attempts, started_at)
+           select s.id, b.id, 0, 'started', 0, 0, now()
+           from backstories b join studies s on s.id = b.study_id
+           where s.account_id = (select id from accounts where owner_email='uniq4@example.com');`,
       );
       expect(seed.code, `seed: ${seed.stderr}`).toBe(0);
       expectSqlError(
         pg.container,
-        `insert into visits (backstory_id, side, status, repair_generation, transport_attempts, started_at)
-           select id, 'A', 'started', 0, 0, now() from backstories
-           where study_id = (select id from studies where account_id = (select id from accounts where owner_email='uniq4@example.com'));`,
+        `insert into visits (study_id, backstory_id, variant_idx, status, repair_generation, transport_attempts, started_at)
+           select s.id, b.id, 0, 'started', 0, 0, now()
+           from backstories b join studies s on s.id = b.study_id
+           where s.account_id = (select id from accounts where owner_email='uniq4@example.com');`,
         /duplicate key value violates unique/i,
-        'visits (backstory_id, side) unique',
+        'visits (study_id, backstory_id, variant_idx) unique',
       );
     });
 
