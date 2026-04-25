@@ -18,6 +18,7 @@
  * On 422 "unverified domain" → inline message + verify-domain link.
  */
 
+import React from 'react';
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createStudy, ICP_PRESETS, type IcpPresetId } from '../../../../lib/api-client';

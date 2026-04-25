@@ -18,6 +18,7 @@
  * We unwrap it safely via useEffect on mount for client-component compat.
  */
 
+import React from 'react';
 import { useState, useEffect } from 'react';
 import { getStudy, type GetStudyResponse, type StudyStatus } from '../../../../lib/api-client';
 
