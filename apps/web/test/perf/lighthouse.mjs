@@ -25,8 +25,6 @@
 //
 // Exit 0 on pass; non-zero with a JSON summary on fail.
 
-import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const FIXTURE_URL = process.env.WILLBUY_PERF_URL ?? 'http://localhost:3000/r/test-fixture';
@@ -108,9 +106,3 @@ async function main() {
 }
 
 await main();
-
-// Silence "unused" warnings in environments that don't have the deps;
-// `spawnSync` and `existsSync` are kept around for future host-binary
-// fallbacks (e.g. a system `lighthouse` CLI on the CI image).
-void spawnSync;
-void existsSync;

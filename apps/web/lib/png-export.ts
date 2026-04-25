@@ -24,7 +24,10 @@ async function loadHtmlToImage(): Promise<ToPngFn> {
 }
 
 export interface ExportOptions {
-  /** Test seam: pass a stub to avoid loading html-to-image in jsdom. */
+  /**
+   * @internal Test seam: pass a stub to avoid loading html-to-image in jsdom.
+   * Production code never passes this argument.
+   */
   _toPngForTest?: ToPngFn;
   /** Forwarded to html-to-image. */
   pixelRatio?: number;
