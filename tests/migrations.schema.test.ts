@@ -28,7 +28,8 @@ const dockerCheck = spawnSync('docker', ['version', '--format', '{{.Server.Versi
 const dockerAvailable = dockerCheck.status === 0;
 const describeIfDocker = dockerAvailable ? describe : describe.skip;
 
-const PG_IMAGE = 'postgres:16-alpine';
+// S-NB2: pin by digest; matches scripts/migrate.sh fallback image.
+const PG_IMAGE = 'postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50';
 const PG_PASSWORD = 'willbuy_test_pw';
 const CONTAINER_PREFIX = 'willbuy-schema-test-';
 
@@ -61,8 +62,9 @@ async function startPostgres(): Promise<{ container: string; port: number; url: 
       // Faster startup: trust-mode skips md5 auth handshake during initdb.
       '-e', `POSTGRES_PASSWORD=${PG_PASSWORD}`,
       '-e', 'POSTGRES_INITDB_ARGS=--auth-host=trust',
-      // Smaller footprint: 128 MB shared_buffers avoids OOM under CI memory pressure.
-      '-e', 'POSTGRES_SHARED_BUFFERS=128MB',
+      // POSTGRES_SHARED_BUFFERS is not a valid postgres env var — postgres reads
+      // shared_buffers from postgresql.conf or -c flag, not from the environment.
+      // 128 MB is the default anyway; dropped (issue #62).
       '--shm-size=256m',
       '-p', `${port}:5432`,
       PG_IMAGE,
@@ -1097,6 +1099,108 @@ describeIfDocker('migrations schema (issue #26)', () => {
            where a.owner_email='b2check-ok@example.com';`,
       );
       expect(r.code, `commit with valid provider_attempt_id should be accepted: ${r.stderr}`).toBe(0);
+    });
+  });
+
+  // ── Issue #58 — late_arrivals UNIQUE(study_id, visit_id) ──────────────────
+  // TDD red→green: these tests fail before migration 0013 is applied.
+  describe('#58 — late_arrivals UNIQUE(study_id, visit_id)', () => {
+    it('late_arrivals has a UNIQUE constraint on (study_id, visit_id)', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select count(*) from pg_indexes
+         where tablename = 'late_arrivals'
+           and upper(indexdef) like '%UNIQUE%'
+           and indexdef like '%study_id%visit_id%';`,
+        'late_arrivals UNIQUE(study_id, visit_id)',
+      );
+      expect(out).toBe('1');
+    });
+
+    it('duplicate (study_id, visit_id) insert into late_arrivals is rejected', () => {
+      // seed the required parent rows
+      psql(pg.container, `insert into accounts (owner_email) values ('la-uniq@example.com');`);
+      psql(
+        pg.container,
+        `insert into studies (account_id, kind, status) select id, 'single', 'ready' from accounts where owner_email='la-uniq@example.com';`,
+      );
+      psql(
+        pg.container,
+        `insert into backstories (study_id, idx, payload) select id, 0, '{}'::jsonb from studies where account_id=(select id from accounts where owner_email='la-uniq@example.com');`,
+      );
+      psql(
+        pg.container,
+        `insert into visits (study_id, backstory_id, variant_idx, status, repair_generation, transport_attempts, started_at)
+           select s.id, b.id, 0, 'ok', 0, 1, now()
+           from backstories b join studies s on s.id = b.study_id
+           where s.account_id=(select id from accounts where owner_email='la-uniq@example.com');`,
+      );
+
+      // first insert must succeed
+      const first = psql(
+        pg.container,
+        `insert into late_arrivals (study_id, visit_id)
+           select s.id, v.id
+           from studies s join visits v on v.study_id = s.id
+           where s.account_id=(select id from accounts where owner_email='la-uniq@example.com');`,
+      );
+      expect(first.code, `first insert: ${first.stderr}`).toBe(0);
+
+      // second insert of the same pair must be rejected
+      expectSqlError(
+        pg.container,
+        `insert into late_arrivals (study_id, visit_id)
+           select s.id, v.id
+           from studies s join visits v on v.study_id = s.id
+           where s.account_id=(select id from accounts where owner_email='la-uniq@example.com');`,
+        /duplicate key value violates unique/i,
+        'late_arrivals UNIQUE(study_id, visit_id) must reject duplicate',
+      );
+    });
+
+    it('ON CONFLICT DO NOTHING on late_arrivals duplicate insert is a no-op', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('la-conflict@example.com');`);
+      psql(
+        pg.container,
+        `insert into studies (account_id, kind, status) select id, 'single', 'ready' from accounts where owner_email='la-conflict@example.com';`,
+      );
+      psql(
+        pg.container,
+        `insert into backstories (study_id, idx, payload) select id, 0, '{}'::jsonb from studies where account_id=(select id from accounts where owner_email='la-conflict@example.com');`,
+      );
+      psql(
+        pg.container,
+        `insert into visits (study_id, backstory_id, variant_idx, status, repair_generation, transport_attempts, started_at)
+           select s.id, b.id, 0, 'ok', 0, 1, now()
+           from backstories b join studies s on s.id = b.study_id
+           where s.account_id=(select id from accounts where owner_email='la-conflict@example.com');`,
+      );
+
+      // first insert
+      psql(
+        pg.container,
+        `insert into late_arrivals (study_id, visit_id)
+           select s.id, v.id from studies s join visits v on v.study_id = s.id
+           where s.account_id=(select id from accounts where owner_email='la-conflict@example.com');`,
+      );
+
+      // second insert with ON CONFLICT DO NOTHING must succeed (row count stays 1)
+      const r = psql(
+        pg.container,
+        `insert into late_arrivals (study_id, visit_id)
+           select s.id, v.id from studies s join visits v on v.study_id = s.id
+           where s.account_id=(select id from accounts where owner_email='la-conflict@example.com')
+           on conflict (study_id, visit_id) do nothing;`,
+      );
+      expect(r.code, `ON CONFLICT DO NOTHING should succeed: ${r.stderr}`).toBe(0);
+
+      const count = expectSqlOk(
+        pg.container,
+        `select count(*) from late_arrivals
+           where study_id=(select id from studies where account_id=(select id from accounts where owner_email='la-conflict@example.com'));`,
+        'late_arrivals row count',
+      );
+      expect(count).toBe('1');
     });
   });
 });

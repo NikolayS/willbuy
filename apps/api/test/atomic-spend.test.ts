@@ -22,7 +22,8 @@ import { maybeWarnCap } from '../src/billing/cap-warning.js';
 // Docker-backed Postgres helpers (mirrors migrations.test.ts pattern)
 // ---------------------------------------------------------------------------
 
-const PG_IMAGE = 'postgres:16-alpine';
+// S-NB2: pin by digest; matches scripts/migrate.sh fallback image.
+const PG_IMAGE = 'postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50';
 const PG_PASSWORD = 'willbuy_test_pw_28';
 const CONTAINER_NAME = `willbuy-spend-test-${Date.now()}`;
 
@@ -346,7 +347,6 @@ describeIfDocker('atomic spend reservation (§5.5)', () => {
       logical_request_key: `test-lrk-${Date.now()}-${Math.random()}`,
       provider: 'anthropic',
       model: 'claude-haiku-4-5',
-      est_cents: 5,
     });
 
     // Simulate subprocess failure: verify row exists before any endAttempt call

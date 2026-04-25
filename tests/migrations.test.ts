@@ -16,7 +16,8 @@ const dockerCheck = spawnSync('docker', ['version', '--format', '{{.Server.Versi
 const dockerAvailable = dockerCheck.status === 0;
 const describeIfDocker = dockerAvailable ? describe : describe.skip;
 
-const PG_IMAGE = 'postgres:16-alpine';
+// S-NB2: pin by digest; matches scripts/migrate.sh fallback image.
+const PG_IMAGE = 'postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50';
 const PG_PASSWORD = 'willbuy_test_pw';
 const CONTAINER_PREFIX = 'willbuy-migrate-test-';
 
@@ -50,8 +51,9 @@ async function startPostgres(): Promise<{ container: string; port: number; url: 
       // Faster startup: trust-mode skips md5 auth handshake during initdb.
       '-e', `POSTGRES_PASSWORD=${PG_PASSWORD}`,
       '-e', 'POSTGRES_INITDB_ARGS=--auth-host=trust',
-      // Smaller footprint: 128 MB shared_buffers avoids OOM under CI memory pressure.
-      '-e', 'POSTGRES_SHARED_BUFFERS=128MB',
+      // POSTGRES_SHARED_BUFFERS is not a valid postgres env var — postgres reads
+      // shared_buffers from postgresql.conf or -c flag, not from the environment.
+      // 128 MB is the default anyway; dropped (issue #62).
       '--shm-size=256m',
       '-p', `${port}:5432`,
       PG_IMAGE,

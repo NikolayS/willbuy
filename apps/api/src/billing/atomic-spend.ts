@@ -15,8 +15,9 @@
  *
  * Per-visit hard ceilings (spec §5.5):
  *   visit 5¢, cluster_label 3¢, embedding 0¢, probe 0¢.
- * The caller's est_cents is already capped to the per-kind ceiling before
- * calling here; we enforce the ceiling here as well for defence-in-depth.
+ * The caller MUST pass est_cents ≤ KIND_CEILING[kind]. No silent clamping
+ * is applied here; an over-ceiling value will simply allow a spend row
+ * larger than the per-kind ceiling (caller bug, not defender behaviour).
  */
 
 import type postgres from 'postgres';
@@ -42,17 +43,20 @@ export type ReserveSpendInput = {
   date: string;
   kind: SpendKind;
   /**
-   * Estimated cents to reserve. Caller is responsible for applying the
-   * per-kind hard ceiling before calling (visit=5¢, cluster_label=3¢,
-   * embedding=0¢, probe=0¢ per spec §5.5). We validate here as defence-in-
-   * depth and clamp to the ceiling so that a misbehaving caller can never
-   * exceed the per-visit hard cap.
+   * Estimated cents to reserve. Caller MUST apply the per-kind hard ceiling
+   * before calling (visit=5¢, cluster_label=3¢, embedding=0¢, probe=0¢ per
+   * spec §5.5). No clamping is performed here; see KIND_CEILING for the
+   * canonical ceiling values to apply at the call site.
    */
   est_cents: number;
   daily_cap_cents: number;
 };
 
 export type ReserveSpendResult =
+  // ledger_row_id is intentionally null: llm_spend_daily has no surrogate
+  // PK (the composite key (account_id, date, kind) is the identity). Typed
+  // as the null literal so callers can't accidentally branch on a non-null
+  // value that will never arrive.
   | { ok: true; ledger_row_id: null }
   | { ok: false; reason: 'cap_exceeded' };
 

@@ -31,7 +31,14 @@ ensure_psql() {
     # client tools installed can still apply migrations against any reachable
     # postgres URL.
     if command -v docker >/dev/null 2>&1; then
-      PSQL_CMD=(docker run --rm -i --network host postgres:16-alpine psql)
+      # B-NB1: --network host is a no-op shim on Docker Desktop for Mac and
+      # cannot reach 127.0.0.1:54322. Replace with host.docker.internal so the
+      # caller-supplied DATABASE_URL (which may use 127.0.0.1) is rewritten to
+      # the Docker-internal bridge when running on macOS / Docker Desktop.
+      # On Linux, host.docker.internal resolves via --add-host; no harm adding it.
+      # S-NB2: pin the image by digest so a docker-hub tag re-push cannot
+      # silently change the client version used here.
+      PSQL_CMD=(docker run --rm -i --add-host=host.docker.internal:host-gateway postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50 psql)
       return 0
     fi
     err "psql not found and docker not available; install postgresql-client"
@@ -65,7 +72,11 @@ ensure_tracking_table() {
 is_applied() {
   local filename="$1"
   local count
-  count="$(run_psql -c "SELECT COUNT(*) FROM _migrations WHERE filename = '${filename}';" | tr -d '[:space:]')"
+  # S-NB1: escape single-quotes in the filename (SQL standard doubling) to
+  # avoid SQL injection from a mutated filename. Filenames are developer-
+  # controlled today; escaping is categorical defence-in-depth.
+  local safe_filename="${filename//\'/\'\'}"
+  count="$(run_psql -c "SELECT COUNT(*) FROM _migrations WHERE filename = '${safe_filename}';" | tr -d '[:space:]')"
   [[ "${count}" == "1" ]]
 }
 
@@ -94,11 +105,13 @@ apply_migration() {
   # SQL is piped over stdin so the docker-bundled psql fallback works
   # the same as a local psql.
   local rc=0
+  local safe_filename_insert="${filename//\'/\'\'}"
   {
     cat "${file}"
     printf '\n-- migrate.sh: tracking insert\n'
+    # NB2: escape single-quotes in filename (same defence-in-depth as is_applied).
     printf "INSERT INTO _migrations (filename, checksum) VALUES ('%s', '%s');\n" \
-      "${filename}" "${checksum}"
+      "${safe_filename_insert}" "${checksum}"
   } | "${PSQL_CMD[@]}" \
     -v ON_ERROR_STOP=1 \
     --quiet \
@@ -128,6 +141,15 @@ main() {
   while IFS= read -r -d '' file; do
     filename="$(basename "${file}")"
     if is_applied "${filename}"; then
+      # B-NB2: warn on checksum drift so a silently-mutated committed migration
+      # file doesn't go unnoticed. The column is forensic-only; no abort.
+      local stored_cs on_disk_cs
+      local safe_fn="${filename//\'/\'\'}"
+      stored_cs="$(run_psql -c "SELECT checksum FROM _migrations WHERE filename = '${safe_fn}';" | tr -d '[:space:]')"
+      on_disk_cs="$(checksum_of "${file}")"
+      if [[ "${stored_cs}" != "${on_disk_cs}" ]]; then
+        err "WARN: checksum drift on ${filename} (stored=${stored_cs:0:12}… on-disk=${on_disk_cs:0:12}…)"
+      fi
       skipped=$((skipped + 1))
       continue
     fi
