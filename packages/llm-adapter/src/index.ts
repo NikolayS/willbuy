@@ -41,12 +41,18 @@ export const LOCAL_CLI_CAPABILITIES: LLMProviderCapabilities = {
   prompt_caching: false,
 };
 
+// Generic identifier per issue #5 / CLAUDE.md "Public repo discipline":
+// the provider implementation MUST NOT name a specific vendor in src/
+// identifiers, filenames, or logged messages. The CLI binary itself is
+// configurable via WILLBUY_LLM_BIN; "local-cli" is the abstraction name.
+export const LOCAL_CLI_PROVIDER_NAME = 'local-cli';
+
 export class LocalCliProvider implements LLMProvider {
   name(): string {
-    throw new Error('not implemented');
+    return LOCAL_CLI_PROVIDER_NAME;
   }
   capabilities(): LLMProviderCapabilities {
-    throw new Error('not implemented');
+    return LOCAL_CLI_CAPABILITIES;
   }
   chat(_opts: LLMChatOptions): Promise<LLMChatResult> {
     throw new Error('not implemented');
