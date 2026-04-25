@@ -236,11 +236,10 @@ describeIfDocker('migrations schema (issue #26)', () => {
 
   describe('enum constraint enforcement (forbidden value rejected)', () => {
     it('studies.kind rejects unknown value', () => {
-      // Use a fresh account+study insert path; rely on enum check.
+      psql(pg.container, `insert into accounts (owner_email) values ('enum1@example.com');`);
       expectSqlError(
         pg.container,
-        `insert into accounts (owner_email) values ('enum1@example.com') returning id \\gset
-         insert into studies (account_id, kind, status) select id, 'triple', 'pending' from accounts where owner_email='enum1@example.com';`,
+        `insert into studies (account_id, kind, status) select id, 'triple', 'pending' from accounts where owner_email='enum1@example.com';`,
         /invalid input value|violates check constraint|invalid kind/i,
         'studies.kind enum',
       );
