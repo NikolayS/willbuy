@@ -91,18 +91,25 @@ ip link add "$VETH_TARGET" type veth peer name "$VETH_CAPTURE"
 ip link set  "$VETH_TARGET"  netns "$TARGET_NS"
 ip link set  "$VETH_CAPTURE" netns "$CAPTURE_NS"
 
-ip -n "$TARGET_NS"  addr add "${TARGET_HOST_IP}/30"  dev "$VETH_TARGET"
-ip -n "$CAPTURE_NS" addr add "${CAPTURE_HOST_IP}/30" dev "$VETH_CAPTURE"
+ip -n "$TARGET_NS"  addr add "${TARGET_HOST_IP}/24"  dev "$VETH_TARGET"
+ip -n "$CAPTURE_NS" addr add "${CAPTURE_HOST_IP}/24" dev "$VETH_CAPTURE"
 ip -n "$TARGET_NS"  link set "$VETH_TARGET"  up
 ip -n "$CAPTURE_NS" link set "$VETH_CAPTURE" up
 ip -n "$TARGET_NS"  link set lo up
 ip -n "$CAPTURE_NS" link set lo up
 
-# Default route for the capture netns via the target netns. Without this,
-# attempts to reach an off-net destination (e.g. 169.254.169.254 or 10.0.0.5)
-# return EHOSTUNREACH BEFORE iptables ever sees the packet — and the DROP
-# counter would stay at 0 even though our rule is correct.
-ip -n "$CAPTURE_NS" route add default via "$TARGET_HOST_IP"
+# A /24 on the veth gives the capture netns ON-LINK reachability for the
+# entire 203.0.113.0/24 RFC5737 doc range — that's how scenarios 4 + 5
+# (connect-and-be-DROPped to 198.51.100.42 / 203.0.113.{1..60}) actually
+# emit packets that hit the iptables OUTPUT chain. With a /30 the kernel
+# would route everything except the peer through a missing default route
+# and EHOSTUNREACH would short-circuit iptables.
+#
+# We add an explicit on-link route for 198.51.100.0/24 (the cross-eTLD+1
+# redirect target's pretend home) and a default route for everything else
+# so DROP rules for RFC1918 / link-local / etc. actually fire.
+ip -n "$CAPTURE_NS" route add 198.51.100.0/24 dev "$VETH_CAPTURE"
+ip -n "$CAPTURE_NS" route add default dev "$VETH_CAPTURE"
 
 # 2. Start a tiny HTTP fixture in the target netns.
 ip netns exec "$TARGET_NS" python3 -m http.server 80 --bind "$TARGET_HOST_IP" \
