@@ -51,6 +51,14 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Pre-pull Postgres image
+        # Pull postgres:16-alpine before running tests.
+        # tests/migrations.test.ts, tests/migrations.schema.test.ts, and
+        # apps/api/test/leases.integration.test.ts all start postgres:16-alpine
+        # containers in beforeAll; pre-pulling ensures the image layers are in
+        # the Docker cache so concurrent container starts don't race on I/O.
+        run: docker pull postgres:16-alpine
+
       - name: Test
         run: bun run test
 
