@@ -1,5 +1,7 @@
 # willbuy.dev — SPEC v0.9
 
+> **Spec amendments take precedence in narrow areas.** This file is the authoritative spec, but a separate **append-only amendments log** lives at [`SPEC.willbuy.amendments.md`](./SPEC.willbuy.amendments.md). When an amendment narrowly contradicts a section here, the amendment wins **for the area it explicitly scopes** — every entry lists the affected sections (`Affects:`), the driver, what changes, what is NOT changed, and any constraints. The amendments file exists so individual deviations discovered during implementation can be recorded and reviewed without forcing a full spec rev for each change; future spec revs roll the amendments back inline. Always read both files together — `SPEC.md` first, then any `A_n` entries whose `Affects:` line touches the section you care about.
+
 ## 0. Persona
 
 Veteran "conversion research & LLM-simulated user testing" expert — someone who has shipped both CRO audit tools and LLM eval harnesses, and knows the trap in this category is producing plausible-sounding slop that doesn't correlate with reality.
