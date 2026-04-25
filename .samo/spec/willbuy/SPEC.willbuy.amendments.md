@@ -76,7 +76,7 @@ Because the square-root transformation is strictly monotone, `euclidean` and `co
 
 **Tracking.** PR #39 (issue #31). Future spec rev updates §17 to read "euclidean over L2-normalized vectors (equivalent to cosine; see amendment A2)".
 
-### 2026-04-25 follow-on: revert to `metric='cosine'` for hdbscan 0.8.33 compatibility
+### 2026-04-25 follow-on (B5): revert to `metric='cosine'` for hdbscan 0.8.33 compatibility
 
 **Problem (B5).** In hdbscan 0.8.33, `metric='euclidean'` routes internally through `_hdbscan_prims_kdtree`, which forwards `**kwargs` (including `random_state=42`) to sklearn's `KDTree.__init__`. `KDTree` does not accept a `random_state` keyword argument, so the call raises:
 
@@ -93,6 +93,39 @@ This broke CI (GitHub Actions run https://github.com/NikolayS/willbuy/actions/ru
 **Regression test.** Two new tests added in `tests/test_cluster.py` guard this (B5 fix, PR #39):
 - `test_hdbscan_metric_is_cosine_not_euclidean`: inspects module source to assert `metric='euclidean'` is absent from the HDBSCAN constructor call.
 - `test_hdbscan_no_typeerror_with_random_state`: monkeypatches `_embed` and runs `cluster_findings` end-to-end, asserting no `TypeError` is raised with `random_state=42`.
+
+### 2026-04-25 follow-on (B8): switch to `metric='precomputed'` for hdbscan 0.8.33 compatibility
+
+**Root-cause chain.**
+
+**B8a — `metric='cosine'` routes through BallTree, which rejects it.** After the B5 revert to `metric='cosine'`, hdbscan 0.8.33 (without an explicit `algorithm=` override) routes the cosine metric through `_hdbscan_prims_balltree`. BallTree's internal sklearn metric registry does not recognise `'cosine'` as a valid string identifier at the version pinned in the Docker image, raising:
+
+```
+ValueError: Unrecognized metric 'cosine'
+```
+
+**B8b — forcing `algorithm='generic'` forwards `random_state` to `cosine_distances()`, which rejects it.** The intermediate fix (`490dfac`) added `algorithm='generic'` to force routing through `_hdbscan_generic`. That path calls `sklearn.metrics.pairwise.cosine_distances(X, **kwargs)`, and `random_state=42` is one of the kwargs forwarded. `cosine_distances` does not accept `random_state`, raising:
+
+```
+TypeError: cosine_distances() got an unexpected keyword argument 'random_state'
+```
+
+**Resolution — `metric='precomputed'` bypasses all sklearn metric routing.** The final implementation (`7ebf824`) precomputes the cosine distance matrix locally:
+
+```python
+dot = embeddings @ embeddings.T          # cosine similarity (rows are L2-normalized)
+np.clip(dot, -1.0, 1.0, out=dot)         # guard float overflow
+dist_matrix = (1.0 - dot).astype(np.float64)
+np.fill_diagonal(dist_matrix, 0.0)       # exact zero on diagonal
+```
+
+This matrix is passed to HDBSCAN as `metric='precomputed'`. With `metric='precomputed'`, hdbscan 0.8.33 calls `pairwise_distances(X, metric='precomputed')` which returns `X` immediately — no sklearn metric routing occurs, so `random_state=42` is never forwarded to any distance function that rejects it. `random_state=42` is preserved in the HDBSCAN constructor and is respected for any internal randomisation (e.g., tie-breaking in the MST).
+
+**Why L2-normalization in `_embed` is now load-bearing.** The A2 original treated L2-normalization as a forward-compatibility guard (safe to use under euclidean, required for the euclidean-cosine equivalence). Under `metric='precomputed'`, normalization is mathematically required: the precomputed matrix is `1 - U @ V.T`, which only equals cosine distance when rows are unit-norm. Without L2-normalized rows, `1 - u·v` does not equal `cosine_distance(u, v)` and the distances would be wrong. **Any future change to `_embed` that removes L2-normalization MUST also replace the precompute block with a correct distance formula.**
+
+**A2 math equivalence still stands.** `metric='precomputed'` with a `1 - U @ V.T` matrix IS cosine distance — it is not an approximation. The equivalence rationale in A2 (euclidean on L2-normalized vectors equals cosine) also still holds and documents a future migration path once the upstream hdbscan kwarg-forwarding bugs are fixed.
+
+**Tracking.** PR #39 (issue #31). Future spec rev updates §17 to read "`metric='precomputed'` with manually computed cosine distance matrix (see amendment A2 follow-on B8); `random_state=42` pinned for determinism".
 
 ---
 
