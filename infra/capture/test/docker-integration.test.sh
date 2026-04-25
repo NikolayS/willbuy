@@ -84,18 +84,32 @@ status=$(docker inspect --format '{{.State.Status}}' "$PAUSE_NAME" 2>/dev/null |
   || fail "pause container ${PAUSE_NAME} not running (status='$status')"
 pass "pause container is running"
 
-# 4. docker run --network container:<pause> works (the key F1 assertion:
-#    Docker's --network container:NAME accepts a real container name).
-#    We run alpine to check iptables rules are present in the container's
-#    netns. The container must see the OUTPUT chain with default-deny policy.
-ipt_policy=$(docker run --rm \
-  --network "container:${PAUSE_NAME}" \
-  --cap-add NET_ADMIN \
-  alpine:3.20 \
-  sh -c "iptables -L OUTPUT -n | head -1" 2>/dev/null || true)
+# 4a. The pause-container netns has the default-deny ruleset.
+#     We read it from the host side via `nsenter` so we don't need a
+#     docker image with iptables baked in (alpine ships without it, and
+#     `apk add` would itself need network — which is exactly what's
+#     blocked here).
+pause_pid=$(docker inspect --format '{{.State.Pid}}' "$PAUSE_NAME" 2>/dev/null)
+[[ -n "$pause_pid" && "$pause_pid" -gt 0 ]] \
+  || fail "could not get pause container PID for ${PAUSE_NAME}"
+ipt_policy=$(nsenter -t "$pause_pid" -n iptables -L OUTPUT -n 2>/dev/null \
+              | head -1)
 [[ "$ipt_policy" == *"DROP"* ]] \
-  || fail "capture container does not see default-deny OUTPUT policy (F1: iptables not bound before container start); got: '$ipt_policy'"
-pass "capture container sees default-deny OUTPUT DROP policy in pause container netns"
+  || fail "pause-container netns does not have default-deny OUTPUT policy (F1: iptables not bound); got: '$ipt_policy'"
+pass "pause-container netns has default-deny OUTPUT DROP policy"
+
+# 4b. `docker run --network container:<pause>` accepts the pause name and
+#     the resulting capture container is attached to the SAME kernel netns.
+#     We verify by reading /proc/self/net/ns from inside the run.
+container_inode=$(docker run --rm \
+  --network "container:${PAUSE_NAME}" \
+  --cap-drop ALL \
+  alpine:3.20 \
+  readlink /proc/self/ns/net 2>&1 || true)
+host_pause_inode=$(readlink "/proc/${pause_pid}/ns/net" 2>/dev/null || true)
+[[ -n "$container_inode" && "$container_inode" == "$host_pause_inode" ]] \
+  || fail "capture container netns inode (${container_inode}) != pause netns inode (${host_pause_inode}) — F1 wiring broken"
+pass "capture container shares the pause container's network namespace"
 
 # 5. Run teardown — pause container must be removed.
 WILLBUY_STATE_DIR="$state_dir" \
