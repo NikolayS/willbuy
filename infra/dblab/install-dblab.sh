@@ -30,15 +30,35 @@
 #
 # DBLab docs: https://postgres.ai/docs/database-lab-engine
 # Config ref:  https://postgres.ai/docs/reference-guides/database-lab-engine-configuration-reference
+#
+# DBLab VERSION NOTE (bumped 2026-04-25, PR #65 M-1 fix):
+#   Pinned to 4.1.1 (current Docker Hub stable as of 2026-04-25).
+#   DBLab 4.x introduced config schema changes vs 3.x; infra/dblab/dblab.yml
+#   has been reviewed against the 4.x reference and updated accordingly.
+#   If you need to roll back to 3.6.0, set DBLAB_SERVER_IMAGE and
+#   DBLAB_CLI_VERSION in the environment before running this script.
+#
+# LOW-2 NOTE — sync container networking on first auto-refresh:
+#   DBLab Engine is started without --network host. The sync container it
+#   spawns runs on Docker's bridge network where 127.0.0.1 resolves to the
+#   container itself, not to the host. The initial snapshot taken below (step
+#   "Take initial ZFS snapshot") avoids this issue because pg_basebackup is
+#   invoked from the host. However, the first *automatic* 6-hour refresh
+#   (triggered by the scheduler.timetable cron) will attempt to reach
+#   Postgres via PGHOST=127.0.0.1 from inside the sync container and will
+#   fail. Fix in a follow-up: add --network host to the docker run call, OR
+#   change PGHOST in dblab.yml to use the Docker bridge gateway address
+#   (typically 172.17.0.1) or host-gateway alias. Tracked as a known v0.1
+#   limitation; does not affect the initial deploy.
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
 # Tunables
 # ---------------------------------------------------------------------------
-DBLAB_SERVER_IMAGE="${DBLAB_SERVER_IMAGE:-postgresai/dblab-server:3.6.0}"
+DBLAB_SERVER_IMAGE="${DBLAB_SERVER_IMAGE:-postgresai/dblab-server:4.1.1}"
 DBLAB_UI_IMAGE="${DBLAB_UI_IMAGE:-postgresai/ce-ui:latest}"
-DBLAB_CLI_VERSION="${DBLAB_CLI_VERSION:-3.6.0}"
+DBLAB_CLI_VERSION="${DBLAB_CLI_VERSION:-4.1.1}"
 DBLAB_CONFIG_DIR="${DBLAB_CONFIG_DIR:-/home/dblab/configs}"
 DBLAB_DATA_DIR="${DBLAB_DATA_DIR:-/var/lib/dblab}"
 # ZFS pool name (must match setup-zfs-pgdata.sh)

@@ -9,6 +9,12 @@
 #
 # SECURITY: This file is committed to the repo — it contains NO real tokens.
 # The __DBLAB_VERIFICATION_TOKEN__ placeholder is replaced at deploy time.
+#
+# VERSION: Targeting DBLab Engine 4.1.1 (bumped from 3.6.0, PR #65 M-1 fix).
+# Schema reviewed against the 4.x configuration reference. Key 4.x changes
+# reflected here: top-level `pools` list replaces `poolManager` singleton;
+# `databaseContainer`/`databaseConfigs` YAML anchors retained (4.x compatible).
+# See: https://postgres.ai/docs/database-lab-engine
 
 server:
   # Replaced by install-dblab.sh with the value from secrets.env
@@ -31,17 +37,18 @@ global:
     username: supabase_admin
     dbname: postgres
 
-poolManager:
-  # ZFS pool mountpoint — tank/willbuy/pgdata is mounted here by setup-zfs-pgdata.sh
-  mountDir: /var/lib/postgresql
-  # 'data' is the subdirectory inside the mountpoint where Postgres PGDATA lives
-  dataSubDir: data
-  clonesMountSubDir: clones
-  socketSubDir: sockets
-  observerSubDir: observer
-  preSnapshotSuffix: "_pre"
-  # Leave empty so DBLab uses its standard pool selection / rotation
-  selectedPool: ""
+# DBLab 4.x: `poolManager` singleton replaced by `pools` list.
+# Each entry configures one ZFS pool. We have one pool (tank/willbuy/pgdata).
+pools:
+  - name: "willbuy"
+    # ZFS pool mountpoint — tank/willbuy/pgdata is mounted here by setup-zfs-pgdata.sh
+    mountDir: /var/lib/postgresql
+    # 'data' is the subdirectory inside the mountpoint where Postgres PGDATA lives
+    dataSubDir: data
+    clonesMountSubDir: clones
+    socketSubDir: sockets
+    observerSubDir: observer
+    preSnapshotSuffix: "_pre"
 
 # Postgres container image for clones.
 # Must match the major version of the production Postgres (Supabase Postgres 15.x).

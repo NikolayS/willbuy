@@ -146,31 +146,69 @@ dblab clone destroy --id pr-123
 
 ### Using DBLab clones in CI / per-PR ephemeral databases
 
-1. In your CI workflow (GitHub Actions), add a step that creates a DBLab clone:
+> **IMPORTANT — SSH tunnel required.**
+> Clone ports 6000–6019 and the DBLab API port 2345 are bound to `127.0.0.1`
+> on willbuy-v01 (`cloneAccessAddresses: "127.0.0.1"` in `dblab.yml`) and the
+> Hetzner firewall only allows 22/80/443. GitHub Actions runners are external
+> to the VM and cannot reach these ports directly. An SSH tunnel must be
+> established before any `dblab` CLI call or database connection.
+
+1. In your CI workflow (GitHub Actions), open an SSH tunnel first, then create
+   a DBLab clone:
 
 ```yaml
+- name: Open SSH tunnel to willbuy-v01 (DBLab API + clone port)
+  run: |
+    # Resolve current server IP at runtime (Hetzner IPs may rotate)
+    VM_IP=$(hcloud server describe willbuy-v01 -o json | jq -r .public_net.ipv4.ip)
+    # Forward DBLab API (2345) and first clone port (6000) over SSH.
+    # Add more -L entries if you need ports 6001-6019.
+    ssh -fN \
+      -o StrictHostKeyChecking=no \
+      -o ExitOnForwardFailure=yes \
+      -L 2345:127.0.0.1:2345 \
+      -L 6000:127.0.0.1:6000 \
+      willbuy@"${VM_IP}"
+    echo "VM_IP=${VM_IP}" >> "$GITHUB_ENV"
+  env:
+    HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+
 - name: Create DBLab clone
   run: |
-    dblab init --url "$DBLAB_URL" --token "$DBLAB_TOKEN" --environment-id willbuy-ci
+    # DBLab API and clone port are now available on localhost via SSH tunnel.
+    dblab init --url "http://127.0.0.1:2345" --token "$DBLAB_TOKEN" --environment-id willbuy-ci
     CLONE_ID="pr-${{ github.event.number }}"
     dblab clone create --id "${CLONE_ID}" --username postgres --password "${DBLAB_CLONE_PW}"
-    echo "DATABASE_URL=postgres://postgres:${DBLAB_CLONE_PW}@willbuy-v01:6000/postgres" >> "$GITHUB_ENV"
+    echo "DATABASE_URL=postgres://postgres:${DBLAB_CLONE_PW}@127.0.0.1:6000/postgres" >> "$GITHUB_ENV"
+  env:
+    DBLAB_TOKEN: ${{ secrets.DBLAB_TOKEN }}
+    DBLAB_CLONE_PW: ${{ secrets.DBLAB_CLONE_PW }}
 ```
 
 2. Run integration tests against `DATABASE_URL`.
 
-3. After tests, destroy the clone:
+3. After tests, destroy the clone and close the tunnel:
 
 ```yaml
 - name: Destroy DBLab clone
   if: always()
-  run: dblab clone destroy --id "pr-${{ github.event.number }}"
+  run: |
+    dblab clone destroy --id "pr-${{ github.event.number }}"
+    # Kill the SSH tunnel opened above
+    pkill -f "ssh.*-L 2345" || true
+  env:
+    DBLAB_TOKEN: ${{ secrets.DBLAB_TOKEN }}
 ```
 
 Secrets needed in the CI environment:
-- `DBLAB_URL` — `http://willbuy-v01:2345` (SSH tunnel or internal network)
+- `HCLOUD_TOKEN` — Hetzner Cloud API token (read-only scope is sufficient for `server describe`)
 - `DBLAB_TOKEN` — value of `DBLAB_VERIFICATION_TOKEN` from the 1Password vault
 - `DBLAB_CLONE_PW` — a password for the clone's Postgres user
+
+> **Future option:** If willbuy-v01 is added to a Tailscale (or Hetzner private
+> network), the tunnel step can be removed and `DBLAB_URL` can point directly to
+> the internal IP. Until then, the SSH tunnel pattern above is the correct
+> approach.
 
 ### VM upsize decision
 
