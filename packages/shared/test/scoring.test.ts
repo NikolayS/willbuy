@@ -58,4 +58,8 @@ describe('scoreVisit (growth/ab/pricing-page-2026apr/scoring.md mirror)', () => 
     ).toBe(0.0);
     expect(scoreVisit(visitWith('start_free_hobby'))).toBe(0.0);
   });
+
+  it('returns 0.2 for ask_teammate', () => {
+    expect(scoreVisit(visitWith('ask_teammate'))).toBe(0.2);
+  });
 });
