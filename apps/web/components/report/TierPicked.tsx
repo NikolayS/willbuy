@@ -62,7 +62,7 @@ export function TierPicked({ rows }: { rows: ReportT['tier_picked'] }) {
         Horizontal stacked bar across <code>none → enterprise</code>.
       </p>
       <div className="mt-4 h-48 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={192}>
           <BarChart layout="vertical" data={data} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis type="number" allowDecimals={false} />

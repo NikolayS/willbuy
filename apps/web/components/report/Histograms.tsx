@@ -35,7 +35,7 @@ function HistOne({ row }: { row: ReportT['histograms'][number] }) {
         </span>
       </div>
       <div className="mt-2 h-48 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={192}>
           <BarChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="score" tickCount={11} />
