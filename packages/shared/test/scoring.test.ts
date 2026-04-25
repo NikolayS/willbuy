@@ -22,4 +22,12 @@ describe('scoreVisit (growth/ab/pricing-page-2026apr/scoring.md mirror)', () => 
   it('returns 1.0 for purchase_paid_today regardless of tier args', () => {
     expect(scoreVisit(visitWith('purchase_paid_today'))).toBe(1.0);
   });
+
+  it('returns 0.8 for contact_sales', () => {
+    expect(scoreVisit(visitWith('contact_sales'))).toBe(0.8);
+  });
+
+  it('returns 0.8 for book_demo', () => {
+    expect(scoreVisit(visitWith('book_demo'))).toBe(0.8);
+  });
 });
