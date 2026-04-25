@@ -95,9 +95,12 @@ const rule = {
           return;
         }
         // The Property / TSPropertySignature visitors below report the key.
+        // For shorthand `{ x }` (object literal) and `{ x }` (destructure),
+        // key === value (same node), and the Property visitor fires once;
+        // skip the Identifier visit either way to avoid double-reporting.
         if (
           (parent.type === 'Property' || parent.type === 'PropertyDefinition') &&
-          parent.key === node
+          (parent.key === node || (parent.shorthand && parent.value === node))
         ) {
           return;
         }
