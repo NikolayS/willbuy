@@ -74,18 +74,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install netns + iptables prereqs
+        # `nsenter` ships in `util-linux`, not its own package — it's already
+        # present on every ubuntu runner. We list `util-linux` defensively
+        # (it's almost always pre-installed; apt-get is a no-op when it is).
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            iproute2 iptables conntrack netcat-openbsd python3 nsenter
+            iproute2 iptables conntrack netcat-openbsd python3 util-linux
 
-      - name: Verify ip / iptables / ip6tables / conntrack / nc
+      - name: Verify ip / iptables / ip6tables / conntrack / nc / nsenter
         run: |
           which ip && ip -V
           which iptables && sudo iptables -V
           which ip6tables && sudo ip6tables -V
           which conntrack && sudo conntrack -V
           which nc
+          which nsenter && nsenter --version
 
       - name: Load conntrack kernel modules
         # `apply_rules` uses `-m conntrack --ctstate ESTABLISHED,RELATED`,
