@@ -10,7 +10,7 @@
  * Spec refs: §5.6, §16, §4.1.
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { createHash, createHmac } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
