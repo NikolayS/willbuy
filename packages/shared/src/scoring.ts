@@ -22,5 +22,7 @@ export type NextActionT = z.infer<typeof NextAction>;
 // pair below extends this map with one branch from the rubric.
 export function scoreVisit(parsed: VisitorOutputT): number {
   if (parsed.next_action === 'purchase_paid_today') return 1.0;
+  if (parsed.next_action === 'contact_sales') return 0.8;
+  if (parsed.next_action === 'book_demo') return 0.8;
   return 0.0;
 }
