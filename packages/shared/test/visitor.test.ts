@@ -45,4 +45,14 @@ describe('VisitorOutput (spec §2 #15)', () => {
     };
     expect(() => VisitorOutput.parse(notAnArray)).toThrow();
   });
+
+  it('rejects out-of-range confidence (must be 0–10 per §2 #15)', () => {
+    const bad = { ...validFixture, confidence: -1 };
+    expect(() => VisitorOutput.parse(bad)).toThrow();
+  });
+
+  it('rejects oversized reasoning (> 1200 chars per §2 #15)', () => {
+    const bad = { ...validFixture, reasoning: 'r'.repeat(1201) };
+    expect(() => VisitorOutput.parse(bad)).toThrow();
+  });
 });
