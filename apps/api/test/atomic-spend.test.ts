@@ -347,7 +347,6 @@ describeIfDocker('atomic spend reservation (§5.5)', () => {
       logical_request_key: `test-lrk-${Date.now()}-${Math.random()}`,
       provider: 'anthropic',
       model: 'claude-haiku-4-5',
-      est_cents: 5,
     });
 
     // Simulate subprocess failure: verify row exists before any endAttempt call
