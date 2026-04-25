@@ -36,4 +36,10 @@ describe('repo lint rules', () => {
     expect(out.code, `eslint should fail; got code=${out.code}\n${out.stdout}\n${out.stderr}`).not.toBe(0);
     expect(out.stdout + out.stderr).toMatch(/no-sandbox/);
   });
+
+  it('rejects dangerouslySetInnerHTML in JSX (react/no-danger)', () => {
+    const out = lintFile('tests/lint-fixtures/dangerously-set.tsx');
+    expect(out.code, `eslint should fail; got code=${out.code}\n${out.stdout}\n${out.stderr}`).not.toBe(0);
+    expect(out.stdout + out.stderr).toMatch(/no-danger/);
+  });
 });
