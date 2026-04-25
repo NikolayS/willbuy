@@ -4,16 +4,19 @@
   "version": "0.0.0",
   "description": "willbuy.dev monorepo — see SPEC.md",
   "type": "module",
-  "packageManager": "pnpm@10.28.2",
   "engines": {
-    "node": ">=22"
+    "bun": ">=1.1"
   },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "pnpm -r --parallel run dev",
-    "build": "pnpm -r run build",
+    "dev": "bun run --filter '*' dev",
+    "build": "bun run --filter '*' build",
     "lint": "eslint .",
-    "typecheck": "tsc -b --pretty && pnpm -r --if-present run typecheck",
-    "test": "vitest run --passWithNoTests && pnpm -r --if-present run test",
+    "typecheck": "tsc -b --pretty && bun run --filter '*' typecheck",
+    "test": "vitest run --passWithNoTests && bun run --filter '*' test",
     "format": "prettier --write .",
     "migrate": "bash scripts/migrate.sh"
   },

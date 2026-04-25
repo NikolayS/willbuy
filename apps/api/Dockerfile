@@ -1,22 +1,20 @@
 # syntax=docker/dockerfile:1.7
 
 # --- deps ---
-FROM node:22-bookworm-slim AS deps
+FROM oven/bun:1.3.5-debian AS deps
 WORKDIR /app
-RUN corepack enable
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY bun.lockb package.json ./
 COPY apps/api/package.json ./apps/api/package.json
-RUN pnpm install --frozen-lockfile --filter @willbuy/api...
+RUN bun install --frozen-lockfile --filter @willbuy/api
 
 # --- build ---
-FROM node:22-bookworm-slim AS build
+FROM oven/bun:1.3.5-debian AS build
 WORKDIR /app
-RUN corepack enable
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-COPY tsconfig.base.json package.json pnpm-workspace.yaml ./
+COPY tsconfig.base.json package.json ./
 COPY apps/api ./apps/api
-RUN pnpm --filter @willbuy/api build
+RUN cd apps/api && bun run build
 
 # --- runtime ---
 FROM node:22-bookworm-slim AS runtime

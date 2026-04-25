@@ -7,7 +7,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const apiRoot = resolve(here, '..');
 
 function bootWithEnv(env: Record<string, string | undefined>) {
-  return spawnSync('pnpm', ['exec', 'tsx', 'src/index.ts'], {
+  return spawnSync('bun', ['src/index.ts'], {
     cwd: apiRoot,
     encoding: 'utf8',
     env: { ...env, PATH: process.env['PATH'] ?? '' },

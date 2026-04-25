@@ -42,19 +42,20 @@ FROM mcr.microsoft.com/playwright:v1.45.0-jammy
 RUN groupadd -g 1001 capture \
  && useradd -m -u 1001 -g 1001 -s /usr/sbin/nologin capture
 
+# Install Bun into the Playwright (Node-based) base image.
+RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v1.3.5" \
+ && bun --version
+
 WORKDIR /app
 
 # Copy only what we need (no .git, no node_modules from the dev host).
 # The build context is the monorepo root so we can pick up the lockfile.
-COPY --chown=capture:capture pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY --chown=capture:capture bun.lockb package.json ./
 COPY --chown=capture:capture apps/capture-worker ./apps/capture-worker
 
 # Production install (no devDeps; Playwright browsers come from the base
-# image so we don't re-download them). pnpm is already on the base path
-# via the Playwright image's Node setup; install via npx if not.
-RUN corepack enable \
- && corepack prepare pnpm@10.28.2 --activate \
- && pnpm install --filter @willbuy/capture-worker --frozen-lockfile --prod \
+# image so we don't re-download them).
+RUN bun install --filter @willbuy/capture-worker --frozen-lockfile --production \
  && chown -R capture:capture /app
 
 USER 1001:1001

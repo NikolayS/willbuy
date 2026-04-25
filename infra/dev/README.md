@@ -16,7 +16,7 @@ docker compose -f infra/dev/docker-compose.yml --env-file infra/dev/.env up -d
 
 # 3. Apply migrations (creates _migrations + the placeholder row).
 set -a; . infra/dev/.env; set +a
-pnpm migrate
+bun run migrate
 ```
 
 Studio is now at <http://localhost:54323>. The Kong API gateway is at <http://localhost:8000>. Postgres is on `127.0.0.1:54322` with the credentials in your `.env`.
@@ -80,7 +80,7 @@ Paste the output into `infra/dev/.env`. None of these values are committed.
 
 ## Migrations
 
-`scripts/migrate.sh` (wired as `pnpm migrate`):
+`scripts/migrate.sh` (wired as `bun run migrate`):
 
 - reads `DATABASE_URL` from the environment
 - finds every `*.sql` in `infra/migrations/` (override with `MIGRATIONS_DIR`)
@@ -88,7 +88,7 @@ Paste the output into `infra/dev/.env`. None of these values are committed.
 - applies the rest in lexicographic order, **one transaction per file** (`--single-transaction` + `ON_ERROR_STOP=1`)
 - exits non-zero AND rolls back the transaction (no partial state, no tracking row) if any file errors mid-way
 
-Re-running `pnpm migrate` against the same DB is a no-op.
+Re-running `bun run migrate` against the same DB is a no-op.
 
 The runner uses a locally-installed `psql` if present; otherwise it falls back to `docker run --rm postgres:16-alpine psql`, so contributors without postgres client tools still work.
 

@@ -4,24 +4,23 @@ Marketing-page conversion-friction lab. See [`SPEC.md`](./.samo/spec/willbuy/SPE
 
 ## Requirements
 
-- Node `>= 22` (see `.nvmrc`)
-- `pnpm` (see `packageManager` in `package.json`)
+- [Bun](https://bun.sh) `>= 1.1` — single binary that replaces Node + pnpm + tsx
 
 ## Install
 
 ```sh
-pnpm install
+bun install
 ```
 
 ## Common scripts
 
 ```sh
-pnpm dev        # run all workspaces in parallel (no apps yet)
-pnpm build      # build all workspaces
-pnpm typecheck  # tsc -b across the repo
-pnpm lint       # eslint flat config across the repo
-pnpm test       # vitest run
-pnpm format     # prettier --write
+bun run dev        # run all workspaces in parallel
+bun run build      # build all workspaces
+bun run typecheck  # tsc -b across the repo
+bun run lint       # eslint flat config across the repo
+bun run test       # vitest run (vitest kept as test framework; bun as package manager)
+bun run format     # prettier --write
 ```
 
 ## Layout
