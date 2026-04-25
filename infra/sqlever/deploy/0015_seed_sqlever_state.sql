@@ -15,7 +15,7 @@ BEGIN;
 
 -- sqlever-managed backward-compat row so _migrations stays in sync.
 INSERT INTO _migrations (filename, checksum, applied_at)
-VALUES ('0014_seed_sqlever_state.sql', 'sqlever-managed', NOW())
+VALUES ('0015_seed_sqlever_state.sql', 'sqlever-managed', NOW())
 ON CONFLICT (filename) DO NOTHING;
 
 COMMIT;
