@@ -129,8 +129,11 @@ pass "topology + iptables programmed"
 ip netns exec "$CAPTURE_NS" iptables -Z OUTPUT
 ip netns exec "$CAPTURE_NS" timeout 1 nc -w 1 169.254.169.254 80 </dev/null \
   >/dev/null 2>&1 || true
+# `iptables -L -v -n -x` output columns: `pkts bytes target prot opt in out
+# source destination`. We match the destination column (column 8) and then
+# read the packet counter from column 1. AWK to keep the parse hermetic.
 pkts=$(ip netns exec "$CAPTURE_NS" iptables -L OUTPUT -v -n -x \
-        | awk '/169\.254\.0\.0\/16 .*DROP/ {print $1; exit}')
+        | awk '$3 == "DROP" && $8 == "169.254.0.0/16" {print $1; exit}')
 [[ "${pkts:-0}" -gt 0 ]] \
   || fail "no DROP hits for 169.254.169.254 (got '$pkts')"
 pass "scenario 1a: 169.254.169.254 DROP'd"
@@ -146,7 +149,7 @@ ip netns exec "$CAPTURE_NS" iptables -Z OUTPUT
 ip netns exec "$CAPTURE_NS" timeout 1 nc -s "$CAPTURE_HOST_IP" -w 1 \
   127.0.0.1 80 </dev/null >/dev/null 2>&1 || true
 pkts=$(ip netns exec "$CAPTURE_NS" iptables -L OUTPUT -v -n -x \
-        | awk '/127\.0\.0\.0\/8 .*DROP/ {print $1; exit}')
+        | awk '$3 == "DROP" && $8 == "127.0.0.0/8" {print $1; exit}')
 # Some kernels short-circuit the loopback path before iptables fires; in that
 # case the packet still doesn't leave the netns, but we can't count it. We
 # treat that as PASS too — what matters is that the packet does NOT reach
@@ -160,7 +163,7 @@ pass "scenario 1b: 127.0.0.1 connection attempt did not reach external target"
 ip netns exec "$CAPTURE_NS" iptables -Z OUTPUT
 ip netns exec "$CAPTURE_NS" timeout 1 nc -w 1 10.0.0.5 80 </dev/null >/dev/null 2>&1 || true
 pkts=$(ip netns exec "$CAPTURE_NS" iptables -L OUTPUT -v -n -x \
-        | awk '/10\.0\.0\.0\/8 .*DROP/ {print $1; exit}')
+        | awk '$3 == "DROP" && $8 == "10.0.0.0/8" {print $1; exit}')
 [[ "${pkts:-0}" -gt 0 ]] || fail "no DROP hits for 10.0.0.5 (RFC1918)"
 pass "scenario 1c: 10.0.0.5 DROP'd (RFC1918)"
 
@@ -169,7 +172,8 @@ ip netns exec "$CAPTURE_NS" ip6tables -Z OUTPUT
 ip netns exec "$CAPTURE_NS" timeout 1 nc -6 -w 1 fe80::1 80 </dev/null >/dev/null 2>&1 || true
 ip netns exec "$CAPTURE_NS" timeout 1 nc -6 -w 1 fd00::1 80 </dev/null >/dev/null 2>&1 || true
 ip netns exec "$CAPTURE_NS" ip6tables -L OUTPUT -v -n -x \
-  | grep -E '(fe80::/10|fc00::/7).*DROP' >/dev/null \
+  | awk '$3 == "DROP" && ($8 == "fe80::/10" || $8 == "fc00::/7")' \
+  | grep -q DROP \
   || fail "missing v6 DROP rules in OUTPUT chain"
 pass "scenario 1d: IPv6 internal ranges DROP'd"
 
@@ -192,9 +196,11 @@ pass "scenario 2: 203.0.113.10:80 (target) reachable"
 
 ip netns exec "$CAPTURE_NS" ip6tables -Z OUTPUT
 ip netns exec "$CAPTURE_NS" timeout 1 nc -6 -w 1 fd00:ec2::254 80 </dev/null >/dev/null 2>&1 || true
+# fd00:ec2::254/128 is in the deny file as a discrete entry AND fc00::/7 is
+# a superset; either DROP rule covers the alias.
 ip netns exec "$CAPTURE_NS" ip6tables -L OUTPUT -v -n -x \
-  | grep -E 'fd00:ec2::254|fc00::/7' \
-  | grep -q 'DROP' \
+  | awk '$3 == "DROP" && ($8 == "fd00:ec2::254/128" || $8 == "fc00::/7")' \
+  | grep -q DROP \
   || fail "no DROP rule covering fd00:ec2::254"
 pass "scenario 3: IPv6 cloud-metadata alias DROP'd"
 
