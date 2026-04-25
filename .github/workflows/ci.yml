@@ -49,3 +49,33 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  aggregator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Aggregator runs the pinned scientific stack inside Docker (spec §17 — the
+    # determinism contract holds only inside a byte-identical image digest).
+    # We build the image and invoke pytest with the venv inside it.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build aggregator image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/aggregator/Dockerfile
+          tags: willbuy-aggregator:ci
+          load: true
+          cache-from: type=gha,scope=aggregator
+          cache-to: type=gha,scope=aggregator,mode=max
+
+      - name: Run aggregator unit + e2e tests
+        run: |
+          docker run --rm \
+            --entrypoint /opt/venv/bin/pytest \
+            willbuy-aggregator:ci \
+            /app/tests -v
