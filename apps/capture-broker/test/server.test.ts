@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { statSync } from 'node:fs';
 import { startBroker, type BrokerHandle } from '../src/server.js';
 import { inMemoryStorage } from '../src/storage.js';
 import { inMemoryCaptureStore } from '../src/captureStore.js';
 import { BYTE_CAPS } from '../src/byteCaps.js';
 import { frame } from '../src/framing.js';
-import { sendOnce, sendRaw, tempSocketPath } from './helpers.js';
+import { sendOnce, sendRaw, sendOnceNoEnd, tempSocketPath } from './helpers.js';
 import type { CaptureRequest } from '../src/schema.js';
 
 // 7 acceptance scenarios — see issue #32 "TDD acceptance".
@@ -213,6 +214,58 @@ describe('Capture Broker server — spec §5.13 acceptance scenarios', () => {
       socketPath,
       JSON.stringify({ status: 'ok' /* deliberately incomplete */ }),
     );
+    expect(ack.ok).toBe(false);
+    if (ack.ok) throw new Error('unreachable');
+    expect(ack.error).toBe('schema_invalid');
+  });
+
+  // B1 — Socket inode MUST be mode 0660 after server.listen() (spec §5.13).
+  // The broker calls fs.chmod immediately after listen to override the process
+  // umask (systemd UMask=0007 would yield 0770 without an explicit chmod).
+  it('socket inode has mode 0660 after listen (spec §5.13)', () => {
+    const st = statSync(socketPath);
+    // st.mode is the full mode integer, e.g. 0o140660 for a socket with 0660
+    const mode = st.mode & 0o777;
+    expect(mode).toBe(0o660);
+  });
+
+  // B1 — A connection from a process in a different group (simulated by
+  // checking that the mode bits enforce group-no-write for others).
+  // On the socket file: owner=rw, group=rw, others=--- (0660).
+  it('socket others-bits are 0 — world cannot connect (spec §5.13)', () => {
+    const st = statSync(socketPath);
+    const othersBits = st.mode & 0o007;
+    expect(othersBits).toBe(0);
+  });
+
+  // N1 — readOneFrame per-connection timeout.
+  // A peer that sends a valid framed message but does NOT half-close should
+  // NOT hold the connection forever. After the timeout fires, the broker
+  // must still ack (or cleanly drop) and free the connection.
+  it('does not hang forever when peer sends valid frame but keeps connection open (N1 timeout)', async () => {
+    // Send a framed valid request WITHOUT calling socket.end() — simulates
+    // a peer that never half-closes. The broker should timeout and respond.
+    const req = validRequest();
+    const ack = await sendOnceNoEnd(socketPath, JSON.stringify(req), 35_000);
+    // We only assert that we got an ack within the test timeout; the exact
+    // ok/fail value depends on whether the broker sends an ack before reset.
+    expect(ack).toBeDefined();
+  }, 40_000);
+
+  // N4 — .strict() schema must reject unknown top-level fields.
+  it('rejects a request with an unknown top-level field (N4 strict schema)', async () => {
+    const req = { ...validRequest(), __unknown_field: 'surprise' };
+    const ack = await sendOnce(socketPath, JSON.stringify(req));
+    expect(ack.ok).toBe(false);
+    if (ack.ok) throw new Error('unreachable');
+    expect(ack.error).toBe('schema_invalid');
+  });
+
+  // N5 — screenshot_b64: "" must be rejected (empty string is not valid base64
+  // that encodes any real screenshot).
+  it('rejects screenshot_b64 as empty string (N5 min(1))', async () => {
+    const req = validRequest({ screenshot_b64: '' });
+    const ack = await sendOnce(socketPath, JSON.stringify(req));
     expect(ack.ok).toBe(false);
     if (ack.ok) throw new Error('unreachable');
     expect(ack.error).toBe('schema_invalid');

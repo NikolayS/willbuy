@@ -20,6 +20,21 @@ type PositiveFixture = {
 };
 type FalsePositiveFixture = { cases: Array<{ label: string; value: string; why: string }> };
 
+// §6.1 boundary fixtures: the spec defines exact distances that must be
+// tested. Each case builds `input = prefix + gap + body` where gap may
+// include spaces or newlines (all count toward the 32-char window).
+// Cases with `custom_input` use that directly instead.
+type BoundaryCase = {
+  label: string;
+  body: string;
+  expect: 'redact' | 'leave';
+  why: string;
+} & (
+  | { custom_input: string; prefix?: undefined; gap?: undefined }
+  | { custom_input?: undefined; prefix: string; gap: string }
+);
+type BoundaryFixture = { cases: BoundaryCase[] };
+
 const positives = JSON.parse(
   readFileSync(resolve(here, 'fixtures/redactor-positive.json'), 'utf8'),
 ) as PositiveFixture;
@@ -27,6 +42,10 @@ const positives = JSON.parse(
 const falsePositives = JSON.parse(
   readFileSync(resolve(here, 'fixtures/redactor-false-positive.json'), 'utf8'),
 ) as FalsePositiveFixture;
+
+const boundary = JSON.parse(
+  readFileSync(resolve(here, 'fixtures/redactor-boundary.json'), 'utf8'),
+) as BoundaryFixture;
 
 describe('redactor — spec §5.9 positive fixtures', () => {
   for (const c of positives.cases) {
@@ -50,6 +69,30 @@ describe('redactor — spec §5.9 false-positive fixtures (boundary rule)', () =
       const r = redact(c.value);
       expect(r.redacted).toBe(c.value);
       expect(Object.keys(r.counts)).toHaveLength(0);
+    });
+  }
+});
+
+// §6.1 boundary suite — tests the 32-char proximity window for the
+// labeled-context rule. The spec says:
+//   label 31 chars away → redact
+//   label 33 chars away → don't redact
+//   two labels at 29 and 35 chars → redact (the 29-char label fires)
+//   label separated by a newline → redact (newlines count toward distance)
+//   multiple overlapping labels → redact (each label's window checked)
+describe('redactor — spec §6.1 labeled-context boundary fixtures', () => {
+  for (const c of boundary.cases) {
+    it(`boundary: ${c.label}`, () => {
+      const input = c.custom_input ?? `${c.prefix}${c.gap}${c.body}`;
+      const r = redact(input);
+      if (c.expect === 'redact') {
+        expect(r.redacted).not.toContain(c.body);
+        expect(r.redacted).toContain('[REDACTED:labeled_secret]');
+      } else {
+        // leave — body must survive unmodified
+        expect(r.redacted).toContain(c.body);
+        expect(r.redacted).not.toContain('[REDACTED:labeled_secret]');
+      }
     });
   }
 });

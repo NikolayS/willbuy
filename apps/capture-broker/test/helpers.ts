@@ -13,6 +13,50 @@ export function tempSocketPath(): string {
 }
 
 /**
+ * Send one framed payload WITHOUT half-closing the socket — simulates a
+ * peer that never sends FIN. Waits for the broker to close its end (which
+ * happens when the per-connection timeout fires). The caller supplies a
+ * generous `waitMs` to cover the broker's timeout + some headroom.
+ */
+export async function sendOnceNoEnd(
+  socketPath: string,
+  payload: Buffer | string,
+  waitMs: number,
+): Promise<BrokerAck> {
+  const buf = Buffer.isBuffer(payload) ? payload : Buffer.from(payload, 'utf8');
+  return new Promise<BrokerAck>((resolve, reject) => {
+    const socket: Socket = connect(socketPath);
+    const chunks: Buffer[] = [];
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error(`sendOnceNoEnd: no ack within ${waitMs}ms`));
+    }, waitMs);
+    socket.on('error', (err) => { clearTimeout(timer); reject(err); });
+    socket.on('data', (c: Buffer) => chunks.push(c));
+    socket.on('end', () => {
+      clearTimeout(timer);
+      const all = Buffer.concat(chunks);
+      if (all.length < HEADER_BYTES) {
+        reject(new Error(`server closed without writing a frame; got ${all.length}B`));
+        return;
+      }
+      const len = all.readUInt32BE(0);
+      const body = all.slice(HEADER_BYTES, HEADER_BYTES + len);
+      try {
+        resolve(JSON.parse(body.toString('utf8')) as BrokerAck);
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+    socket.on('connect', () => {
+      // Write the frame but deliberately do NOT call socket.end() — we want
+      // the broker's timeout to be the thing that terminates the exchange.
+      socket.write(frame(buf));
+    });
+  });
+}
+
+/**
  * Send one framed payload to the broker, read one framed response, return
  * the parsed ack. Used by the round-trip + reject tests.
  */

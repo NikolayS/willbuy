@@ -1,0 +1,51 @@
+{
+  "comment": "§6.1 labeled-context BOUNDARY fixtures. Tests the 32-char proximity window. Standard cases use `prefix + gap + body` construction. The `gap` field is the literal string between end of label-separator and start of body (its char length is the distance). Spec: within 32 chars (whitespace/newlines included) after a label. Special cases set `custom_input` for inputs that cannot be expressed as prefix+gap+body.",
+  "cases": [
+    {
+      "label": "label-31-chars-gap-REDACT",
+      "prefix": "token=",
+      "gap": "                               ",
+      "body": "0123456789abcdef0123456789abcdef01234567",
+      "expect": "redact",
+      "why": "Spec §6.1: gap=31 spaces → distance 31 ≤ 32 → redact"
+    },
+    {
+      "label": "label-33-chars-gap-LEAVE",
+      "prefix": "token=",
+      "gap": "                                 ",
+      "body": "0123456789abcdef0123456789abcdef01234567",
+      "expect": "leave",
+      "why": "Spec §6.1: gap=33 spaces → distance 33 > 32 → leave"
+    },
+    {
+      "label": "two-labels-29-and-35-REDACT",
+      "custom_input": "token=                                   0123456789abcdef0123456789abcdef01234567 secret=                             0123456789abcdef0123456789abcdef01234567",
+      "body": "0123456789abcdef0123456789abcdef01234567",
+      "expect": "redact",
+      "why": "Spec §6.1: first occurrence has gap=35 (> 32, no fire), second occurrence has gap=29 (≤ 32, fires) → overall redact"
+    },
+    {
+      "label": "newline-in-gap-REDACT",
+      "prefix": "token=",
+      "gap": "\n",
+      "body": "0123456789abcdef0123456789abcdef01234567",
+      "expect": "redact",
+      "why": "Spec §6.1: newline counts as 1 char toward the 32-char window. gap=1 ≤ 32 → redact."
+    },
+    {
+      "label": "newline-plus-spaces-31-total-REDACT",
+      "prefix": "token=",
+      "gap": "\n                              ",
+      "body": "0123456789abcdef0123456789abcdef01234567",
+      "expect": "redact",
+      "why": "Spec §6.1: newline + 30 spaces = 31 chars total ≤ 32 → redact"
+    },
+    {
+      "label": "overlapping-labels-REDACT",
+      "custom_input": "secret=token=0123456789abcdef0123456789abcdef01234567",
+      "body": "0123456789abcdef0123456789abcdef01234567",
+      "expect": "redact",
+      "why": "Spec §6.1: multiple overlapping labels immediately adjacent to the same body → redact"
+    }
+  ]
+}
