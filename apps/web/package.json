@@ -14,15 +14,19 @@
   },
   "dependencies": {
     "@willbuy/shared": "workspace:*",
+    "html-to-image": "^1.11.13",
     "next": "14.2.18",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "recharts": "^2.13.3"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.1.0",
     "@types/node": "^22.10.2",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "typescript": "^5.7.2",
