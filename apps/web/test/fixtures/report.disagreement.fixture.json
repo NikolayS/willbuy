@@ -1,0 +1,64 @@
+{
+  "meta": { "slug": "test-disagreement", "low_power": false },
+  "headline": {
+    "mean_delta": 0.8,
+    "ci95_low": -0.1,
+    "ci95_high": 1.7,
+    "n_paired": 24,
+    "paired_t_p": 0.041,
+    "wilcoxon_p": 0.092,
+    "mcnemar_p": 0.18,
+    "verdict": "inconclusive",
+    "disagreement": true
+  },
+  "paired_dots": [
+    { "backstory_id": "bs-101", "backstory_name": "Persona Alpha", "role": "founder_or_eng_lead", "score_a": 5, "score_b": 6, "swing": "b_wins" },
+    { "backstory_id": "bs-102", "backstory_name": "Persona Beta",  "role": "ic_engineer",        "score_a": 4, "score_b": 4, "swing": "tie"    }
+  ],
+  "histograms": [
+    { "variant": "A", "bins": [0, 0, 1, 2, 4, 6, 5, 4, 1, 1, 0], "mean": 5.4, "median": 5 },
+    { "variant": "B", "bins": [0, 0, 1, 1, 3, 5, 7, 5, 1, 1, 0], "mean": 6.0, "median": 6 }
+  ],
+  "next_actions": [
+    {
+      "variant": "A",
+      "counts": {
+        "purchase_paid_today": 1, "contact_sales": 2, "book_demo": 1, "start_paid_trial": 3,
+        "bookmark_compare_later": 5, "start_free_hobby": 6, "ask_teammate": 4, "leave": 2
+      }
+    },
+    {
+      "variant": "B",
+      "counts": {
+        "purchase_paid_today": 2, "contact_sales": 3, "book_demo": 1, "start_paid_trial": 4,
+        "bookmark_compare_later": 4, "start_free_hobby": 5, "ask_teammate": 3, "leave": 2
+      }
+    }
+  ],
+  "tier_picked": [
+    { "variant": "A", "counts": { "none": 6, "hobby": 5, "express": 4, "starter": 5, "scale": 2, "enterprise": 2 } },
+    { "variant": "B", "counts": { "none": 4, "hobby": 4, "express": 5, "starter": 6, "scale": 3, "enterprise": 2 } }
+  ],
+  "theme_board": {
+    "blockers":   [{ "cluster_id": "blk-9", "label": "Pricing rationale unclear", "count": 6 }],
+    "objections": [{ "cluster_id": "obj-9", "label": "Risk of vendor lock-in",    "count": 4 }],
+    "confusions": [{ "cluster_id": "cnf-9", "label": "Tier ladder unclear",       "count": 3 }],
+    "questions":  [{ "cluster_id": "qst-9", "label": "Is there a startup discount", "count": 5 }]
+  },
+  "personas": [
+    {
+      "backstory_id": "bs-101",
+      "backstory_name": "Persona Alpha",
+      "role": "founder_or_eng_lead",
+      "stage": "seed",
+      "team_size": 6,
+      "stack": "supabase",
+      "current_pain": "cost_creep",
+      "entry_point": "hacker_news",
+      "score_a": 5,
+      "score_b": 6,
+      "verdict_a": "Decent but I want a self-serve calculator.",
+      "verdict_b": "Calculator helps; I'd bookmark and revisit."
+    }
+  ]
+}

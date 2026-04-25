@@ -1,0 +1,275 @@
+# infra/dev/docker-compose.yml — local self-hosted Supabase for willbuy.dev
+#
+# Spec ref: §4.1 (self-hosted Supabase = Postgres + storage + auth + Realtime + Studio + Kong).
+#
+# Bring-up:
+#   cp infra/dev/.env.example infra/dev/.env       # placeholders ONLY in .env.example
+#   # fill .env with local-dev values (see infra/dev/README.md)
+#   docker compose -f infra/dev/docker-compose.yml --env-file infra/dev/.env up -d
+#   pnpm migrate                                   # applies infra/migrations/
+#
+# Hard rules:
+# - Every image is pinned by tag AND sha256 digest. Image promotions go
+#   through a deliberate digest update; no floating tags in this file.
+# - Every service has a healthcheck. The compose `depends_on` ordering
+#   uses `service_healthy` so dependents do not start until the
+#   dependency answers "healthy".
+# - This file is for LOCAL development only. Production deploy of
+#   Supabase lands in Sprint 3 per §4.1 + spec roadmap.
+
+x-base-postgres-env: &base-postgres-env
+  POSTGRES_HOST: db
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  POSTGRES_DB: ${POSTGRES_DB:-postgres}
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+
+services:
+  db:
+    image: supabase/postgres:15.6.1.146@sha256:ee29d0aaff03d0e12c7aa63437cba25f24246872f0ed3f82a9fd13184d780777
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_EXP: ${JWT_EXP:-3600}
+    ports:
+      # Fixed host port so application code + scripts/migrate.sh can
+      # rely on a stable DATABASE_URL across reboots.
+      - '${POSTGRES_HOST_PORT:-54322}:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  auth:
+    image: supabase/gotrue:v2.158.1@sha256:202c16530f2f29c886de963ab18b369074c49655480a463ce881169019f2bda7
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-postgres}?search_path=auth
+      GOTRUE_SITE_URL: ${SITE_URL:?set SITE_URL in .env}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:?}
+      GOTRUE_JWT_EXP: ${JWT_EXP:-3600}
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_DISABLE_SIGNUP: 'false'
+      GOTRUE_MAILER_AUTOCONFIRM: 'true'
+      GOTRUE_LOG_LEVEL: warn
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:9999/health']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rest:
+    image: postgrest/postgrest:v12.2.0@sha256:2cf1efd2c9c2e7606610c113cc73e936d8ce9ba089271cb9cbf11aa564bc30c7
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-postgres}
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET:?}
+      PGRST_DB_USE_LEGACY_GUCS: 'false'
+    healthcheck:
+      # PostgREST has no built-in /health; root path returns OpenAPI JSON.
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/ >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  realtime:
+    image: supabase/realtime:v2.30.34@sha256:f43c080c74915340687727a34b21ae9cacc5ac21380d05b61efebeca6fd7ca4f
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-postgres}
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?}
+      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: ${JWT_SECRET:?}
+      FLY_ALLOC_ID: 'fly123'
+      FLY_APP_NAME: realtime
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set SECRET_KEY_BASE in .env}
+      ERL_AFLAGS: '-proto_dist inet_tcp'
+      ENABLE_TAILSCALE: 'false'
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: 10000
+      APP_NAME: realtime
+      SEED_SELF_HOST: 'true'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sSf http://localhost:4000/api/tenants/realtime-dev/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  storage:
+    image: supabase/storage-api:v1.11.13@sha256:1e85dad48e8b3e85890a555e5114dc7ee48c2e8be4cfd97dd4e3564b4f104fcd
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+      imgproxy:
+        condition: service_started
+    environment:
+      ANON_KEY: ${ANON_KEY:?set ANON_KEY in .env}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY:?set SERVICE_ROLE_KEY in .env}
+      POSTGREST_URL: http://rest:3000
+      PGRST_JWT_SECRET: ${JWT_SECRET:?}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-postgres}
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: stub
+      GLOBAL_S3_BUCKET: stub
+      ENABLE_IMAGE_TRANSFORMATION: 'true'
+      IMGPROXY_URL: http://imgproxy:5001
+    volumes:
+      - storage-data:/var/lib/storage
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:5000/status']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  imgproxy:
+    image: darthsim/imgproxy:v3.8.0@sha256:0facd355d50f3be665ebe674486f2b2e9cdaebd3f74404acd9b7fece2f661435
+    restart: unless-stopped
+    environment:
+      IMGPROXY_BIND: ':5001'
+      IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
+      IMGPROXY_USE_ETAG: 'true'
+      IMGPROXY_ENABLE_WEBP_DETECTION: 'true'
+    volumes:
+      - storage-data:/var/lib/storage
+    healthcheck:
+      test: ['CMD', 'imgproxy', 'health']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  meta:
+    image: supabase/postgres-meta:v0.83.2@sha256:0e8cf91a277aefb7f85e4ec01c3b0ae69882b351c7927e3e21ce59c151ae780c
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: ${POSTGRES_DB:-postgres}
+      PG_META_DB_USER: supabase_admin
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:?}
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:8080/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  studio:
+    image: supabase/studio:20240729-ce42139@sha256:374da591f7190427447b9865f63061f561ebc81306d7655d14dab7cb453f3907
+    restart: unless-stopped
+    depends_on:
+      meta:
+        condition: service_healthy
+    ports:
+      - '${STUDIO_HOST_PORT:-54323}:3000'
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      DEFAULT_ORGANIZATION_NAME: willbuy-dev
+      DEFAULT_PROJECT_NAME: willbuy
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
+      SUPABASE_ANON_KEY: ${ANON_KEY:?}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY:?}
+      AUTH_JWT_SECRET: ${JWT_SECRET:?}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/api/profile').then(r => r.ok || process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  kong:
+    image: kong:2.8.1@sha256:1b53405d8680a09d6f44494b7990bf7da2ea43f84a258c59717d4539abf09f6d
+    restart: unless-stopped
+    depends_on:
+      auth:
+        condition: service_healthy
+      rest:
+        condition: service_healthy
+      realtime:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+      meta:
+        condition: service_healthy
+    environment:
+      KONG_DATABASE: 'off'
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+    ports:
+      - '${KONG_HTTP_PORT:-8000}:8000'
+      - '${KONG_HTTPS_PORT:-8443}:8443'
+    volumes:
+      - ./kong.yml:/var/lib/kong/kong.yml:ro
+    healthcheck:
+      test: ['CMD', 'kong', 'health']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  edge-functions:
+    image: supabase/edge-runtime:v1.58.2@sha256:ffe9ff8f3ed2a961f9bc8559f1c40e3243f6a2ac822ffa29286406777e352a16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?}
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY:?}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:?}
+      SUPABASE_DB_URL: postgres://postgres:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-postgres}
+      VERIFY_JWT: 'false'
+    volumes:
+      - ./functions:/home/deno/functions:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pgrep -x edge-runtime >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:
+  storage-data:
