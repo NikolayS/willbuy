@@ -2,6 +2,7 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
+import reactPlugin from 'eslint-plugin-react';
 import willbuy from './eslint-rules/no-sandbox-flag.js';
 
 export default tseslint.config(
@@ -29,6 +30,23 @@ export default tseslint.config(
     },
     rules: {
       'willbuy/no-sandbox-flag': 'error',
+    },
+  },
+  {
+    // react/no-danger is scoped to apps/web/** per the SPEC §5.10
+    // render boundary: only the Next.js app renders captured / LLM /
+    // cluster-label content, so that's where the rule must hold.
+    files: ['apps/web/**/*.{ts,tsx,js,jsx,mjs,cjs}'],
+    plugins: {
+      react: reactPlugin,
+    },
+    languageOptions: {
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+      },
+    },
+    rules: {
+      'react/no-danger': 'error',
     },
   },
   {
