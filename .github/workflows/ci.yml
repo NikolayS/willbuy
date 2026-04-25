@@ -57,6 +57,12 @@ jobs:
         # apps/api/test/leases.integration.test.ts all start postgres:16-alpine
         # containers in beforeAll; pre-pulling ensures the image layers are in
         # the Docker cache so concurrent container starts don't race on I/O.
+        #
+        # Migration runner: scripts/migrate.sh now delegates to sqlever
+        # (NikolayS/sqlever 0.3.0, installed via `bun install` above as a
+        # devDependency). The sqlever project lives in infra/sqlever/.
+        # Each deploy script also writes a backward-compat _migrations row so
+        # test assertions that read _migrations continue to work.
         run: docker pull postgres:16-alpine
 
       - name: Test
