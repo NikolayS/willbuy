@@ -10,6 +10,7 @@
   "exclude": ["node_modules", "dist", "build", ".next", "coverage", "tests/lint-fixtures"],
   "references": [
     { "path": "./apps/api" },
+    { "path": "./apps/capture-broker/tsconfig.build.json" },
     { "path": "./packages/shared" },
     { "path": "./packages/llm-adapter" }
   ]

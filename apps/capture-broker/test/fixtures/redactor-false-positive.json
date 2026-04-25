@@ -1,0 +1,40 @@
+{
+  "comment": "FALSE-POSITIVE redaction fixtures. Each `value` MUST NOT be redacted. These are the exact false-positive classes spec §5.9 calls out (asset hashes, CSP nonces, SKUs, commit SHAs, cache-busted URLs). Synthetic strings only.",
+  "cases": [
+    {
+      "label": "asset-url-40-char-hash",
+      "value": "https://cdn.example.com/static/main.0123456789abcdef0123456789abcdef01234567.js",
+      "why": "40-char hex inside an asset URL — boundary rule says NOT a secret (no labeled context)"
+    },
+    {
+      "label": "csp-nonce-64-char",
+      "value": "<script nonce=\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\">alert(1)</script>",
+      "why": "64-char hex CSP nonce. The 'nonce=' label is a deliberate spec carve-out — nonces appear constantly in HTML and are not secrets at rest."
+    },
+    {
+      "label": "sku-64-char",
+      "value": "Product SKU 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef on the catalog",
+      "why": "64-char hex SKU embedded in narrative text — no labeled-context boundary"
+    },
+    {
+      "label": "commit-sha-40-char",
+      "value": "Built from commit 0123456789abcdef0123456789abcdef01234567 on main",
+      "why": "Git commit SHAs are 40-char hex but never represent a credential"
+    },
+    {
+      "label": "cache-busted-image-url",
+      "value": "<img src=\"/static/hero.png?v=0123456789abcdef0123456789abcdef\">",
+      "why": "Cache-busted image URL with 32-char hex query value. `v=` is a versioning param, not a secret label."
+    },
+    {
+      "label": "version-string-with-hash",
+      "value": "willbuy/0.1.0 (build 0123456789abcdef0123456789abcdef01234567)",
+      "why": "Build hash inside a version string — no labeled-context boundary"
+    },
+    {
+      "label": "css-url-hash",
+      "value": "url(/_next/static/chunks/main.0123456789abcdef0123456789abcdef.js)",
+      "why": "Webpack/Next.js asset filename hash"
+    }
+  ]
+}

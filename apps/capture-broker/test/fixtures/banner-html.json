@@ -1,0 +1,6 @@
+{
+  "comment": "Cookie-banner fixture. Spec §2 #2: capture-worker REMOVES the matched element from the DOM (does NOT click). The broker only forwards the curated selector list. Test asserts: (a) the curated list contains a selector that matches this fixture, (b) DOM-removal (simulated) leaves primary content intact.",
+  "html": "<!doctype html><html><head><title>Example</title></head><body><main id=\"main\"><h1>Welcome to Example</h1><p>Primary content lives here.</p><button>Buy now</button></main><div id=\"cookie-banner\" class=\"cookie-consent\" role=\"dialog\"><p>We use cookies.</p><button class=\"accept\">Accept</button></div></body></html>",
+  "expected_match_selector_substr": "cookie",
+  "primary_must_remain": ["Welcome to Example", "Primary content lives here.", "Buy now"]
+}
