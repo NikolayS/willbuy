@@ -30,4 +30,8 @@ describe('scoreVisit (growth/ab/pricing-page-2026apr/scoring.md mirror)', () => 
   it('returns 0.8 for book_demo', () => {
     expect(scoreVisit(visitWith('book_demo'))).toBe(0.8);
   });
+
+  it('returns 0.6 for start_paid_trial', () => {
+    expect(scoreVisit(visitWith('start_paid_trial'))).toBe(0.6);
+  });
 });
