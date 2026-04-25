@@ -20,6 +20,16 @@ const firstImpression = z
 // Spec §2 #15: will_to_buy and confidence are integers 0–10.
 const score0to10 = z.number().int().min(0).max(10);
 
+// Spec §2 #15: questions/confusions/objections/unanswered_blockers are
+// each ≤ 10 strings × ≤ 200 chars per string.
+const shortStringList = z
+  .array(
+    z
+      .string()
+      .max(200, 'list items capped at 200 chars (spec §2 #15)'),
+  )
+  .max(10, 'list capped at 10 items (spec §2 #15)');
+
 export const VisitorOutput = z
   .object({
     first_impression: firstImpression.describe(
@@ -28,11 +38,17 @@ export const VisitorOutput = z
     will_to_buy: score0to10.describe(
       'Spec §2 #15: will_to_buy integer 0–10.',
     ),
-    questions: anyValue.describe('Spec §2 #15: questions[].'),
-    confusions: anyValue.describe('Spec §2 #15: confusions[].'),
-    objections: anyValue.describe('Spec §2 #15: objections[].'),
-    unanswered_blockers: anyValue.describe(
-      'Spec §2 #15: unanswered_blockers[].',
+    questions: shortStringList.describe(
+      'Spec §2 #15: questions[], ≤ 10 items × ≤ 200 chars each.',
+    ),
+    confusions: shortStringList.describe(
+      'Spec §2 #15: confusions[], ≤ 10 items × ≤ 200 chars each.',
+    ),
+    objections: shortStringList.describe(
+      'Spec §2 #15: objections[], ≤ 10 items × ≤ 200 chars each.',
+    ),
+    unanswered_blockers: shortStringList.describe(
+      'Spec §2 #15: unanswered_blockers[], ≤ 10 items × ≤ 200 chars each.',
     ),
     next_action: NextAction.describe(
       'Spec §2 #15 + amendment A1 (2026-04-24): next_action enum aligned with growth scoring rubric.',
