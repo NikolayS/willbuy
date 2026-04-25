@@ -28,6 +28,26 @@ export const EnvSchema = z.object({
   // Optional redirect URLs for Stripe Checkout (defaults are set in checkout.ts).
   STRIPE_SUCCESS_URL: z.string().url().optional(),
   STRIPE_CANCEL_URL: z.string().url().optional(),
+  // Resend transactional email (§2 #26, issue #79).
+  // Real value lives in 1Password (op://willbuy/resend-api-key/credential).
+  // Default 'not_configured' so tests that don't exercise email routes work
+  // without a real key; RESEND_TEST_MODE=stub disables network calls.
+  RESEND_API_KEY: z.string().default('re_not_configured'),
+  // Set to 'stub' in tests / local dev to log instead of calling Resend.
+  RESEND_TEST_MODE: z.enum(['stub', 'live']).default('live'),
+  // HMAC key for signing wb_session cookies (issue #79, §5.10).
+  // Must be ≥ 32 chars. Generate: openssl rand -hex 32
+  // Manager action: `op item create --vault willbuy --category 'API Credential'
+  //   --title session-hmac-key credential[concealed]=$(openssl rand -hex 32)`
+  SESSION_HMAC_KEY: z
+    .string()
+    .min(32, 'SESSION_HMAC_KEY must be at least 32 chars')
+    .default('dev_hmac_key_not_configured_replace_in_production_abc123'),
+  // Dev bypass: if set, magic-link verify URL is returned in response body
+  // instead of emailed. Only honoured when NODE_ENV !== 'production'.
+  WILLBUY_DEV_SESSION: z.string().optional(),
+  // NODE_ENV — used for __Host- cookie prefix and dev bypass guard.
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
