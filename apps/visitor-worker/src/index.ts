@@ -8,7 +8,7 @@
 //
 // Heavy lifting lives in ./visitor.js so the package barrel stays stable.
 
-export { runVisit } from './visitor.js';
+export { runVisit, computeLogicalRequestKey } from './visitor.js';
 export type {
   VisitResult,
   RunVisitOptions,
