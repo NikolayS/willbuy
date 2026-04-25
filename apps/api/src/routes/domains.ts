@@ -23,6 +23,25 @@
  *     accounts.verified_domains, returns { verified: true, method }.
  *     On no match: updates last_checked_at, returns { verified: false }.
  *
+ *   GET /api/domains                       — issue #83, list page.
+ *     Returns: { domains: [{ domain, verify_token, verified_at,
+ *                            last_checked_at, created_at }] }
+ *     Order: created_at DESC. Scoped to req.account.id.
+ *
+ *   DELETE /api/domains/:domain            — issue #83, list page.
+ *     Removes the row from domain_verifications AND drops the value from
+ *     accounts.verified_domains[] in a single transaction.
+ *     204 on success; 404 if the (account, domain) pair has no row
+ *     (looks identical for "doesn't exist" and "owned by another account"
+ *     to avoid leaking existence — spec §2 #20).
+ *
+ *   POST /api/domains/:domain/delete       — CSP-safe form workaround.
+ *     Browsers can only emit GET/POST from <form>; the dashboard runs
+ *     under a strict CSP (no inline JS), so a literal DELETE button via
+ *     fetch() is not an option for the no-JS list page. This route
+ *     performs the same SQL as DELETE and 302-redirects back to
+ *     /dashboard/domains so the user lands on a refreshed list.
+ *
  * Design notes:
  *   - The token is a 22-char nanoid (≈131 bits of entropy) — same length as
  *     the magic-link token in routes/auth.ts. Cleartext storage is fine here:
@@ -343,6 +362,132 @@ export async function registerDomainsRoutes(
         [row.id],
       );
       return reply.code(200).send({ verified: false });
+    },
+  );
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // GET /api/domains — list domains for the authenticated account (issue #83).
+  // ──────────────────────────────────────────────────────────────────────────
+  app.get(
+    '/api/domains',
+    { preHandler: [sessionMw] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const account = req.account!;
+      const r = await pool.query<{
+        domain: string;
+        verify_token: string;
+        verified_at: Date | null;
+        last_checked_at: Date | null;
+        created_at: Date;
+      }>(
+        `SELECT domain, verify_token, verified_at, last_checked_at, created_at
+           FROM domain_verifications
+          WHERE account_id = $1
+          ORDER BY created_at DESC, id DESC`,
+        [String(account.id)],
+      );
+      return reply.code(200).send({
+        domains: r.rows.map((row) => ({
+          domain: row.domain,
+          verify_token: row.verify_token,
+          verified_at: row.verified_at?.toISOString() ?? null,
+          last_checked_at: row.last_checked_at?.toISOString() ?? null,
+          created_at: row.created_at.toISOString(),
+        })),
+      });
+    },
+  );
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // DELETE /api/domains/:domain — remove a (account, domain) pair (issue #83).
+  //
+  // Atomic: drops the verification row AND removes the value from
+  // accounts.verified_domains[] in a single transaction so the list view
+  // can never show a "phantom" verified domain that's missing its challenge
+  // record (or vice-versa).
+  // ──────────────────────────────────────────────────────────────────────────
+  async function deleteDomainForAccount(
+    accountId: string,
+    domain: string,
+  ): Promise<boolean> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Use RETURNING to confirm the row was actually owned by this account.
+      // If 0 rows are deleted, the (account, domain) pair didn't exist or
+      // belonged to a different account — caller treats both as 404.
+      const del = await client.query(
+        `DELETE FROM domain_verifications
+          WHERE account_id = $1 AND domain = $2
+          RETURNING id`,
+        [accountId, domain],
+      );
+      if (del.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return false;
+      }
+
+      // array_remove drops every occurrence of the value (NULL-safe).
+      await client.query(
+        `UPDATE accounts
+            SET verified_domains = array_remove(COALESCE(verified_domains, '{}'), $2)
+          WHERE id = $1`,
+        [accountId, domain],
+      );
+
+      await client.query('COMMIT');
+      return true;
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  app.delete<{ Params: { domain: string } }>(
+    '/api/domains/:domain',
+    { preHandler: [sessionMw] },
+    async (req, reply) => {
+      const account = req.account!;
+      const domain = normalizeEtldPlusOne(req.params.domain);
+      if (!domain) {
+        // Treat malformed domain identical to non-existent — same 404 shape.
+        return reply.code(404).send({ error: 'not found' });
+      }
+
+      const ok = await deleteDomainForAccount(String(account.id), domain);
+      if (!ok) {
+        return reply.code(404).send({ error: 'not found' });
+      }
+      // 204 No Content per HTTP semantics; no body.
+      return reply.code(204).send();
+    },
+  );
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // POST /api/domains/:domain/delete — form-submit fallback (issue #83).
+  //
+  // The /dashboard/domains list runs under a strict CSP (§5.10) and uses
+  // native HTML <form> posts instead of fetch() for the action buttons.
+  // Because forms can only emit GET or POST, this sibling route does the
+  // same work as DELETE and redirects back to the list page.
+  // ──────────────────────────────────────────────────────────────────────────
+  app.post<{ Params: { domain: string } }>(
+    '/api/domains/:domain/delete',
+    { preHandler: [sessionMw] },
+    async (req, reply) => {
+      const account = req.account!;
+      const domain = normalizeEtldPlusOne(req.params.domain);
+      if (!domain) {
+        return reply.code(404).send({ error: 'not found' });
+      }
+      // Best-effort delete: even if the row didn't exist, redirect back to
+      // the list. Any leak is bounded to "is this domain in your list" —
+      // which the user already sees on the page they came from.
+      await deleteDomainForAccount(String(account.id), domain);
+      return reply.code(302).redirect('/dashboard/domains');
     },
   );
 }
