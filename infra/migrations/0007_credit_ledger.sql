@@ -12,6 +12,10 @@
 -- guarantees that every commit/refund row references a real provider_attempts
 -- row. NULL for top_up and reserve rows (no provider attempt yet).
 --
+-- provider_attempt_id NOT NULL CHECK: spec §5.4 — a commit or refund row with
+-- NULL provider_attempt_id is unauditable; the CHECK enforces the invariant.
+-- kind ∈ {top_up, reserve, partial_finalize} may have NULL provider_attempt_id.
+--
 -- account_balance(view): sum of cents per account for fast balance lookups.
 -- Views over append-only ledgers are race-free by construction.
 
@@ -24,7 +28,8 @@ create table if not exists credit_ledger (
   provider_attempt_id  int8        references provider_attempts (id) on delete set null,
   cents                int4        not null,
   idempotency_key      text        not null unique,
-  created_at           timestamptz not null default now()
+  created_at           timestamptz not null default now(),
+  check (kind not in ('commit', 'refund') or provider_attempt_id is not null)
 );
 
 comment on table credit_ledger is 'Append-only credit ledger — top_up/reserve/commit/refund/partial_finalize (spec §5.4)';

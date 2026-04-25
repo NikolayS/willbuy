@@ -632,14 +632,38 @@ describeIfDocker('migrations schema (issue #26)', () => {
 
     it('credit_ledger.kind accepts the v0.1 set', () => {
       psql(pg.container, `insert into accounts (owner_email) values ('cl-kind@example.com');`);
-      const kinds = ['top_up', 'reserve', 'commit', 'refund', 'partial_finalize'];
-      for (let i = 0; i < kinds.length; i++) {
+      psql(
+        pg.container,
+        `insert into studies (account_id, kind, status) select id, 'single', 'pending' from accounts where owner_email='cl-kind@example.com';`,
+      );
+      // Seed one provider_attempt so that commit/refund rows satisfy the NOT NULL CHECK (spec §5.4).
+      psql(
+        pg.container,
+        `insert into provider_attempts (account_id, study_id, kind, logical_request_key, provider, model, transport_attempts, status, cost_cents, started_at)
+           select a.id, s.id, 'visit', 'cl-kind-pa', 'anthropic', 'claude-haiku-4-5', 0, 'ended', 50, now()
+           from accounts a join studies s on s.account_id = a.id where a.owner_email='cl-kind@example.com';`,
+      );
+      // top_up, reserve, partial_finalize: provider_attempt_id may be NULL.
+      const nullKinds = ['top_up', 'reserve', 'partial_finalize'];
+      for (let i = 0; i < nullKinds.length; i++) {
         const r = psql(
           pg.container,
           `insert into credit_ledger (account_id, kind, cents, idempotency_key)
-             select id, '${kinds[i]}', 100, 'cl-kind-${i}' from accounts where owner_email='cl-kind@example.com';`,
+             select id, '${nullKinds[i]}', 100, 'cl-kind-${i}' from accounts where owner_email='cl-kind@example.com';`,
         );
-        expect(r.code, `kind ${kinds[i]}: ${r.stderr}`).toBe(0);
+        expect(r.code, `kind ${nullKinds[i]}: ${r.stderr}`).toBe(0);
+      }
+      // commit/refund: provider_attempt_id IS NOT NULL required (spec §5.4 CHECK).
+      const paKinds = ['commit', 'refund'];
+      for (let i = 0; i < paKinds.length; i++) {
+        const r = psql(
+          pg.container,
+          `insert into credit_ledger (account_id, provider_attempt_id, kind, cents, idempotency_key)
+             select a.id, pa.id, '${paKinds[i]}', 100, 'cl-kind-pa-${i}'
+             from accounts a join provider_attempts pa on pa.account_id = a.id
+             where a.owner_email='cl-kind@example.com';`,
+        );
+        expect(r.code, `kind ${paKinds[i]}: ${r.stderr}`).toBe(0);
       }
     });
 
@@ -663,19 +687,39 @@ describeIfDocker('migrations schema (issue #26)', () => {
 
     it('account_balance view sums signed ledger entries', () => {
       psql(pg.container, `insert into accounts (owner_email) values ('bal@example.com');`);
-      const ops = [
+      psql(
+        pg.container,
+        `insert into studies (account_id, kind, status) select id, 'single', 'pending' from accounts where owner_email='bal@example.com';`,
+      );
+      // Seed a provider_attempt so that the refund row satisfies the NOT NULL CHECK (spec §5.4).
+      psql(
+        pg.container,
+        `insert into provider_attempts (account_id, study_id, kind, logical_request_key, provider, model, transport_attempts, status, cost_cents, started_at)
+           select a.id, s.id, 'visit', 'bal-pa', 'anthropic', 'claude-haiku-4-5', 0, 'ended', 200, now()
+           from accounts a join studies s on s.account_id = a.id where a.owner_email='bal@example.com';`,
+      );
+      // top_up and reserve may have NULL provider_attempt_id.
+      const nullOps = [
         { kind: 'top_up', cents: 1000 },
         { kind: 'reserve', cents: -200 },
-        { kind: 'refund', cents: 50 },
       ];
-      for (let i = 0; i < ops.length; i++) {
+      for (let i = 0; i < nullOps.length; i++) {
         const r = psql(
           pg.container,
           `insert into credit_ledger (account_id, kind, cents, idempotency_key)
-             select id, '${ops[i]!.kind}', ${ops[i]!.cents}, 'bal-${i}' from accounts where owner_email='bal@example.com';`,
+             select id, '${nullOps[i]!.kind}', ${nullOps[i]!.cents}, 'bal-${i}' from accounts where owner_email='bal@example.com';`,
         );
         expect(r.code, r.stderr).toBe(0);
       }
+      // refund requires a non-NULL provider_attempt_id (spec §5.4 CHECK).
+      const refundR = psql(
+        pg.container,
+        `insert into credit_ledger (account_id, provider_attempt_id, kind, cents, idempotency_key)
+           select a.id, pa.id, 'refund', 50, 'bal-2'
+           from accounts a join provider_attempts pa on pa.account_id = a.id
+           where a.owner_email='bal@example.com';`,
+      );
+      expect(refundR.code, refundR.stderr).toBe(0);
       const balance = expectSqlOk(
         pg.container,
         `select balance_cents from account_balance where account_id = (select id from accounts where owner_email='bal@example.com');`,
