@@ -11,6 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgres.js';
 
 import {
   acquireLease,
@@ -27,7 +28,7 @@ import {
 
 const { Pool } = pg;
 
-// ─── testcontainer helpers (mirrors tests/migrations.test.ts pattern) ─────────
+// ─── testcontainer helpers (uses shared start-postgres helper) ────────────────
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..', '..', '..'); // apps/api → monorepo root
@@ -48,73 +49,7 @@ const dockerCheck = !useExternalDb
 const dockerAvailable = useExternalDb || dockerCheck.status === 0;
 const describeIfDocker = dockerAvailable ? describe : describe.skip;
 
-const PG_IMAGE = 'postgres:16-alpine';
 const PG_PASSWORD = 'willbuy_lease_test_pw';
-const CONTAINER_PREFIX = 'willbuy-lease-test-';
-
-function uid(): string {
-  return `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-}
-
-function dockerRun(args: string[]): { code: number; stdout: string; stderr: string } {
-  const r = spawnSync('docker', args, { encoding: 'utf8' });
-  return { code: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-}
-
-function findFreePort(): number {
-  return 30000 + Math.floor(Math.random() * 30000);
-}
-
-async function startPostgres(): Promise<{ container: string; port: number; url: string }> {
-  const container = CONTAINER_PREFIX + uid();
-  let port = findFreePort();
-  let attempts = 0;
-  let started = false;
-  let lastErr = '';
-  while (attempts < 3 && !started) {
-    const r = dockerRun([
-      'run',
-      '-d',
-      '--rm',
-      '--name',
-      container,
-      '-e',
-      `POSTGRES_PASSWORD=${PG_PASSWORD}`,
-      '-e',
-      'POSTGRES_DB=willbuy_lease_test',
-      '-p',
-      `${port}:5432`,
-      PG_IMAGE,
-    ]);
-    if (r.code === 0) {
-      started = true;
-    } else {
-      lastErr = r.stderr;
-      port = findFreePort();
-      attempts += 1;
-    }
-  }
-  if (!started) {
-    throw new Error(`failed to start postgres container: ${lastErr}`);
-  }
-
-  // Wait for postgres readiness (up to 30 s).
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const r = dockerRun(['exec', container, 'pg_isready', '-U', 'postgres']);
-    if (r.code === 0) {
-      const url = `postgres://postgres:${PG_PASSWORD}@127.0.0.1:${port}/willbuy_lease_test`;
-      return { container, port, url };
-    }
-    await new Promise<void>((res) => setTimeout(res, 500));
-  }
-  dockerRun(['rm', '-f', container]);
-  throw new Error('postgres container did not become ready in 30 s');
-}
-
-function stopPostgres(container: string): void {
-  dockerRun(['rm', '-f', container]);
-}
 
 function runMigrate(databaseUrl: string): { code: number; stdout: string; stderr: string } {
   // migrate.sh resolves migrations relative to cwd; run it from the repo root.
@@ -202,7 +137,13 @@ describeIfDocker('backstory lease + aggregator finalize — integration (§5.11,
       dbUrl = TEST_DATABASE_URL!;
     } else {
       // Spin an ephemeral Docker container and apply migrations.
-      pgState = await startPostgres();
+      // Uses the shared startPostgres helper (PR #60 wait-for-log strategy)
+      // to eliminate the startup race that caused flakes on second CI pass.
+      pgState = await startPostgres({
+        containerPrefix: 'willbuy-lease-test-',
+        dbName: 'willbuy_lease_test',
+        password: PG_PASSWORD,
+      });
       const migResult = runMigrate(pgState.url);
       if (migResult.code !== 0) {
         throw new Error(`migrations failed: ${migResult.stderr}`);
