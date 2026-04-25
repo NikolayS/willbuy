@@ -1,4 +1,4 @@
--- 0014_seed_sqlever_state.sql — one-shot state seed for NikolayS/sqlever (issue #48, amendment A4).
+-- 0015_seed_sqlever_state.sql — one-shot state seed for NikolayS/sqlever (issue #48, amendment A4).
 --
 -- Context: PR #46 landed a bash migrate.sh that tracked applied migrations in
 -- _migrations(filename, checksum, applied_at). Amendment A4 (2026-04-24)
