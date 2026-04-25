@@ -62,8 +62,9 @@ async function startPostgres(): Promise<{ container: string; port: number; url: 
       // Faster startup: trust-mode skips md5 auth handshake during initdb.
       '-e', `POSTGRES_PASSWORD=${PG_PASSWORD}`,
       '-e', 'POSTGRES_INITDB_ARGS=--auth-host=trust',
-      // Smaller footprint: 128 MB shared_buffers avoids OOM under CI memory pressure.
-      '-e', 'POSTGRES_SHARED_BUFFERS=128MB',
+      // POSTGRES_SHARED_BUFFERS is not a valid postgres env var — postgres reads
+      // shared_buffers from postgresql.conf or -c flag, not from the environment.
+      // 128 MB is the default anyway; dropped (issue #62).
       '--shm-size=256m',
       '-p', `${port}:5432`,
       PG_IMAGE,
