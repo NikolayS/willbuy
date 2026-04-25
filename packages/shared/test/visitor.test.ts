@@ -19,4 +19,12 @@ describe('VisitorOutput (spec §2 #15)', () => {
     const { reasoning: _omit, ...withoutReasoning } = validFixture;
     expect(() => VisitorOutput.parse(withoutReasoning)).toThrow();
   });
+
+  it('rejects an oversized field (first_impression > 400 chars per §2 #15)', () => {
+    const oversized = {
+      ...validFixture,
+      first_impression: 'x'.repeat(401),
+    };
+    expect(() => VisitorOutput.parse(oversized)).toThrow();
+  });
 });
