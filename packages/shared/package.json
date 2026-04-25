@@ -22,6 +22,10 @@
     "./backstory": {
       "types": "./src/backstory.ts",
       "default": "./src/backstory.ts"
+    },
+    "./report": {
+      "types": "./src/report.ts",
+      "default": "./src/report.ts"
     }
   },
   "scripts": {

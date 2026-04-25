@@ -10,6 +10,13 @@ export {
   scoreVisit,
 } from './scoring.js';
 export {
+  Report,
+  type ReportT,
+  type VariantId,
+  type Tier,
+  type ThemeCategory,
+} from './report.js';
+export {
   Backstory,
   type BackstoryT,
   Stage,
