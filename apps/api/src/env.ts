@@ -48,6 +48,15 @@ export const EnvSchema = z.object({
   WILLBUY_DEV_SESSION: z.string().optional(),
   // NODE_ENV — used for __Host- cookie prefix and dev bypass guard.
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // Share-token HMAC signing key (§5.12, issue #76).
+  // Used to sign opaque cookie values that represent a validated share token.
+  // Must be ≥ 32 hex chars. Loaded from 1Password in production:
+  //   op://willbuy/share-token-hmac-key/credential
+  // The default is a dev-only placeholder — override in production via op inject.
+  SHARE_TOKEN_HMAC_KEY: z
+    .string()
+    .min(32, 'SHARE_TOKEN_HMAC_KEY must be at least 32 chars (spec §5.12)')
+    .default('dev-only-share-token-hmac-key-not-for-production-use'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

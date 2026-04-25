@@ -1,4 +1,4 @@
--- 0014_auth_magic_links.sql
+-- 0016_auth_magic_links.sql
 -- Sprint 3 — Auth #1 (issue #79): magic-link sign-in tables.
 --
 -- auth_magic_links: stores sha256(token) so the raw token never hits the DB.

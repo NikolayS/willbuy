@@ -6,10 +6,12 @@
  * so the webhook can reconcile the payment back to the account.
  *
  * Spec refs: §4.1 (Stripe Checkout), §5.6 (pack tiers).
+ * Fix #73: wrap stripe.checkout.sessions.create in try/catch; map to 502
+ * without leaking Stripe internals to the client.
  */
 
 import { z } from 'zod';
-import type Stripe from 'stripe';
+import Stripe from 'stripe';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
 
@@ -43,22 +45,33 @@ export async function registerCheckoutRoutes(
       const packId: PackId = bodyResult.data.pack_id;
       const pack = PACKS[packId];
 
-      const session = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price: pack.price_id,
-            quantity: 1,
-          },
-        ],
-        client_reference_id: String(account.id),
-        metadata: { pack_id: packId },
-        // success_url and cancel_url are required by Stripe; use env if set,
-        // otherwise use fallback placeholders (adequate for test mode).
-        success_url: env.STRIPE_SUCCESS_URL ?? 'https://willbuy.dev/credits?success=1',
-        cancel_url: env.STRIPE_CANCEL_URL ?? 'https://willbuy.dev/credits?cancelled=1',
-      });
+      let session: Awaited<ReturnType<typeof stripe.checkout.sessions.create>>;
+      try {
+        session = await stripe.checkout.sessions.create({
+          mode: 'payment',
+          payment_method_types: ['card'],
+          line_items: [
+            {
+              price: pack.price_id,
+              quantity: 1,
+            },
+          ],
+          client_reference_id: String(account.id),
+          metadata: { pack_id: packId },
+          // success_url and cancel_url are required by Stripe; use env if set,
+          // otherwise use fallback placeholders (adequate for test mode).
+          success_url: env.STRIPE_SUCCESS_URL ?? 'https://willbuy.dev/credits?success=1',
+          cancel_url: env.STRIPE_CANCEL_URL ?? 'https://willbuy.dev/credits?cancelled=1',
+        });
+      } catch (err) {
+        // Log with Fastify's logger (Fastify logger pattern: req.log.error).
+        // Do NOT forward Stripe error details to the client — they may contain
+        // internal API messages, price-ID hints, or other sensitive internals.
+        req.log.error(err, 'stripe-checkout-create-failed');
+        return reply
+          .code(502)
+          .send({ error: 'payment provider unavailable, try again' });
+      }
 
       return reply.code(200).send({ url: session.url });
     },

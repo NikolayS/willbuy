@@ -1,0 +1,20 @@
+%syntax-version=1.0.0
+%project=willbuy
+%uri=https://github.com/NikolayS/willbuy
+
+0000_init 2026-04-01T00:00:00Z willbuy <team@willbuy.dev> # placeholder init, creates _migrations tracking table
+0001_accounts_and_keys [0000_init] 2026-04-01T00:01:00Z willbuy <team@willbuy.dev> # accounts + api_keys (spec §4.1, §2 #21)
+0002_studies [0001_accounts_and_keys] 2026-04-01T00:02:00Z willbuy <team@willbuy.dev> # studies table (spec §4.1, §4.3, §5.3)
+0003_page_captures [0002_studies] 2026-04-01T00:03:00Z willbuy <team@willbuy.dev> # page_captures (spec §4.1, §5.13)
+0004_backstories_and_leases [0003_page_captures] 2026-04-01T00:04:00Z willbuy <team@willbuy.dev> # backstories + backstory_leases (spec §2 #12, §4.3, §5.11)
+0005_visits [0004_backstories_and_leases] 2026-04-01T00:05:00Z willbuy <team@willbuy.dev> # visits (spec §4.1, §4.3, §5.1, §5.3, §2 #15)
+0006_provider_attempts [0005_visits] 2026-04-01T00:06:00Z willbuy <team@willbuy.dev> # unified provider-attempt ledger (spec §2 #16, §5.15)
+0007_credit_ledger [0006_provider_attempts] 2026-04-01T00:07:00Z willbuy <team@willbuy.dev> # credit_ledger + account_balance view (spec §5.4, §4.3)
+0008_llm_spend_daily [0007_credit_ledger] 2026-04-01T00:08:00Z willbuy <team@willbuy.dev> # daily spend cap accounting (spec §5.5)
+0009_reports [0008_llm_spend_daily] 2026-04-01T00:09:00Z willbuy <team@willbuy.dev> # reports (spec §4.1, §4.3, §5.18, §5.11)
+0010_late_arrivals [0009_reports] 2026-04-01T00:10:00Z willbuy <team@willbuy.dev> # late_arrivals (spec §5.11)
+0011_global_inflight [0010_late_arrivals] 2026-04-01T00:11:00Z willbuy <team@willbuy.dev> # global backpressure tables (spec §5.14)
+0012_accounts_verified_domains [0011_global_inflight] 2026-04-01T00:12:00Z willbuy <team@willbuy.dev> # add verified_domains to accounts (spec §2 #1)
+0013_late_arrivals_unique [0012_accounts_verified_domains] 2026-04-01T00:13:00Z willbuy <team@willbuy.dev> # schema-enforce idempotency on late_arrivals (issue #58)
+0015_seed_sqlever_state [0013_late_arrivals_unique] 2026-04-25T00:15:00Z willbuy <team@willbuy.dev> # seed sqlever state from legacy _migrations rows (issue #48, amendment A4) — renumbered from 0014 to resolve collision with 0014_share_tokens (#89)
+0016_auth_magic_links [0015_seed_sqlever_state] 2026-04-25T00:16:00Z willbuy <team@willbuy.dev> # auth_magic_links table for magic-link sign-in (issue #79)

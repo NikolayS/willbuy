@@ -21,7 +21,6 @@ import { startPostgres, stopPostgres } from './helpers/start-postgres.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
 const migrateScript = resolve(repoRoot, 'scripts/migrate.sh');
-const realMigrationsDir = resolve(repoRoot, 'infra/migrations');
 
 const dockerCheck = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], {
   encoding: 'utf8',
@@ -35,7 +34,6 @@ function runMigrate(databaseUrl: string): { code: number; stdout: string; stderr
     env: {
       ...process.env,
       DATABASE_URL: databaseUrl,
-      MIGRATIONS_DIR: realMigrationsDir,
     },
   });
   return { code: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
