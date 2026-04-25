@@ -24,5 +24,6 @@ export function scoreVisit(parsed: VisitorOutputT): number {
   if (parsed.next_action === 'purchase_paid_today') return 1.0;
   if (parsed.next_action === 'contact_sales') return 0.8;
   if (parsed.next_action === 'book_demo') return 0.8;
+  if (parsed.next_action === 'start_paid_trial') return 0.6;
   return 0.0;
 }
