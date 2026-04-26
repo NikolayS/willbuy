@@ -80,9 +80,19 @@ export async function pollVisitorOnce(opts: PollVisitorOpts): Promise<PollVisito
       backstory_payload: string;
       a11y_object_key: string | null;
     }>(
+      // b.payload::text — backstories.payload is JSONB; the pg driver deserializes
+      // JSONB columns to JS objects automatically. Casting to text keeps it as a
+      // raw JSON string so the downstream JSON.parse() call works correctly.
+      // (Without ::text, JSON.parse(obj) stringifies the object to "[object Object]"
+      // and throws a SyntaxError — see issue #164, bug 2.)
+      //
+      // v.terminal_reason IS NULL — exclude visits that already failed irrecoverably
+      // (e.g. backstory_invalid). Without this guard the poller re-leases the same
+      // terminal visit on every poll, loops forever, and never makes progress.
+      // (See issue #164, bug 1.)
       `SELECT v.id,
               v.study_id,
-              b.payload    AS backstory_payload,
+              b.payload::text AS backstory_payload,
               pc.a11y_storage_key AS a11y_object_key
          FROM visits v
          JOIN studies s    ON s.id = v.study_id
@@ -90,6 +100,7 @@ export async function pollVisitorOnce(opts: PollVisitorOpts): Promise<PollVisito
          LEFT JOIN page_captures pc ON pc.id = v.capture_id
         WHERE s.status = 'visiting'
           AND v.parsed IS NULL
+          AND v.terminal_reason IS NULL
         ORDER BY v.id
         LIMIT 1
         FOR UPDATE OF v SKIP LOCKED`,

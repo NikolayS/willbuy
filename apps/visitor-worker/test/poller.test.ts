@@ -281,6 +281,80 @@ describe('pollVisitorOnce — LLM transport failure', () => {
   });
 });
 
+// ─── Bug #164 regression tests ───────────────────────────────────────────────
+
+describe('pollVisitorOnce — bug #164 fix 1: terminal visits are not re-leased', () => {
+  it('returns { kind: "empty" } when the only available visit has terminal_reason set', async () => {
+    // Arrange: The WHERE clause now includes `AND v.terminal_reason IS NULL`.
+    // A visit with terminal_reason='backstory_invalid' must NOT be selected.
+    // We simulate this by returning 0 rows from the lease query — as Postgres
+    // would when every candidate row has terminal_reason IS NOT NULL.
+    const pool = buildFakePool({
+      scripts: [
+        // The lease SELECT returns no rows because the only visit has
+        // terminal_reason='backstory_invalid' and is filtered out by the fix.
+        { match: 'FOR UPDATE OF v SKIP LOCKED', rows: [] },
+      ],
+    });
+
+    const provider = new MockProvider({ responses: [] });
+    const storage = buildStorage();
+
+    const result = await pollVisitorOnce({ pool, storage, provider });
+
+    // Must not process the terminal visit — must return empty.
+    expect(result.kind).toBe('empty');
+    // Provider must never be called.
+    expect(provider.calls).toHaveLength(0);
+  });
+});
+
+describe('pollVisitorOnce — bug #164 fix 2: JSONB backstory_payload parsed correctly via ::text cast', () => {
+  it('processes normally when backstory_payload arrives as a JSON string (from ::text cast)', async () => {
+    // Arrange: b.payload::text means the pg driver gives us a raw JSON string,
+    // not a pre-parsed JS object.  JSON.parse(string) succeeds; JSON.parse(object)
+    // would stringify the object to "[object Object]" and throw SyntaxError.
+    // The mock DB returns a JSON string — exactly what ::text produces.
+    const queries: string[] = [];
+
+    const pool = buildFakePool({
+      scripts: [
+        {
+          match: 'FOR UPDATE OF v SKIP LOCKED',
+          rows: [
+            {
+              id: '88',
+              study_id: '4',
+              // backstory_payload is a JSON string, as returned by b.payload::text.
+              backstory_payload: makeBackstoryPayload(),
+              a11y_object_key: SAMPLE_A11Y_KEY,
+            },
+          ],
+        },
+        { match: 'pending_count', rows: [{ pending_count: '0' }] },
+      ],
+      onQuery: (sql) => queries.push(sql),
+    });
+
+    const provider = new MockProvider({
+      responses: [
+        { raw: validVisitorJsonString(), transportAttempts: 1, status: 'ok' },
+      ],
+    });
+    const storage = buildStorage({ [SAMPLE_A11Y_KEY]: SAMPLE_A11Y_TEXT });
+
+    const result = await pollVisitorOnce({ pool, storage, provider });
+
+    // Must succeed — JSON.parse on the string payload must not throw.
+    expect(result).toEqual({ kind: 'processed', visitId: 88, visitOk: true });
+    // Provider was called — backstory was parsed successfully.
+    expect(provider.calls).toHaveLength(1);
+    // parsed UPDATE must have been issued.
+    const visitUpdate = queries.find((q) => q.includes('UPDATE visits') && q.includes('parsed'));
+    expect(visitUpdate).toBeDefined();
+  });
+});
+
 describe('pollVisitorOnce — study does not advance when visits still pending', () => {
   it('skips study UPDATE when pending_count > 0', async () => {
     const queries: string[] = [];
