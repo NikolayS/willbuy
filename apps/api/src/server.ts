@@ -19,6 +19,7 @@ import { registerDomainsRoutes } from './routes/domains.js';
 import { registerStripeWebhookRoute } from './routes/stripe-webhook.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerApiKeyRoutes } from './routes/api-keys.js';
+import { registerMetricsRoute } from './routes/metrics.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // dist/ when built, src/ when run via tsx — both are one level below apps/api.
@@ -70,6 +71,10 @@ export async function buildServer(opts: BuildServerOptions): Promise<FastifyInst
   });
 
   await app.register(sensible);
+
+  // Wire /metrics + onRequest/onResponse hooks FIRST so the request-duration
+  // histogram captures every subsequent route (issue #119, spec §5.14).
+  await registerMetricsRoute(app, env.WILLBUY_METRICS_TOKEN);
 
   // Postgres connection pool — shared across all routes.
   const pool = new Pool({ connectionString: env.DATABASE_URL });

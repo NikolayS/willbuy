@@ -35,6 +35,7 @@ import type { Pool } from 'pg';
 import { buildApiKeyMiddleware } from '../auth/api-key.js';
 import { buildSessionMiddleware } from '../auth/session.js';
 import type { Env } from '../env.js';
+import { recordStudyStarted } from '../metrics/registry.js';
 
 // Per-visit estimated cost ceiling = 5¢ per spec §5.5 (cost-model ceiling).
 // §5.7 (Algorithms) describes the broader cost-model overview.
@@ -196,6 +197,10 @@ export async function registerStudiesRoutes(
         }
 
         await client.query('COMMIT');
+
+        // Issue #119 / spec §5.14: business-counter increment AFTER commit so
+        // we don't inflate the count for rolled-back transactions.
+        recordStudyStarted({ kind });
 
         return reply.code(201).send({ study_id: Number(studyId), status: 'capturing' });
       } catch (err) {
