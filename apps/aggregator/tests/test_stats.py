@@ -29,14 +29,14 @@ def test_paired_delta_known_fixture_4dp() -> None:
     mean_delta = 18/8 = 2.25 (exact)
     """
     visits = {
-        "alice":   {"A": {"score": 5, "next_action": "leave"},                   "B": {"score": 7, "next_action": "contact_sales"}},
-        "bob":     {"A": {"score": 3, "next_action": "leave"},                   "B": {"score": 6, "next_action": "purchase_paid_today"}},
-        "carol":   {"A": {"score": 4, "next_action": "bookmark_compare_later"},  "B": {"score": 5, "next_action": "book_demo"}},
-        "dave":    {"A": {"score": 6, "next_action": "leave"},                   "B": {"score": 8, "next_action": "purchase_paid_today"}},
-        "eve":     {"A": {"score": 2, "next_action": "leave"},                   "B": {"score": 5, "next_action": "start_paid_trial"}},
-        "frank":   {"A": {"score": 5, "next_action": "ask_teammate"},            "B": {"score": 6, "next_action": "contact_sales"}},
-        "grace":   {"A": {"score": 4, "next_action": "leave"},                   "B": {"score": 7, "next_action": "purchase_paid_today"}},
-        "heidi":   {"A": {"score": 5, "next_action": "leave"},                   "B": {"score": 8, "next_action": "contact_sales"}},
+        "alice":   {0: {"score": 5, "next_action": "leave"},                   1: {"score": 7, "next_action": "contact_sales"}},
+        "bob":     {0: {"score": 3, "next_action": "leave"},                   1: {"score": 6, "next_action": "purchase_paid_today"}},
+        "carol":   {0: {"score": 4, "next_action": "bookmark_compare_later"},  1: {"score": 5, "next_action": "book_demo"}},
+        "dave":    {0: {"score": 6, "next_action": "leave"},                   1: {"score": 8, "next_action": "purchase_paid_today"}},
+        "eve":     {0: {"score": 2, "next_action": "leave"},                   1: {"score": 5, "next_action": "start_paid_trial"}},
+        "frank":   {0: {"score": 5, "next_action": "ask_teammate"},            1: {"score": 6, "next_action": "contact_sales"}},
+        "grace":   {0: {"score": 4, "next_action": "leave"},                   1: {"score": 7, "next_action": "purchase_paid_today"}},
+        "heidi":   {0: {"score": 5, "next_action": "leave"},                   1: {"score": 8, "next_action": "contact_sales"}},
     }
     out = paired_delta(visits)
 
@@ -83,14 +83,14 @@ def test_paired_delta_disagreement_true() -> None:
     # 18 pairs with B−A = +0.3 (score: A=5, B=5.3)
     for i in range(18):
         visits[f"v{i:02d}"] = {
-            "A": {"score": 5,   "next_action": "leave"},
-            "B": {"score": 5.3, "next_action": "leave"},
+            0: {"score": 5,   "next_action": "leave"},
+            1: {"score": 5.3, "next_action": "leave"},
         }
     # 2 pairs with B−A = −2.0 (score: A=5, B=3.0)
     for i in range(18, 20):
         visits[f"v{i:02d}"] = {
-            "A": {"score": 5,   "next_action": "leave"},
-            "B": {"score": 3.0, "next_action": "leave"},
+            0: {"score": 5,   "next_action": "leave"},
+            1: {"score": 3.0, "next_action": "leave"},
         }
 
     out = paired_delta(visits)
@@ -127,9 +127,9 @@ def test_paired_delta_disagreement_rule_xor_contract() -> None:
     # Case B already tested above. Here we verify the contract fields directly.
     visits_b: dict[str, dict] = {}
     for i in range(18):
-        visits_b[f"v{i:02d}"] = {"A": {"score": 5, "next_action": "leave"}, "B": {"score": 5.3, "next_action": "leave"}}
+        visits_b[f"v{i:02d}"] = {0: {"score": 5, "next_action": "leave"}, 1: {"score": 5.3, "next_action": "leave"}}
     for i in range(18, 20):
-        visits_b[f"v{i:02d}"] = {"A": {"score": 5, "next_action": "leave"}, "B": {"score": 3.0, "next_action": "leave"}}
+        visits_b[f"v{i:02d}"] = {0: {"score": 5, "next_action": "leave"}, 1: {"score": 3.0, "next_action": "leave"}}
     out_b = paired_delta(visits_b)
     assert out_b.disagreement is True
     assert out_b.conservative_p == max(out_b.paired_t_p, out_b.wilcoxon_p)
@@ -139,14 +139,14 @@ def test_paired_delta_disagreement_rule_xor_contract() -> None:
     # Case A mirror: both tests agree (both significant) → disagreement=False.
     # Fixture: all 8 deltas positive → both t and Wilcoxon significant.
     visits_a: dict[str, dict] = {
-        "alice": {"A": {"score": 5, "next_action": "leave"}, "B": {"score": 7, "next_action": "contact_sales"}},
-        "bob":   {"A": {"score": 3, "next_action": "leave"}, "B": {"score": 6, "next_action": "purchase_paid_today"}},
-        "carol": {"A": {"score": 4, "next_action": "leave"}, "B": {"score": 7, "next_action": "contact_sales"}},
-        "dave":  {"A": {"score": 6, "next_action": "leave"}, "B": {"score": 8, "next_action": "purchase_paid_today"}},
-        "eve":   {"A": {"score": 2, "next_action": "leave"}, "B": {"score": 5, "next_action": "start_paid_trial"}},
-        "frank": {"A": {"score": 5, "next_action": "leave"}, "B": {"score": 8, "next_action": "contact_sales"}},
-        "grace": {"A": {"score": 4, "next_action": "leave"}, "B": {"score": 7, "next_action": "purchase_paid_today"}},
-        "heidi": {"A": {"score": 5, "next_action": "leave"}, "B": {"score": 8, "next_action": "contact_sales"}},
+        "alice": {0: {"score": 5, "next_action": "leave"}, 1: {"score": 7, "next_action": "contact_sales"}},
+        "bob":   {0: {"score": 3, "next_action": "leave"}, 1: {"score": 6, "next_action": "purchase_paid_today"}},
+        "carol": {0: {"score": 4, "next_action": "leave"}, 1: {"score": 7, "next_action": "contact_sales"}},
+        "dave":  {0: {"score": 6, "next_action": "leave"}, 1: {"score": 8, "next_action": "purchase_paid_today"}},
+        "eve":   {0: {"score": 2, "next_action": "leave"}, 1: {"score": 5, "next_action": "start_paid_trial"}},
+        "frank": {0: {"score": 5, "next_action": "leave"}, 1: {"score": 8, "next_action": "contact_sales"}},
+        "grace": {0: {"score": 4, "next_action": "leave"}, 1: {"score": 7, "next_action": "purchase_paid_today"}},
+        "heidi": {0: {"score": 5, "next_action": "leave"}, 1: {"score": 8, "next_action": "contact_sales"}},
     }
     out_a = paired_delta(visits_a)
     assert out_a.disagreement is False

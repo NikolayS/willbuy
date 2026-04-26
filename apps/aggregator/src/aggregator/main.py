@@ -14,8 +14,10 @@ function trusts that the caller (API service) has already acquired the row.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import secrets
 import sys
 from collections import defaultdict
 from typing import Any
@@ -55,25 +57,40 @@ class _PgLedger:
         )
 
 
+class _NoOpLedger:
+    """No-op ledger for the CLI path.
+
+    provider_attempts requires account_id (NOT NULL) which the CLI path
+    doesn't have. The API service wires the real ledger; the CLI aggregator
+    skips ledger writes (issue #178).
+    """
+
+    def record(self, row: dict) -> None:
+        pass
+
+
 def _read_visits(conn: Any, study_id: str) -> list[dict]:
     rows = db.fetchall(
         conn,
-        "SELECT id, variant, backstory_id, status, output_json FROM visits WHERE study_id=%s",
+        "SELECT id, variant_idx, backstory_id, status, parsed FROM visits WHERE study_id=%s",
         (study_id,),
     )
     out: list[dict] = []
     for row in rows:
-        _id, variant, backstory_id, status, output_json = row
+        _id, variant_idx, backstory_id, status, parsed_col = row
         if status != "ok":
             continue
-        try:
-            parsed = json.loads(output_json)
-        except (TypeError, ValueError):
-            continue
+        if isinstance(parsed_col, dict):
+            parsed = parsed_col
+        else:
+            try:
+                parsed = json.loads(parsed_col)
+            except (TypeError, ValueError):
+                continue
         out.append(
             {
                 "id": _id,
-                "variant": variant,
+                "variant": variant_idx,
                 "backstory_id": backstory_id,
                 "output": parsed,
             },
@@ -90,7 +107,7 @@ def _build_visits_by_backstory(visits: list[dict]) -> dict[str, dict[str, dict]]
             "next_action": out.get("next_action"),
         }
     # Drop incomplete pairs.
-    return {k: v for k, v in pairs.items() if "A" in v and "B" in v}
+    return {k: v for k, v in pairs.items() if 0 in v and 1 in v}
 
 
 def _collect_findings(visits: list[dict]) -> dict[str, list[str]]:
@@ -128,11 +145,38 @@ def _cluster_with_labels(
     return out
 
 
+# Mirrors scoreVisit() in packages/shared/src/scoring.ts (amendment A1).
+_PAID_TIERS: frozenset[str] = frozenset({"express", "starter", "scale", "enterprise"})
+_NEXT_ACTION_WEIGHTS: dict[str, float] = {
+    "purchase_paid_today": 1.0,
+    "contact_sales": 0.8,
+    "book_demo": 0.8,
+    "start_paid_trial": 0.6,
+    "bookmark_compare_later": 0.0,
+    "start_free_hobby": 0.0,
+    "ask_teammate": 0.2,
+    "leave": 0.0,
+}
+
+
+def _score_visit(output: dict) -> float:
+    """Weighted conversion score for one visit (mirrors scoreVisit() in scoring.ts)."""
+    action = output.get("next_action", "leave")
+    tier_today = output.get("tier_picked_if_buying_today", "none") or "none"
+    tier_considered = output.get("highest_tier_willing_to_consider", "none") or "none"
+    if action == "bookmark_compare_later":
+        return 0.3 if tier_today in _PAID_TIERS else 0.0
+    if action == "start_free_hobby":
+        return 0.2 if tier_considered in _PAID_TIERS else 0.0
+    return _NEXT_ACTION_WEIGHTS.get(action, 0.0)
+
+
 def run_study(
     *,
     study_id: str,
     conn: Any,
     llm_caller: LLMCaller,
+    ledger: Any = None,
 ) -> None:
     """Finalize a study: cluster findings, label, compute paired stats, write report.
 
@@ -144,18 +188,21 @@ def run_study(
     paired = paired_delta(paired_input)
 
     findings = _collect_findings(visits)
-    ledger = _PgLedger(conn, study_id)
+    if ledger is None:
+        ledger = _PgLedger(conn, study_id)
     clusters = _cluster_with_labels(findings, llm_caller=llm_caller, ledger=ledger)
 
-    payload = {
-        "paired_delta": paired.to_dict(),
-        "clusters": clusters,
-    }
+    payload = paired.to_dict()
+
+    conv_score = float(sum(_score_visit(v["output"]) for v in visits) / len(visits)) if visits else 0.0
+
+    raw_token = secrets.token_urlsafe(32)
+    share_token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
     db.execute(
         conn,
-        "INSERT INTO reports(study_id, paired_delta_json) VALUES (%s, %s)",
-        (study_id, json.dumps(payload)),
+        "INSERT INTO reports(study_id, conv_score, share_token_hash, paired_delta_json, clusters_json) VALUES (%s, %s, %s, %s, %s)",
+        (study_id, conv_score, share_token_hash, json.dumps(payload), json.dumps(clusters)),
     )
     db.execute(
         conn,
@@ -197,7 +244,7 @@ def cli(argv: list[str] | None = None) -> int:
 
     conn = _connect_from_env()
     try:
-        run_study(study_id=args.study_id, conn=conn, llm_caller=_stub_llm_caller)
+        run_study(study_id=args.study_id, conn=conn, llm_caller=_stub_llm_caller, ledger=_NoOpLedger())
     finally:
         conn.close()
     return 0

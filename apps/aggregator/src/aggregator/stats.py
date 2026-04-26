@@ -74,11 +74,11 @@ def paired_delta(visits_by_backstory: Mapping[str, Mapping[str, Mapping]]) -> Pa
     """Compute paired statistics for a study.
 
     Input shape:
-      {backstory_id: {"A": {"score": int, "next_action": str},
-                      "B": {"score": int, "next_action": str}}}
-    Only backstories with both A and B present (and both `score` numeric)
-    are included; the caller is expected to have filtered on `status='ok'`
-    upstream.
+      {backstory_id: {0: {"score": int, "next_action": str},
+                      1: {"score": int, "next_action": str}}}
+    Only backstories with both variant 0 (control) and 1 (treatment) present
+    (and both `score` numeric) are included; the caller is expected to have
+    filtered on `status='ok'` upstream.
     """
     deltas: list[float] = []
     a_actions: list[str] = []
@@ -88,8 +88,8 @@ def paired_delta(visits_by_backstory: Mapping[str, Mapping[str, Mapping]]) -> Pa
     # production paths produce identical floating-point sums.
     for backstory_id in sorted(visits_by_backstory.keys()):
         pair = visits_by_backstory[backstory_id]
-        a = pair.get("A")
-        b = pair.get("B")
+        a = pair.get(0)
+        b = pair.get(1)
         if a is None or b is None:
             continue
         a_score = a.get("score")
