@@ -39,6 +39,10 @@ export type CaptureRequestPayload = {
   blocked_reason?: string;
   host_count: number;
   breach_reason?: string;
+  /** FK to studies(id); sent in production so broker can write page_captures row. */
+  study_id?: number;
+  /** Salted SHA-256 of the captured URL (spec §5.12). */
+  url_hash?: string;
 };
 
 export type BrokerAck =
@@ -47,6 +51,8 @@ export type BrokerAck =
       capture_id: string;
       a11y_object_key: string;
       screenshot_object_key?: string;
+      /** Bigint PK of the page_captures row; present when pgCaptureStore is wired. */
+      page_capture_id?: number;
     }
   | {
       ok: false;

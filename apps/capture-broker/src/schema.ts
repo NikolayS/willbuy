@@ -29,6 +29,12 @@ export const CaptureRequest = z
     blocked_reason: z.string().optional(),
     host_count: z.number().int().min(0),
     breach_reason: z.string().optional(),
+    // study_id + url_hash: sent by capture-worker in production so the
+    // broker can write the page_captures DB row. Optional so that the
+    // --smoke probe (bin.ts runSmoke) and unit tests that use in-memory
+    // doubles remain free of live DB requirements.
+    study_id: z.number().int().positive().optional(),
+    url_hash: z.string().optional(),
   })
   .strict();
 
@@ -44,6 +50,8 @@ export type BrokerAck =
       capture_id: string;
       a11y_object_key: string;
       screenshot_object_key?: string;
+      /** Bigint PK of the page_captures row; present when pgCaptureStore is wired. */
+      page_capture_id?: number;
     }
   | {
       ok: false;
