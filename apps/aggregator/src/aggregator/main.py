@@ -56,6 +56,18 @@ class _PgLedger:
         )
 
 
+class _NoOpLedger:
+    """No-op ledger for the CLI path.
+
+    provider_attempts requires account_id (NOT NULL) which the CLI path
+    doesn't have. The API service wires the real ledger; the CLI aggregator
+    skips ledger writes (issue #178).
+    """
+
+    def record(self, row: dict) -> None:
+        pass
+
+
 def _read_visits(conn: Any, study_id: str) -> list[dict]:
     rows = db.fetchall(
         conn,
@@ -137,6 +149,7 @@ def run_study(
     study_id: str,
     conn: Any,
     llm_caller: LLMCaller,
+    ledger: Any = None,
 ) -> None:
     """Finalize a study: cluster findings, label, compute paired stats, write report.
 
@@ -148,7 +161,8 @@ def run_study(
     paired = paired_delta(paired_input)
 
     findings = _collect_findings(visits)
-    ledger = _PgLedger(conn, study_id)
+    if ledger is None:
+        ledger = _PgLedger(conn, study_id)
     clusters = _cluster_with_labels(findings, llm_caller=llm_caller, ledger=ledger)
 
     payload = {
@@ -206,7 +220,7 @@ def cli(argv: list[str] | None = None) -> int:
 
     conn = _connect_from_env()
     try:
-        run_study(study_id=args.study_id, conn=conn, llm_caller=_stub_llm_caller)
+        run_study(study_id=args.study_id, conn=conn, llm_caller=_stub_llm_caller, ledger=_NoOpLedger())
     finally:
         conn.close()
     return 0
