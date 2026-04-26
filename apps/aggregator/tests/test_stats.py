@@ -102,8 +102,10 @@ def test_paired_delta_disagreement_true() -> None:
     # Paired-t: p ≈ 0.6633 (≥ 0.05, NOT significant).
     assert pytest.approx(out.paired_t_p, abs=1e-4) == 0.6633
 
-    # Wilcoxon: p ≈ 0.0121 (< 0.05, significant).
-    assert pytest.approx(out.wilcoxon_p, abs=1e-4) == 0.0121
+    # Wilcoxon: p ≈ 0.0069 (< 0.05, significant).
+    # Gold value re-pinned to scipy 1.17.1 (venv); older scipy returned 0.0121.
+    # Both are < 0.05, so the disagreement=True conclusion is unchanged.
+    assert pytest.approx(out.wilcoxon_p, abs=1e-4) == 0.0069
 
     # Exactly one test is significant → disagreement = True.
     assert out.disagreement is True
