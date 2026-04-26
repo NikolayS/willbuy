@@ -80,9 +80,11 @@ export async function pollVisitorOnce(opts: PollVisitorOpts): Promise<PollVisito
       backstory_payload: string;
       a11y_object_key: string | null;
     }>(
+      // ::text — pg driver auto-deserializes JSONB to objects; JSON.parse needs a string (#164 bug2).
+      // terminal_reason IS NULL — skip already-failed visits so they aren't re-leased (#164 bug1).
       `SELECT v.id,
               v.study_id,
-              b.payload    AS backstory_payload,
+              b.payload::text AS backstory_payload,
               pc.a11y_storage_key AS a11y_object_key
          FROM visits v
          JOIN studies s    ON s.id = v.study_id
@@ -90,6 +92,7 @@ export async function pollVisitorOnce(opts: PollVisitorOpts): Promise<PollVisito
          LEFT JOIN page_captures pc ON pc.id = v.capture_id
         WHERE s.status = 'visiting'
           AND v.parsed IS NULL
+          AND v.terminal_reason IS NULL
         ORDER BY v.id
         LIMIT 1
         FOR UPDATE OF v SKIP LOCKED`,
