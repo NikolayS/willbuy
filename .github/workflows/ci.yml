@@ -171,3 +171,61 @@ jobs:
       # This test FAILS without the pause container fix in netns-bringup.sh.
       - name: Run pause-container docker integration test
         run: sudo bash infra/capture/test/docker-integration.test.sh
+
+  # Issue #114 — Firecracker microVM base image build pipeline.
+  # We deliberately do NOT build the kernel here: the full build is 30+ min
+  # and needs KVM, which the GitHub-hosted runner doesn't expose. The
+  # follow-up issue for "build artifacts in CI" is flagged in
+  # infra/firecracker/README.md (Cosign signing + manager-action sections).
+  #
+  # What this job does:
+  #  1. shellcheck the three build scripts.
+  #  2. --check-only validates Kbuild.config invariants (virtio drivers
+  #     present, no modules / DRM / sound) without building.
+  #  3. docker build of the rootfs Dockerfile — this part IS feasible in CI
+  #     and catches base-image / dependency drift before the manual
+  #     willbuy-v01 build.
+  firecracker-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends shellcheck
+
+      - name: shellcheck firecracker scripts
+        run: |
+          shellcheck \
+            infra/firecracker/kernel/build-kernel.sh \
+            infra/firecracker/rootfs/build-rootfs.sh \
+            infra/firecracker/rootfs/init.sh
+
+      - name: Validate Kbuild.config + build-kernel.sh syntax (--check-only)
+        run: bash infra/firecracker/kernel/build-kernel.sh --check-only
+
+      - name: Validate build-rootfs.sh syntax (--check-only)
+        run: bash infra/firecracker/rootfs/build-rootfs.sh --check-only
+
+      - name: Validate test-boot.json
+        run: python3 -c "import json; json.load(open('infra/firecracker/test-boot.json'))"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build rootfs Docker image (no export to ext4)
+        # Builds the image so we catch base-image / Playwright / bun / capture-
+        # worker dependency drift here. We skip the docker-export → mkfs.ext4
+        # → gzip pipeline because mkfs.ext4 -d works on the runner but the
+        # full ext4 + 1 GiB compression takes another ~5 min that's not
+        # buying us coverage proportional to the time. The ext4-build path
+        # is exercised on willbuy-v01 (manager-action smoke).
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/firecracker/rootfs/Dockerfile
+          tags: willbuy-fc-rootfs:ci
+          load: true
+          cache-from: type=gha,scope=fc-rootfs
+          cache-to: type=gha,scope=fc-rootfs,mode=max
