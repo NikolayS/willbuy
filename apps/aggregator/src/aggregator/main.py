@@ -52,6 +52,27 @@ VALID_NEXT_ACTIONS: list[str] = [
 
 VALID_TIERS: list[str] = ["none", "hobby", "express", "starter", "scale", "enterprise"]
 
+# Valid RoleArchetype values (spec §2 / amendment A1).  Any value not in this
+# set is coerced to the safe default so the report JSON never contains
+# free-form strings that downstream renderers don't know how to handle.
+VALID_ROLES: frozenset[str] = frozenset({
+    "ic_engineer",
+    "engineering_manager",
+    "vp_engineering",
+    "cto",
+    "dba",
+    "devops_sre",
+    "founder",
+    "product_manager",
+})
+
+
+def _coerce_role(raw: Any) -> str:
+    """Return *raw* unchanged if it is a valid RoleArchetype, else 'ic_engineer'."""
+    if isinstance(raw, str) and raw in VALID_ROLES:
+        return raw
+    return "ic_engineer"
+
 # Maps cluster finding_kind → theme_board key.
 CLUSTER_TO_THEME: dict[str, str] = {
     "unanswered_blockers": "blockers",
@@ -279,7 +300,7 @@ def _build_report_json(
         paired_dots.append({
             "backstory_id": str(bs_id),
             "backstory_name": bs_payload.get("name", str(bs_id)),
-            "role": bs_payload.get("role_archetype", "ic_engineer"),
+            "role": _coerce_role(bs_payload.get("role_archetype")),
             "score_a": score_a,
             "score_b": score_b,
             "swing": swing,
@@ -377,7 +398,7 @@ def _build_report_json(
         personas.append({
             "backstory_id": str(bs_id),
             "backstory_name": bs_payload.get("name", str(bs_id)),
-            "role": bs_payload.get("role_archetype", "ic_engineer"),
+            "role": _coerce_role(bs_payload.get("role_archetype")),
             "stage": str(bs_payload.get("stage", "")),
             "team_size": int(bs_payload.get("team_size", 2)),
             "stack": str(bs_payload.get("managed_postgres", "")),
