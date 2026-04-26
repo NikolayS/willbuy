@@ -34,6 +34,17 @@ export interface BuildLoggerOptions {
   destination?: Writable | DestinationStream;
   /** Override base log dir. Defaults to /var/log/willbuy. */
   logDir?: string;
+  /**
+   * When true, the redactor operates in strict allowlist mode: any field NOT
+   * in the §5.12 allowlist is dropped before the line reaches disk.
+   *
+   * Allowlisted field names: account_id, study_id, visit_id,
+   * provider_attempt_id, transport_attempt_id, event, error_class, msg,
+   * level, time, service — plus any key starting with "duration_".
+   *
+   * Default (false) = existing deny-list-only behaviour.
+   */
+  strict?: boolean;
 }
 
 const DEFAULT_LOG_DIR = '/var/log/willbuy';
@@ -77,6 +88,7 @@ function buildFileDestination(service: string, logDir: string): DestinationStrea
 
 export function buildLogger(opts: BuildLoggerOptions): Logger {
   const salt = resolveSalt(opts.urlHashSalt);
+  const strict = opts.strict ?? false;
 
   // Forward-reference: the formatter needs to emit an alert event via the
   // logger itself when a redact() throw is caught (spec §5.12 / issue #118
@@ -87,7 +99,7 @@ export function buildLogger(opts: BuildLoggerOptions): Logger {
   const formatters: NonNullable<LoggerOptions['formatters']> = {
     log(obj) {
       try {
-        return redact(obj, salt) as Record<string, unknown>;
+        return redact(obj, salt, undefined, strict) as Record<string, unknown>;
       } catch (err) {
         if (err instanceof LogPayloadOversizeError) {
           // Emit a structured alert event on the SAME logger so it lands at
