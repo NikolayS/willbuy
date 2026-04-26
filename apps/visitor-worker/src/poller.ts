@@ -80,16 +80,8 @@ export async function pollVisitorOnce(opts: PollVisitorOpts): Promise<PollVisito
       backstory_payload: string;
       a11y_object_key: string | null;
     }>(
-      // b.payload::text — backstories.payload is JSONB; the pg driver deserializes
-      // JSONB columns to JS objects automatically. Casting to text keeps it as a
-      // raw JSON string so the downstream JSON.parse() call works correctly.
-      // (Without ::text, JSON.parse(obj) stringifies the object to "[object Object]"
-      // and throws a SyntaxError — see issue #164, bug 2.)
-      //
-      // v.terminal_reason IS NULL — exclude visits that already failed irrecoverably
-      // (e.g. backstory_invalid). Without this guard the poller re-leases the same
-      // terminal visit on every poll, loops forever, and never makes progress.
-      // (See issue #164, bug 1.)
+      // ::text — pg driver auto-deserializes JSONB to objects; JSON.parse needs a string (#164 bug2).
+      // terminal_reason IS NULL — skip already-failed visits so they aren't re-leased (#164 bug1).
       `SELECT v.id,
               v.study_id,
               b.payload::text AS backstory_payload,
