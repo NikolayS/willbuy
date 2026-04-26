@@ -35,6 +35,8 @@ export const CaptureRequest = z
     // doubles remain free of live DB requirements.
     study_id: z.number().int().positive().optional(),
     url_hash: z.string().optional(),
+    /** A/B study side; NULL for single-URL studies. */
+    side: z.enum(['A', 'B']).optional(),
   })
   .strict();
 

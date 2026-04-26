@@ -59,9 +59,10 @@ describe('pgCaptureStore', () => {
     const store = pgCaptureStore(pool);
     await store.insert(makeRow());
 
-    const querySpy = vi.mocked(pool.query);
+    // pool.query is a vi.fn() — cast to access .mock directly (vi.mocked not available in Bun)
+    const querySpy = pool.query as ReturnType<typeof vi.fn>;
     expect(querySpy).toHaveBeenCalledOnce();
-    const [sql] = querySpy.mock.calls[0] as unknown as [string, unknown[]];
+    const [sql] = querySpy.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('ON CONFLICT');
     expect(sql).toContain('DO UPDATE SET');
   });
@@ -71,8 +72,36 @@ describe('pgCaptureStore', () => {
     const store = pgCaptureStore(pool);
     await store.insert(makeRow());
 
-    const [sql] = (vi.mocked(pool.query).mock.calls[0] as unknown as [string, unknown[]]);
+    const querySpy = pool.query as ReturnType<typeof vi.fn>;
+    const [sql] = querySpy.mock.calls[0] as [string, unknown[]];
     expect(sql).toMatch(/ON CONFLICT\s*\(\s*study_id\s*,\s*\(COALESCE\(side/);
+    // Must not contain ::text cast — index uses bare COALESCE(side, '')
+    expect(sql).not.toContain("''::text");
+  });
+
+  it('side is included in the INSERT column list and bound as a param', async () => {
+    const pool = mockPool('42');
+    const store = pgCaptureStore(pool);
+    await store.insert(makeRow({ side: 'A' }));
+
+    const querySpy = pool.query as ReturnType<typeof vi.fn>;
+    const [sql, params] = querySpy.mock.calls[0] as [string, unknown[]];
+    // Column list must include `side`
+    expect(sql).toMatch(/\(\s*study_id\s*,\s*side\s*,/);
+    // Params array must contain the side value ('A')
+    expect(params).toContain('A');
+  });
+
+  it('side is NULL in params when absent (single-URL study)', async () => {
+    const pool = mockPool('42');
+    const store = pgCaptureStore(pool);
+    // makeRow() has no side property — simulates single-URL study
+    await store.insert(makeRow());
+
+    const querySpy = pool.query as ReturnType<typeof vi.fn>;
+    const [, params] = querySpy.mock.calls[0] as [string, unknown[]];
+    // Second param is side — must be null for single-URL studies
+    expect(params[1]).toBeNull();
   });
 
   it('two inserts with the same study_id both return the same id (upsert, no unique violation)', async () => {
@@ -83,13 +112,14 @@ describe('pgCaptureStore', () => {
     const rowB = makeRow({ study_id: 99, url_hash: 'hash-b', capture_id: 'cap-b' });
 
     const first = await store.insert(rowA);
-    vi.mocked(pool.query).mockResolvedValueOnce(fakeResult('42') as unknown as void);
+    const querySpy = pool.query as ReturnType<typeof vi.fn>;
+    querySpy.mockResolvedValueOnce(fakeResult('42') as unknown as void);
     const second = await store.insert(rowB);
 
     expect(first).toEqual({ id: 42 });
     expect(second).toEqual({ id: 42 });
 
-    for (const call of vi.mocked(pool.query).mock.calls) {
+    for (const call of querySpy.mock.calls) {
       expect((call[0] as string)).toContain('ON CONFLICT');
     }
   });
