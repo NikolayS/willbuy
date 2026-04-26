@@ -492,14 +492,41 @@ def _connect_from_env() -> Any:
 
 
 def _stub_llm_caller(prompt: str, *, kind: str) -> str:  # pragma: no cover
-    """Fallback when no LLM provider is wired (offline smoke runs).
-
-    Production uses the TS LLMProvider via subprocess (spec §27); that wiring
-    lands in S2-6 (API service) — the API spawns the aggregator and passes
-    the LLM endpoint through env. Until then, we return a placeholder so the
-    pipeline shape is exercisable end-to-end.
-    """
+    """Fallback when no LLM provider is wired (offline smoke runs)."""
     return "unlabeled cluster"
+
+
+def _make_cli_llm_caller(llm_bin: str) -> LLMCaller:
+    """Build an LLM caller that pipes the prompt to the claude CLI via stdin.
+
+    Mirrors the LocalCliProvider pattern in packages/llm-adapter: the binary
+    reads the full prompt from stdin and writes the response to stdout.
+    WILLBUY_LLM_BIN defaults to 'claude' (Claude Code CLI), matching the
+    visitor-worker's LocalCliProvider default.
+    """
+    import shutil
+    import subprocess
+
+    if not shutil.which(llm_bin):
+        return _stub_llm_caller  # type: ignore[return-value]
+
+    timeout_s = int(os.environ.get("WILLBUY_LLM_LABEL_TIMEOUT_S", "30"))
+
+    def _caller(prompt: str, *, kind: str) -> str:
+        result = subprocess.run(
+            [llm_bin],
+            input=prompt,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"{llm_bin} exited {result.returncode}: {result.stderr[:200]}"
+            )
+        return result.stdout.strip()
+
+    return _caller
 
 
 def cli(argv: list[str] | None = None) -> int:
@@ -507,9 +534,12 @@ def cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--study-id", required=True)
     args = parser.parse_args(argv)
 
+    llm_bin = os.environ.get("WILLBUY_LLM_BIN", "claude")
+    llm_caller = _make_cli_llm_caller(llm_bin)
+
     conn = _connect_from_env()
     try:
-        run_study(study_id=args.study_id, conn=conn, llm_caller=_stub_llm_caller, ledger=_NoOpLedger())
+        run_study(study_id=args.study_id, conn=conn, llm_caller=llm_caller, ledger=_NoOpLedger())
     finally:
         conn.close()
     return 0
