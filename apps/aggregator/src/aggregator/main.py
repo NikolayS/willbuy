@@ -317,19 +317,24 @@ def _build_report_json(
             continue
         seen_bs.add(bs_id)
         bs_payload = _bs_map_get(backstory_map, bs_id)
-        pair = visits_by_backstory.get(bs_id, {})
-        a_out = pair.get(0, {})
-        b_out = pair.get(1, {})
         verdict_a = ""
         verdict_b = None
+        score_a_raw: float | None = None
+        score_b_raw: float | None = None
         for vv in visits:
             if vv["backstory_id"] != bs_id:
                 continue
             out = vv["output"]
-            if vv["variant"] == 0 and not verdict_a:
-                verdict_a = (out.get("first_impression") or out.get("reasoning") or "")[:400]
-            if vv["variant"] == 1 and verdict_b is None:
-                verdict_b = (out.get("first_impression") or out.get("reasoning") or "")[:400]
+            if vv["variant"] == 0:
+                if not verdict_a:
+                    verdict_a = (out.get("first_impression") or out.get("reasoning") or "")[:400]
+                if score_a_raw is None and out.get("will_to_buy") is not None:
+                    score_a_raw = float(out["will_to_buy"])
+            elif vv["variant"] == 1:
+                if verdict_b is None:
+                    verdict_b = (out.get("first_impression") or out.get("reasoning") or "")[:400]
+                if score_b_raw is None and out.get("will_to_buy") is not None:
+                    score_b_raw = float(out["will_to_buy"])
         personas.append({
             "backstory_id": str(bs_id),
             "backstory_name": bs_payload.get("name", str(bs_id)),
@@ -339,8 +344,8 @@ def _build_report_json(
             "stack": str(bs_payload.get("managed_postgres", "")),
             "current_pain": str(bs_payload.get("current_pain", "")),
             "entry_point": str(bs_payload.get("entry_point", "")),
-            "score_a": float(a_out.get("score") or 0),
-            "score_b": float(b_out["score"]) if b_out.get("score") is not None else None,
+            "score_a": score_a_raw if score_a_raw is not None else 0.0,
+            "score_b": score_b_raw,
             "verdict_a": verdict_a,
             "verdict_b": verdict_b,
         })
