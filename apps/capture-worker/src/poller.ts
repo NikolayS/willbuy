@@ -186,7 +186,7 @@ export async function pollOnce(opts: PollOpts): Promise<PollResult> {
         const ack = await sendToBroker(brokerPayload, brokerOpts);
         if (!ack.ok) {
           log.error(
-            { event: 'broker.rejected', visit_id: String(visitId), error_class: ack.error, detail: ack.detail },
+            { event: 'broker.rejected', visit_id: String(visitId), error_class: ack.error, error_detail: ack.detail },
             'broker rejected artifact',
           );
           visitStatus = 'failed';
