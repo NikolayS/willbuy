@@ -50,7 +50,49 @@ const STATUS_COLOURS: Record<StudyStatus, string> = {
 
 // ── Visit progress bar ────────────────────────────────────────────────────────
 
-function ProgressBar({ ok, failed, total }: { ok: number; failed: number; total: number }) {
+/**
+ * CSP-safe progress bar (issue #111).
+ *
+ * The previous implementation used `style={{ width: `${pct}%` }}`, which is an
+ * inline style. SPEC §5.10 forbids `'unsafe-inline'` in `style-src`, so the
+ * middleware's CSP would block these styles, leaving the bar invisible.
+ *
+ * Fix: round the percentage to the nearest twelfth (12 buckets + 0%/100% = 13
+ * fixed values) and look up a static Tailwind width class. Pure className,
+ * no inline styles, fully CSP-clean.
+ *
+ * Resolution loss is ~4% per twelfth, which is fine for a progress bar and
+ * matches Tailwind's stock width fractions, so no Tailwind config changes
+ * are required.
+ */
+
+// SAFELIST: w-0 w-1/12 w-1/6 w-1/4 w-1/3 w-5/12 w-1/2 w-7/12 w-2/3 w-3/4 w-5/6 w-11/12 w-full
+// Listed literally as a plain string above so Tailwind's JIT scanner keeps
+// every class even when only some indices are referenced at runtime.
+export const PROGRESS_CLASSES = [
+  'w-0',
+  'w-1/12',
+  'w-1/6',
+  'w-1/4',
+  'w-1/3',
+  'w-5/12',
+  'w-1/2',
+  'w-7/12',
+  'w-2/3',
+  'w-3/4',
+  'w-5/6',
+  'w-11/12',
+  'w-full',
+] as const;
+
+export function progressClass(pct: number): string {
+  // Clamp [0, 100] then round to nearest twelfth (13 buckets: 0..12).
+  const clamped = Math.max(0, Math.min(100, pct));
+  const idx = Math.round(clamped / (100 / 12));
+  return PROGRESS_CLASSES[idx] ?? 'w-0';
+}
+
+export function ProgressBar({ ok, failed, total }: { ok: number; failed: number; total: number }) {
   if (total === 0) return null;
   const okPct = Math.round((ok / total) * 100);
   const failedPct = Math.round((failed / total) * 100);
@@ -65,14 +107,8 @@ function ProgressBar({ ok, failed, total }: { ok: number; failed: number; total:
       </div>
       {/* Combined bar: green=ok, red=failed, gray=pending */}
       <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
-        <div
-          className="h-full bg-green-500 float-left"
-          style={{ width: `${okPct}%` }}
-        />
-        <div
-          className="h-full bg-red-400 float-left"
-          style={{ width: `${failedPct}%` }}
-        />
+        <div className={`h-full bg-green-500 float-left ${progressClass(okPct)}`} />
+        <div className={`h-full bg-red-400 float-left ${progressClass(failedPct)}`} />
       </div>
     </div>
   );
