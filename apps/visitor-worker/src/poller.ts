@@ -163,7 +163,7 @@ export async function pollVisitorOnce(opts: PollVisitorOpts): Promise<PollVisito
     let backstoryRaw: unknown;
     try {
       backstoryRaw = JSON.parse(row.backstory_payload);
-    } catch (parseErr) {
+    } catch (_parseErr) {
       log.error(
         { event: 'visit.backstory_parse_failed', visit_id: String(visitId) },
         'backstory_payload is not valid JSON',
