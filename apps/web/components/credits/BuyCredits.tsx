@@ -4,11 +4,14 @@
  * BuyCredits — credit-pack selection + Stripe Checkout redirect.
  *
  * Spec §5.6: starter=$29/2900¢, growth=$99/9900¢, scale=$299/29900¢.
- * Visit estimate derived from pack.cents / 5 (spec §5.5 per-visit cost ceiling).
+ * Visit estimate derived from pack.cents / 3.5 (issue #112 manager decision:
+ * use 3.5¢/visit average cost, not the 5¢ ceiling, for consistency with
+ * the public /pricing page).
  * POSTs to /checkout/sessions with the selected pack_id.
  * Redirects to the Stripe Checkout URL returned by the API.
  *
- * Issue #36. Fix #73: correct visit-estimate derivation.
+ * Issue #36. Fix #73: correct visit-estimate derivation. Fix #144: align
+ * visit-estimate formula with /pricing page (3.5¢ avg per #112).
  */
 
 import { useState } from 'react';
@@ -19,14 +22,21 @@ interface Pack {
   id: PackId;
   label: string;
   usd: number;
-  /** Pack price in USD cents; visit estimate = cents / 5 (spec §5.5). */
+  /** Pack price in USD cents; visit estimate = Math.floor(cents / 3.5) (#112). */
   cents: number;
   credits: number;
 }
 
-/** Derive visit-estimate description from pack cents (spec §5.5: 5¢/visit ceiling). */
+/**
+ * Derive visit-estimate description from pack cents.
+ * Issue #112 manager decision: use 3.5¢/visit average (not 5¢ ceiling)
+ * so estimates are consistent with the public /pricing page.
+ *   Starter:  Math.floor(2900 / 3.5) = 828 visits
+ *   Growth:   Math.floor(9900 / 3.5) = 2828 visits
+ *   Scale:    Math.floor(29900 / 3.5) = 8542 visits
+ */
 function visitEstimate(cents: number): string {
-  const visits = Math.floor(cents / 5);
+  const visits = Math.floor(cents / 3.5);
   return `≈ ${visits.toLocaleString()} visits`;
 }
 

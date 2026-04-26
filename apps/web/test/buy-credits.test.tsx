@@ -2,12 +2,13 @@
  * buy-credits.test.tsx — TDD acceptance for issue #73.
  *
  * Asserts that BuyCredits renders the correct visit-estimate copy derived
- * from pack.cents / 5 (spec §5.5 per-visit cost ceiling).
+ * from Math.floor(pack.cents / 3.5) — issue #112 manager decision: use
+ * 3.5¢/visit average cost (not the 5¢ ceiling) for consistency with /pricing.
  *
  * Expected:
- *   Starter:  2900¢ / 5¢ = 580 visits
- *   Growth:   9900¢ / 5¢ = 1980 visits
- *   Scale:   29900¢ / 5¢ = 5980 visits
+ *   Starter:  Math.floor(2900 / 3.5)  = 828 visits
+ *   Growth:   Math.floor(9900 / 3.5)  = 2828 visits
+ *   Scale:    Math.floor(29900 / 3.5) = 8542 visits
  */
 
 // @vitest-environment jsdom
@@ -20,7 +21,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe('BuyCredits visit-estimate copy (issue #73)', () => {
+describe('BuyCredits visit-estimate copy (issue #73, updated #112)', () => {
   function renderComponent() {
     render(
       <BuyCredits
@@ -30,19 +31,19 @@ describe('BuyCredits visit-estimate copy (issue #73)', () => {
     );
   }
 
-  it('starter pack shows "580 visits"', () => {
+  it('starter pack shows "828 visits" (3.5¢ avg per #112)', () => {
     renderComponent();
     // Use getAllByText to handle locale-formatted numbers; assert at least one match.
-    expect(screen.getAllByText(/580 visits/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/828 visits/i).length).toBeGreaterThan(0);
   });
 
-  it('growth pack shows "1980 visits"', () => {
+  it('growth pack shows "2828 visits" (3.5¢ avg per #112)', () => {
     renderComponent();
-    expect(screen.getAllByText(/1[,.]?980 visits/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/2[,.]?828 visits/i).length).toBeGreaterThan(0);
   });
 
-  it('scale pack shows "5980 visits"', () => {
+  it('scale pack shows "8542 visits" (3.5¢ avg per #112)', () => {
     renderComponent();
-    expect(screen.getAllByText(/5[,.]?980 visits/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/8[,.]?542 visits/i).length).toBeGreaterThan(0);
   });
 });
