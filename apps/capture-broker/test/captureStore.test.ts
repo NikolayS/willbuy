@@ -1,12 +1,6 @@
-/**
- * pgCaptureStore unit tests — verifies upsert behaviour on
- * (study_id, COALESCE(side, '')) conflict (spec §5.13 / issue #166).
- *
- * Uses a mock Pool so no live database is required (per issue #32 coordination note).
- */
 import { describe, it, expect, vi } from 'vitest';
 import { pgCaptureStore, type PageCaptureRow } from '../src/captureStore.js';
-import type { Pool } from 'pg';
+import type { Pool, QueryResult } from 'pg';
 
 function makeRow(overrides: Partial<PageCaptureRow> = {}): PageCaptureRow {
   return {
@@ -27,82 +21,76 @@ function makeRow(overrides: Partial<PageCaptureRow> = {}): PageCaptureRow {
   };
 }
 
-/** Build a minimal Pool mock whose query() returns the given rows. */
-function mockPool(rows: { id: string }[]): Pool {
+function fakeResult(id: string): QueryResult<{ id: string }> {
+  return { rows: [{ id }], command: '', rowCount: 1, oid: 0, fields: [] };
+}
+
+function mockPool(id: string): Pool {
   return {
-    query: vi.fn().mockResolvedValue({ rows }),
+    query: vi.fn().mockResolvedValue(fakeResult(id)),
   } as unknown as Pool;
 }
 
 describe('pgCaptureStore', () => {
   it('throws when study_id is missing', async () => {
-    const pool = mockPool([{ id: '1' }]);
+    const pool = mockPool('1');
     const store = pgCaptureStore(pool);
-    const row = makeRow({ study_id: undefined });
+    // exactOptionalPropertyTypes: use unknown cast to simulate missing optional field
+    const row = makeRow({ study_id: undefined as unknown as number });
     await expect(store.insert(row)).rejects.toThrow('study_id is required');
   });
 
   it('throws when url_hash is missing', async () => {
-    const pool = mockPool([{ id: '1' }]);
+    const pool = mockPool('1');
     const store = pgCaptureStore(pool);
-    const row = makeRow({ url_hash: undefined });
+    const row = makeRow({ url_hash: undefined as unknown as string });
     await expect(store.insert(row)).rejects.toThrow('url_hash is required');
   });
 
-  it('returns the id from the RETURNING clause', async () => {
-    const pool = mockPool([{ id: '42' }]);
+  it('returns the numeric id from the RETURNING clause', async () => {
+    const pool = mockPool('42');
     const store = pgCaptureStore(pool);
     const result = await store.insert(makeRow());
     expect(result).toEqual({ id: 42 });
   });
 
-  it('SQL contains ON CONFLICT clause for upsert', async () => {
-    const pool = mockPool([{ id: '42' }]);
+  it('SQL contains ON CONFLICT … DO UPDATE SET for upsert', async () => {
+    const pool = mockPool('42');
     const store = pgCaptureStore(pool);
     await store.insert(makeRow());
 
     const querySpy = vi.mocked(pool.query);
     expect(querySpy).toHaveBeenCalledOnce();
-    const [sql] = querySpy.mock.calls[0] as [string, unknown[]];
+    const [sql] = querySpy.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toContain('ON CONFLICT');
     expect(sql).toContain('DO UPDATE SET');
   });
 
-  it('ON CONFLICT clause targets the correct partial index expression', async () => {
-    const pool = mockPool([{ id: '42' }]);
+  it('ON CONFLICT targets (study_id, (COALESCE(side, …)))', async () => {
+    const pool = mockPool('42');
     const store = pgCaptureStore(pool);
     await store.insert(makeRow());
 
-    const querySpy = vi.mocked(pool.query);
-    const [sql] = querySpy.mock.calls[0] as [string, unknown[]];
-    // Must exactly match the unique index: (study_id, (COALESCE(side, ''::text)))
+    const [sql] = (vi.mocked(pool.query).mock.calls[0] as unknown as [string, unknown[]]);
     expect(sql).toMatch(/ON CONFLICT\s*\(\s*study_id\s*,\s*\(COALESCE\(side/);
   });
 
-  // Core regression test for issue #166:
-  // Two visits to the same single-URL study share the same study_id + NULL side.
-  // The second INSERT must upsert (not fail) and return the same row id.
-  it('upsert — two inserts with the same study_id return the same id (no unique violation)', async () => {
-    // Both calls return the same row id, as Postgres would after an upsert.
-    const pool = mockPool([{ id: '42' }]);
+  it('two inserts with the same study_id both return the same id (upsert, no unique violation)', async () => {
+    const pool = mockPool('42');
     const store = pgCaptureStore(pool);
 
     const rowA = makeRow({ study_id: 99, url_hash: 'hash-a', capture_id: 'cap-a' });
     const rowB = makeRow({ study_id: 99, url_hash: 'hash-b', capture_id: 'cap-b' });
 
     const first = await store.insert(rowA);
-    // Reset the mock so the second call also returns the same existing id.
-    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [{ id: '42' }] });
+    vi.mocked(pool.query).mockResolvedValueOnce(fakeResult('42') as unknown as void);
     const second = await store.insert(rowB);
 
     expect(first).toEqual({ id: 42 });
     expect(second).toEqual({ id: 42 });
 
-    // Both calls must have used an upsert SQL (not a plain INSERT).
-    const calls = vi.mocked(pool.query).mock.calls;
-    for (const call of calls) {
-      const sql = call[0] as string;
-      expect(sql).toContain('ON CONFLICT');
+    for (const call of vi.mocked(pool.query).mock.calls) {
+      expect((call[0] as string)).toContain('ON CONFLICT');
     }
   });
 });
