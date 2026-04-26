@@ -355,6 +355,51 @@ describe('pollVisitorOnce — bug #164 fix 2: JSONB backstory_payload parsed cor
   });
 });
 
+describe('pollVisitorOnce — backstory_invalid (Zod parse failure)', () => {
+  it('marks terminal_reason=backstory_invalid when payload fails Backstory schema', async () => {
+    // Regression guard for the dogfood backstory bug: if the DB stores
+    // {"preset_id":"saas_founder_post_pmf"} instead of expanded fields,
+    // the Zod parse fails and the visit should be marked terminal.
+    const queries: string[] = [];
+    const invalidPayload = JSON.stringify({ preset_id: 'saas_founder_post_pmf' });
+
+    const pool = buildFakePool({
+      scripts: [
+        {
+          match: 'FOR UPDATE OF v SKIP LOCKED',
+          rows: [
+            {
+              id: '77',
+              study_id: '5',
+              backstory_payload: invalidPayload,
+              a11y_object_key: SAMPLE_A11Y_KEY,
+            },
+          ],
+        },
+        { match: 'pending_count', rows: [{ pending_count: '0' }] },
+      ],
+      onQuery: (sql) => queries.push(sql),
+    });
+
+    const provider = new MockProvider({ responses: [] });
+    const storage = buildStorage({ [SAMPLE_A11Y_KEY]: SAMPLE_A11Y_TEXT });
+
+    const result = await pollVisitorOnce({ pool, storage, provider });
+
+    expect(result.kind).toBe('processed');
+    if (result.kind === 'processed') {
+      expect(result.visitOk).toBe(false);
+    }
+
+    const terminalUpdate = queries.find(
+      (q) => q.includes('terminal_reason') && q.includes('backstory_invalid'),
+    );
+    expect(terminalUpdate).toBeTruthy();
+    // Provider must NOT have been called — invalid backstory bails before LLM.
+    expect(provider.calls).toHaveLength(0);
+  });
+});
+
 describe('pollVisitorOnce — study does not advance when visits still pending', () => {
   it('skips study UPDATE when pending_count > 0', async () => {
     const queries: string[] = [];
