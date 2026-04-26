@@ -114,10 +114,10 @@ const persona = z.object({
   current_pain: z.string(),
   entry_point: z.string(),
   score_a: z.number().min(0).max(10),
-  score_b: z.number().min(0).max(10),
+  score_b: z.number().min(0).max(10).nullable(),
   // Inline preview strings; full per-variant response loads on expand.
   verdict_a: z.string().max(400),
-  verdict_b: z.string().max(400),
+  verdict_b: z.string().max(400).nullable(),
 });
 
 const meta = z.object({
@@ -131,9 +131,9 @@ export const Report = z.object({
   meta,
   headline,
   paired_dots: z.array(pairedDot),
-  histograms: z.array(histogram).length(2),
-  next_actions: z.array(nextActionRow).length(2),
-  tier_picked: z.array(tierRow).length(2),
+  histograms: z.array(histogram).min(1).max(2),
+  next_actions: z.array(nextActionRow).min(1).max(2),
+  tier_picked: z.array(tierRow).min(1).max(2),
   theme_board: themeBoard,
   personas: z.array(persona),
 });

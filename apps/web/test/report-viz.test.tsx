@@ -265,6 +265,32 @@ describe('§5.18 — report visualization', () => {
     expect(svgs.length, 'expected ReportView to render at least one Recharts SVG').toBeGreaterThan(0);
   });
 
+  it('single-variant report (score_b=null, 1 histogram) renders without crashing', async () => {
+    // Regression guard for the dogfood single-variant path: score_b nullable
+    // and histograms/next_actions/tier_picked arrays have length 1. The Zod
+    // schema was relaxed from .length(2) to .min(1).max(2) in PR #171.
+    const singleVariant: ReportT = {
+      ...fixture,
+      histograms: [fixture.histograms[0]!],
+      next_actions: [fixture.next_actions[0]!],
+      tier_picked: [fixture.tier_picked[0]!],
+      paired_dots: [],
+      personas: fixture.personas.slice(0, 2).map((p) => ({
+        ...p,
+        score_b: null,
+        verdict_b: null,
+      })),
+    };
+    // Must not throw during parse.
+    const parsed = Report.parse(singleVariant);
+    expect(parsed.histograms).toHaveLength(1);
+    expect(parsed.personas[0]?.score_b).toBeNull();
+    // Must not throw during render.
+    const { container } = render(<ReportView report={parsed} mode="public" />);
+    await act(async () => { await Promise.resolve(); });
+    expect(container.querySelectorAll('[data-testid="persona-grid"]').length).toBe(1);
+  });
+
   it('F1 — paired-dot plot renders one SVG <line> connector per backstory (§5.18 #2)', () => {
     // Spec §5.18 #2: "Per-visitor dots showing A-score vs B-score with a
     // thin connecting segment." The connector is the entire point of the

@@ -12,6 +12,8 @@ const baseVisit: VisitorOutputT = {
   next_action: 'leave',
   confidence: 5,
   reasoning: 'placeholder',
+  tier_picked_if_buying_today: 'none',
+  highest_tier_willing_to_consider: 'none',
 };
 
 const visitWith = (

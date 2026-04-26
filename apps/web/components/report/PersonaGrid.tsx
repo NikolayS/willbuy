@@ -23,7 +23,7 @@ function PersonaCard({
   persona: Persona;
   onClick: () => void;
 }) {
-  const swing = persona.score_b - persona.score_a;
+  const swing = (persona.score_b ?? persona.score_a) - persona.score_a;
   const swingSign = swing > 0 ? '+' : '';
   const swingColor = swing > 0 ? 'text-green-700' : swing < 0 ? 'text-red-700' : 'text-gray-600';
   return (
@@ -63,7 +63,7 @@ function PersonaCard({
       </dl>
       <div className="mt-3 flex items-center gap-3 text-sm text-gray-800">
         <span>A: {persona.score_a}</span>
-        <span>B: {persona.score_b}</span>
+        {persona.score_b !== null && <span>B: {persona.score_b}</span>}
       </div>
     </button>
   );
@@ -101,12 +101,14 @@ function PersonaDrawer({
           </p>
           <p className="mt-2 text-sm text-gray-800">{persona.verdict_a}</p>
         </div>
-        <div data-testid="drawer-verdict-B" className="rounded border border-gray-200 bg-gray-50 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-            Variant B · score {persona.score_b}
-          </p>
-          <p className="mt-2 text-sm text-gray-800">{persona.verdict_b}</p>
-        </div>
+        {persona.score_b !== null ? (
+          <div data-testid="drawer-verdict-B" className="rounded border border-gray-200 bg-gray-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+              Variant B · score {persona.score_b}
+            </p>
+            <p className="mt-2 text-sm text-gray-800">{persona.verdict_b}</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -116,8 +118,8 @@ export function PersonaGrid({ personas }: { personas: ReportT['personas'] }) {
   const [active, setActive] = useState<string | null>(null);
   // Sort by |score_b - score_a| desc; stable by id.
   const sorted = [...personas].sort((p, q) => {
-    const dp = Math.abs(p.score_b - p.score_a);
-    const dq = Math.abs(q.score_b - q.score_a);
+    const dp = Math.abs((p.score_b ?? p.score_a) - p.score_a);
+    const dq = Math.abs((q.score_b ?? q.score_a) - q.score_a);
     if (dq !== dp) return dq - dp;
     return p.backstory_id.localeCompare(q.backstory_id);
   });
