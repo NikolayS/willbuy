@@ -348,3 +348,44 @@ default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-
 - (c) The middleware test (`apps/web/test/middleware.test.ts`) asserts both invariants: `style-src` contains `'unsafe-inline'` AND `script-src` does NOT. Both assertions guard the directive split.
 
 **Tracking.** PR #N (set on merge), issue #133.
+
+---
+
+## 2026-04-25 — A9: CSP `script-src` carries a per-request nonce + `'strict-dynamic'` (Next.js 14 App Router hydration)
+
+**Affects:** §5.10 (Content-Security-Policy on `/dashboard/*` and `/r/*`); follows on amendment A8 which relaxed `style-src` only.
+
+**Driver:** Issue #135 — CSP blocks Next 14 inline bootstrap scripts, breaks all client hydration. The strict `script-src 'self'` shipped in PR #13 silently blocked the inline `<script>` tags Next.js 14 App Router emits during SSR (the `(self.__next_f = self.__next_f || []).push([1, "..."])` payloads that deliver the React Server Components flight tree to the client). Without those inline scripts, `window.__next_f.length === 0`, React never receives the RSC tree, no fiber attaches to any DOM node, no client component effect runs, and Recharts' `ResponsiveContainer` never measures + draws — the §5.18 chart container divs SSR with proper dimensions but render zero SVG. This blocked the launch dogfood (issue #86) because the public report `/r/test-fixture` was the demo target.
+
+`'unsafe-inline'` is FORBIDDEN for `script-src` per §5.10 (it would defeat the XSS defence entirely; cf. amendment A8 constraint (b) and amendment A8 "What is NOT changed" line 1). The correct fix is the canonical Next.js 14 nonce pattern.
+
+**Amendment.** The CSP `script-src` directive becomes `script-src 'self' 'nonce-<value>' 'strict-dynamic'` (was `script-src 'self'`). The `<value>` is a per-request nonce: 16 random bytes produced by `crypto.getRandomValues` (Edge runtime) and base64-encoded. The same nonce is forwarded on the request via the `x-nonce` header (the `NextResponse.next({ request: { headers } })` mutation), which Next.js 14's RSC renderer reads and stamps on its own inline bootstrap `<script>` tags. The CSP header is therefore non-deterministic across requests; `apps/web/test/middleware.test.ts` asserts directive shape (presence of `'self'`, `'nonce-...'`, `'strict-dynamic'`; absence of `'unsafe-inline'` / `'unsafe-eval'`) instead of string-equality on the full CSP.
+
+`'strict-dynamic'` allows the nonce'd bootstrap scripts to authorize their chunk `<script src=".../_next/static/chunks/...">` loads transitively, so newer browsers (CSP3) ignore the `'self'` whitelist. `'self'` is kept as a defensive fallback for older browsers that ignore `'strict-dynamic'`.
+
+Verbatim CSP string template after this amendment (where `<NONCE>` is the 24-character base64 of 16 random bytes, distinct per request):
+
+```
+default-src 'self'; script-src 'self' 'nonce-<NONCE>' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; require-trusted-types-for 'script'
+```
+
+**What is NOT changed.**
+
+- The forbidden `'unsafe-inline'` / `'unsafe-eval'` rule for `script-src` — still forbidden, asserted in `apps/web/test/middleware.test.ts`. The nonce + `'strict-dynamic'` pattern is materially different from `'unsafe-inline'`: an attacker who injects a bare `<script>foo()</script>` cannot guess the per-request nonce, so the script does not execute. `'unsafe-inline'` would let any injected inline script run.
+- `default-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`, `form-action 'self'`, `require-trusted-types-for 'script'` — unchanged.
+- `style-src 'self' 'unsafe-inline'` (amendment A8) — unchanged.
+- The middleware matcher (`/dashboard/:path*`, `/r/:path*`) — unchanged.
+- Permissions-Policy, X-Content-Type-Options, Referrer-Policy headers — unchanged.
+- The `react/no-danger` lint rule in `eslint.config.mjs` — still `error`.
+- The `CSP` module-scope constant in `apps/web/middleware.ts` is replaced by a `buildCsp(nonce)` helper because the directive string is now request-scoped. The string-equality test from before A8 is replaced by per-directive shape assertions (extracted via a small `getCspDirective` helper in the test file).
+
+**Constraints.**
+
+- (a) Nonce entropy: at least 16 bytes (128 bits) per CSP3 SHOULD; the implementation uses exactly 16 bytes via `crypto.getRandomValues`. Any future change MUST keep the entropy at or above 128 bits.
+- (b) The nonce MUST be generated per request inside the middleware function, never at module scope (which would memoize a single nonce across the lifetime of the Edge worker, defeating the protection). Test `successive requests get distinct nonces (no module-scope memoization)` guards this.
+- (c) The nonce MUST be forwarded on the *request* headers via `NextResponse.next({ request: { headers } })`, not just on the response. The Next.js 14 internal RSC renderer reads the request-side `x-nonce` header to stamp its own inline scripts. Setting it only on the response would leave the rendered HTML un-nonced and hydration would still fail.
+- (d) Adding any third-party script source (analytics, tag manager, etc.) is OUT OF SCOPE for this amendment. If it ever becomes necessary, prefer continuing to rely on `'strict-dynamic'` (load the third-party loader from a nonce'd bootstrap) over re-introducing host-based whitelisting, which `'strict-dynamic'` makes ineffective in CSP3.
+- (e) CSP `report-uri` / `report-to` are NOT added in this PR. Reporting can be added in a follow-on amendment if needed; it is unrelated to the hydration fix.
+- (f) The middleware test (`apps/web/test/middleware.test.ts`) asserts: `script-src` contains `'self'` + `'nonce-<value>'` + `'strict-dynamic'`; `script-src` does NOT contain `'unsafe-inline'` / `'unsafe-eval'`; `x-nonce` is exposed on the response; `x-nonce` is forwarded on the request via the Next 14 `x-middleware-request-x-nonce` shadow header; successive requests get distinct nonces; nonce is URL-safe-base64. All six assertions guard the A9 invariants.
+
+**Tracking.** PR #N (set on merge), issue #135. Future spec rev folds nonce + `'strict-dynamic'` into §5.10 directly and drops the verbatim string-form there (now request-scoped).

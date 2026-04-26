@@ -25,7 +25,7 @@ function getCspDirective(csp: string, name: string): string | undefined {
 function extractNonce(csp: string): string | null {
   const scriptDirective = getCspDirective(csp, 'script-src') ?? '';
   const m = scriptDirective.match(/'nonce-([A-Za-z0-9+/=_-]+)'/);
-  return m ? m[1] : null;
+  return m && m[1] !== undefined ? m[1] : null;
 }
 
 describe('SPEC §5.10 — CSP middleware', () => {
