@@ -23,7 +23,7 @@ function PersonaCard({
   persona: Persona;
   onClick: () => void;
 }) {
-  const swing = persona.score_b - persona.score_a;
+  const swing = (persona.score_b ?? persona.score_a) - persona.score_a;
   const swingSign = swing > 0 ? '+' : '';
   const swingColor = swing > 0 ? 'text-green-700' : swing < 0 ? 'text-red-700' : 'text-gray-600';
   return (
@@ -116,8 +116,8 @@ export function PersonaGrid({ personas }: { personas: ReportT['personas'] }) {
   const [active, setActive] = useState<string | null>(null);
   // Sort by |score_b - score_a| desc; stable by id.
   const sorted = [...personas].sort((p, q) => {
-    const dp = Math.abs(p.score_b - p.score_a);
-    const dq = Math.abs(q.score_b - q.score_a);
+    const dp = Math.abs((p.score_b ?? p.score_a) - p.score_a);
+    const dq = Math.abs((q.score_b ?? q.score_a) - q.score_a);
     if (dq !== dp) return dq - dp;
     return p.backstory_id.localeCompare(q.backstory_id);
   });
