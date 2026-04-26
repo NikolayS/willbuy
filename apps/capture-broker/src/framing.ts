@@ -96,7 +96,7 @@ export function readOneFrame(
         // We'd like to detect a trailing byte (single-shot). Wait until we
         // have at least `need + 1` bytes OR the peer half-closes (handled
         // by `onEnd`).
-        if (total > need) {
+        if (total >= need) {
           const buf = all();
           finish({
             kind: 'ok',

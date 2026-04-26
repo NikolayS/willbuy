@@ -241,28 +241,22 @@ describe('Capture Broker server — spec §5.13 acceptance scenarios', () => {
   });
 
   // N1 — readOneFrame per-connection timeout.
-  // A peer that sends a valid framed message but does NOT half-close (no FIN)
-  // will have its connection dropped after the 30 s timeout. The broker must
-  // NOT hang forever. We use a shortened timeout via the test helper and
-  // verify the broker rejects the stalled connection within that window.
-  it('drops stalled connection when peer sends valid frame but never half-closes (N1 timeout)', async () => {
+  // With the >= fix (Bun socket.end() race), readOneFrame resolves in onData
+  // as soon as all declared payload bytes arrive — it no longer waits for FIN.
+  // A peer that sends a complete valid frame but never half-closes now gets a
+  // normal ack (the broker closes its own side after writing the response).
+  // The N1 timeout still fires for truly stalled connections (e.g. a peer that
+  // opens the socket and sends nothing, or sends only a partial header).
+  it('serves a complete frame even when peer never half-closes (Bun compat, N1)', async () => {
     // Send a framed valid request WITHOUT calling socket.end() — simulates
-    // a peer that never half-closes. The broker has frameTimeoutMs=300 injected
-    // so the socket should be destroyed within 300 ms.
+    // Bun's socket.end()-before-flush race. The broker must resolve in onData
+    // (>= need) and respond with ok:true, then close its own side. The helper
+    // will receive the ack frame after the broker closes and resolve normally.
     const req = validRequest();
-    // sendOnceNoEnd with waitMs larger than frameTimeoutMs (300 ms) means the
-    // helper will see the server-side destroy as an 'error' or 'end' event
-    // within the wait window.
-    let gotError = false;
-    try {
-      await sendOnceNoEnd(socketPath, JSON.stringify(req), 2_000);
-    } catch {
-      // Expected: server destroyed the socket → helper throws.
-      gotError = true;
-    }
-    expect(gotError).toBe(true);
-    // The server itself must still be accepting new connections after the
-    // timeout — it must not have crashed or deadlocked.
+    const ack = await sendOnceNoEnd(socketPath, JSON.stringify(req), 2_000);
+    expect(ack.ok).toBe(true);
+    // The server itself must still be accepting new connections after serving
+    // the no-FIN peer — it must not have crashed or deadlocked.
     const followUpAck = await sendOnce(socketPath, JSON.stringify(req));
     expect(followUpAck.ok).toBe(true);
   }, 10_000);
