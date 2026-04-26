@@ -37,6 +37,18 @@ FROM mcr.microsoft.com/playwright:v1.45.0-jammy
 RUN groupadd -g 1001 capture \
  && useradd -m -u 1001 -g 1001 -s /usr/sbin/nologin capture
 
+# Tooling the playwright base image doesn't ship by contract:
+#   - unzip:    required by bun's installer (without it the curl|bash below
+#               silently fails to extract the bun tarball, breaking CI).
+#   - socat:    relied on by init.sh for the vsock <-> tcp shim; present in
+#               playwright:v1.45.0-jammy today but not part of its contract.
+#   - iproute2: `ip` command used by init.sh for guest NIC bring-up; same
+#               drive-by-availability caveat as socat.
+# Installing them defensively keeps this image reproducible across base bumps.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends unzip socat iproute2 \
+ && rm -rf /var/lib/apt/lists/*
+
 # Bun for the broker-client + capture-worker entry. Pinned to match the
 # host capture-worker image (apps/capture-worker/Dockerfile).
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v1.3.5" \
