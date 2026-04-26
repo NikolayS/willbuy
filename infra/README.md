@@ -23,9 +23,9 @@ Minimal infrastructure state. Secrets live ONLY on the server at `/etc/willbuy/s
 Address is looked up at runtime from Hetzner — the stable identifier is the server name `willbuy-v01`. IPs are not checked in; they rotate whenever Hetzner recreates the host.
 
 ```sh
-# Ad-hoc SSH
+# Ad-hoc SSH (non-standard port 2223)
 op run --env-file=.env.op -- bash -c \
-  'ssh willbuy@$(hcloud server describe willbuy-v01 -o json | jq -r .public_net.ipv4.ip)'
+  'ssh -p 2223 willbuy@$(hcloud server describe willbuy-v01 -o json | jq -r .public_net.ipv4.ip)'
 
 # Programmatic consumers (push-secrets.sh etc.) do the same lookup internally.
 ```
