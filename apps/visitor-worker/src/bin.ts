@@ -50,7 +50,7 @@ export function createVisitorWorker(env: NodeJS.ProcessEnv): VisitorWorkerCompon
         throw err;
       }
     },
-    async put(_key: string, _body: Buffer, _contentType: string): Promise<void> {
+    async put(): Promise<void> {
       throw new Error('visitor-worker storage is read-only');
     },
   };
