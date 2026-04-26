@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import secrets
+import statistics
 import sys
 from collections import defaultdict
 from typing import Any
@@ -35,6 +36,29 @@ FINDING_KINDS: tuple[str, ...] = (
     "unanswered_blockers",
     "questions",
 )
+
+VARIANT_LABEL: dict[int, str] = {0: "A", 1: "B"}
+
+VALID_NEXT_ACTIONS: list[str] = [
+    "purchase_paid_today",
+    "contact_sales",
+    "book_demo",
+    "start_paid_trial",
+    "bookmark_compare_later",
+    "start_free_hobby",
+    "ask_teammate",
+    "leave",
+]
+
+VALID_TIERS: list[str] = ["none", "hobby", "express", "starter", "scale", "enterprise"]
+
+# Maps cluster finding_kind → theme_board key.
+CLUSTER_TO_THEME: dict[str, str] = {
+    "unanswered_blockers": "blockers",
+    "objections": "objections",
+    "confusions": "confusions",
+    "questions": "questions",
+}
 
 
 class _PgLedger:
@@ -96,6 +120,32 @@ def _read_visits(conn: Any, study_id: str) -> list[dict]:
             },
         )
     return out
+
+
+def _read_backstories(conn: Any, backstory_ids: list) -> dict[int, dict]:
+    """Fetch backstory payloads for the given ids. Returns id → payload dict."""
+    if not backstory_ids:
+        return {}
+    try:
+        rows = db.fetchall(
+            conn,
+            "SELECT id, payload FROM backstories WHERE id = ANY(%s)",
+            (backstory_ids,),
+        )
+    except Exception:
+        # sqlite or backstories table absent — return empty map.
+        return {}
+    result: dict[int, dict] = {}
+    for row in rows:
+        bs_id, payload_col = row
+        if isinstance(payload_col, dict):
+            result[int(bs_id)] = payload_col
+        else:
+            try:
+                result[int(bs_id)] = json.loads(payload_col)
+            except (TypeError, ValueError):
+                result[int(bs_id)] = {}
+    return result
 
 
 def _build_visits_by_backstory(visits: list[dict]) -> dict[str, dict[str, dict]]:
@@ -171,6 +221,186 @@ def _score_visit(output: dict) -> float:
     return _NEXT_ACTION_WEIGHTS.get(action, 0.0)
 
 
+def _bs_map_get(backstory_map: dict[int, dict], bs_id: Any) -> dict:
+    """Look up backstory payload tolerating non-integer IDs (e.g., test fixtures)."""
+    try:
+        return backstory_map.get(int(bs_id), {})
+    except (TypeError, ValueError):
+        return {}
+
+
+def _build_report_json(
+    *,
+    visits: list[dict],
+    visits_by_backstory: dict,
+    paired: Any,
+    clusters: dict[str, list[dict]],
+    backstory_map: dict[int, dict],
+    share_token_hash: str,
+) -> dict:
+    """Compute the full §5.18 Report visualization blob."""
+    meta = {
+        "slug": share_token_hash,
+        "low_power": len(visits) < 20,
+    }
+
+    conservative_p = max(paired.paired_t_p, paired.wilcoxon_p)
+    if paired.n > 0 and conservative_p < 0.05:
+        verdict = "better" if paired.mean_delta > 0 else "worse"
+    else:
+        verdict = "inconclusive"
+    headline = {
+        "mean_delta": paired.mean_delta,
+        "ci95_low": paired.ci_low,
+        "ci95_high": paired.ci_high,
+        "n_paired": paired.n,
+        "paired_t_p": paired.paired_t_p,
+        "wilcoxon_p": paired.wilcoxon_p,
+        "mcnemar_p": paired.mcnemar_p,
+        "verdict": verdict,
+        "disagreement": paired.disagreement,
+    }
+
+    paired_dots = []
+    for bs_id, pair in sorted(visits_by_backstory.items(), key=lambda x: str(x[0])):
+        a_data = pair.get(0)
+        b_data = pair.get(1)
+        if a_data is None or b_data is None:
+            continue
+        score_a = float(a_data.get("score") or 0)
+        score_b = float(b_data.get("score") or 0)
+        if score_b > score_a:
+            swing = "b_wins"
+        elif score_b < score_a:
+            swing = "a_wins"
+        else:
+            swing = "tie"
+        bs_payload = _bs_map_get(backstory_map, bs_id)
+        paired_dots.append({
+            "backstory_id": str(bs_id),
+            "backstory_name": bs_payload.get("name", str(bs_id)),
+            "role": bs_payload.get("role_archetype", "ic_engineer"),
+            "score_a": score_a,
+            "score_b": score_b,
+            "swing": swing,
+        })
+
+    visits_by_variant: dict[int, list[dict]] = defaultdict(list)
+    for v in visits:
+        visits_by_variant[v["variant"]].append(v)
+
+    histograms = []
+    for variant_idx in sorted(visits_by_variant.keys()):
+        variant_visits = visits_by_variant[variant_idx]
+        scores = [
+            int(v["output"].get("will_to_buy") or 0)
+            for v in variant_visits
+            if v["output"].get("will_to_buy") is not None
+        ]
+        bins = [0] * 11
+        for s in scores:
+            bins[max(0, min(10, int(s)))] += 1
+        mean_val = float(sum(scores) / len(scores)) if scores else 0.0
+        median_val = float(statistics.median(scores)) if scores else 0.0
+        histograms.append({
+            "variant": VARIANT_LABEL.get(variant_idx, "A"),
+            "bins": bins,
+            "mean": mean_val,
+            "median": median_val,
+        })
+
+    next_actions = []
+    for variant_idx in sorted(visits_by_variant.keys()):
+        variant_visits = visits_by_variant[variant_idx]
+        counts = {a: 0 for a in VALID_NEXT_ACTIONS}
+        for v in variant_visits:
+            na = v["output"].get("next_action", "")
+            if na in counts:
+                counts[na] += 1
+        next_actions.append({
+            "variant": VARIANT_LABEL.get(variant_idx, "A"),
+            "counts": counts,
+        })
+
+    tier_picked = []
+    for variant_idx in sorted(visits_by_variant.keys()):
+        variant_visits = visits_by_variant[variant_idx]
+        counts = {t: 0 for t in VALID_TIERS}
+        for v in variant_visits:
+            tp = v["output"].get("tier_picked_if_buying_today", "none") or "none"
+            if tp not in counts:
+                tp = "none"
+            counts[tp] += 1
+        tier_picked.append({
+            "variant": VARIANT_LABEL.get(variant_idx, "A"),
+            "counts": counts,
+        })
+
+    theme_board: dict[str, list] = {}
+    for finding_kind, theme_key in CLUSTER_TO_THEME.items():
+        theme_clusters = clusters.get(finding_kind, [])
+        theme_board[theme_key] = [
+            {
+                "cluster_id": str(c["id"]),
+                "label": c["label"],
+                "count": c["size"],
+            }
+            for c in theme_clusters
+        ]
+
+    personas = []
+    seen_bs: set = set()
+    for v in visits:
+        bs_id = v["backstory_id"]
+        if bs_id in seen_bs:
+            continue
+        seen_bs.add(bs_id)
+        bs_payload = _bs_map_get(backstory_map, bs_id)
+        verdict_a = ""
+        verdict_b = None
+        score_a_raw: float | None = None
+        score_b_raw: float | None = None
+        for vv in visits:
+            if vv["backstory_id"] != bs_id:
+                continue
+            out = vv["output"]
+            if vv["variant"] == 0:
+                if not verdict_a:
+                    verdict_a = (out.get("first_impression") or out.get("reasoning") or "")[:400]
+                if score_a_raw is None and out.get("will_to_buy") is not None:
+                    score_a_raw = float(out["will_to_buy"])
+            elif vv["variant"] == 1:
+                if verdict_b is None:
+                    verdict_b = (out.get("first_impression") or out.get("reasoning") or "")[:400]
+                if score_b_raw is None and out.get("will_to_buy") is not None:
+                    score_b_raw = float(out["will_to_buy"])
+        personas.append({
+            "backstory_id": str(bs_id),
+            "backstory_name": bs_payload.get("name", str(bs_id)),
+            "role": bs_payload.get("role_archetype", "ic_engineer"),
+            "stage": str(bs_payload.get("stage", "")),
+            "team_size": int(bs_payload.get("team_size", 2)),
+            "stack": str(bs_payload.get("managed_postgres", "")),
+            "current_pain": str(bs_payload.get("current_pain", "")),
+            "entry_point": str(bs_payload.get("entry_point", "")),
+            "score_a": score_a_raw if score_a_raw is not None else 0.0,
+            "score_b": score_b_raw,
+            "verdict_a": verdict_a,
+            "verdict_b": verdict_b,
+        })
+
+    return {
+        "meta": meta,
+        "headline": headline,
+        "paired_dots": paired_dots,
+        "histograms": histograms,
+        "next_actions": next_actions,
+        "tier_picked": tier_picked,
+        "theme_board": theme_board,
+        "personas": personas,
+    }
+
+
 def run_study(
     *,
     study_id: str,
@@ -184,8 +414,11 @@ def run_study(
     spec §5.11. This function assumes the caller already holds the row lock.
     """
     visits = _read_visits(conn, study_id)
-    paired_input = _build_visits_by_backstory(visits)
-    paired = paired_delta(paired_input)
+    bs_ids = list({v["backstory_id"] for v in visits})
+    backstory_map = _read_backstories(conn, bs_ids)
+
+    visits_by_backstory = _build_visits_by_backstory(visits)
+    paired = paired_delta(visits_by_backstory)
 
     findings = _collect_findings(visits)
     if ledger is None:
@@ -199,10 +432,19 @@ def run_study(
     raw_token = secrets.token_urlsafe(32)
     share_token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
+    report_json = _build_report_json(
+        visits=visits,
+        visits_by_backstory=visits_by_backstory,
+        paired=paired,
+        clusters=clusters,
+        backstory_map=backstory_map,
+        share_token_hash=share_token_hash,
+    )
+
     db.execute(
         conn,
-        "INSERT INTO reports(study_id, conv_score, share_token_hash, paired_delta_json, clusters_json) VALUES (%s, %s, %s, %s, %s)",
-        (study_id, conv_score, share_token_hash, json.dumps(payload), json.dumps(clusters)),
+        "INSERT INTO reports(study_id, conv_score, share_token_hash, paired_delta_json, clusters_json, report_json) VALUES (%s, %s, %s, %s, %s, %s)",
+        (study_id, conv_score, share_token_hash, json.dumps(payload), json.dumps(clusters), json.dumps(report_json)),
     )
     db.execute(
         conn,
