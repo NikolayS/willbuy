@@ -18,14 +18,20 @@ import type { CaptureResult } from '../src/types.js';
 const BASELINE: CanaryBaseline = {
   expectedStatus: 'ok',
   // Substrings the rendered a11y tree (JSON-stringified) must contain.
-  // Same set captureGolden.test.ts asserts, kept short on purpose so a
-  // Chromium minor-version bump that re-arranges role nesting still passes
-  // — the canary watches for symptom-level regressions, not pixel diffs.
+  // The canary target is /r/test-fixture (the report page rendered with
+  // WILLBUY_REPORT_FIXTURE=enabled), not the marketing pricing page —
+  // see scripts/canary/run-canary.ts. Phrases below are the structural
+  // anchors of the report view (spec §5.18): two h2 headings, the
+  // headline-stat label (which exercises the Δ codepoint round-trip),
+  // and the study slug (proves the fixture loader fired). Kept short
+  // on purpose so a Chromium minor-version bump that re-arranges role
+  // nesting still passes — the canary watches for symptom-level
+  // regressions, not pixel diffs.
   requiredA11yPhrases: [
-    'Pricing that scales with you',
-    'Postgres logo',
-    'Start free',
-    'Talk to sales',
+    'Paired-delta dot plot',
+    'Persona cards',
+    'mean Δ will-to-buy',
+    'test-fixture',
   ],
   maxBannerSelectorsMatched: 0,
   maxHostCount: 5,
