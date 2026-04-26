@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
 import { Report, type ReportT } from '@willbuy/shared/report';
+import { ContextBanner } from '../../../components/report/ContextBanner';
 import { ReportCtaBar } from '../../../components/report/ReportCtaBar';
 import { ReportView } from '../../../components/report/ReportView';
 import { fetchReport } from './fetchReport';
@@ -20,7 +21,7 @@ export default async function ReportPage({
   const { slug } = await params;
   const result = await fetchReport(slug);
 
-  if (result === 'not_found' || result === null) {
+  if (result === 'not_found') {
     return (
       <>
         <main className="mx-auto max-w-3xl px-6 py-16">
@@ -51,7 +52,8 @@ export default async function ReportPage({
   // Parse at the boundary (per CLAUDE.md zod-at-the-boundary rule).
   // Anything that fails this validation is an aggregator-side bug and
   // we'd rather 500 than render a malformed report.
-  const report: ReportT = Report.parse(result);
+  const report: ReportT = Report.parse(result.reportJson);
+  const urls = result.urls ?? [];
   return (
     <>
       <main className="mx-auto max-w-6xl px-4 py-10">
@@ -61,6 +63,7 @@ export default async function ReportPage({
             Study <code className="text-base">{report.meta.slug}</code>
           </h1>
         </header>
+        {urls.length > 0 && <ContextBanner urls={urls} />}
         <ReportView report={report} mode="public" />
       </main>
       <ReportCtaBar />

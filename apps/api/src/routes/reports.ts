@@ -168,6 +168,7 @@ interface ReportRow {
   paired_tests_disagreement: boolean | null;
   ready_at: Date;
   report_json: unknown | null;
+  urls: string[] | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,7 +194,8 @@ export async function registerReportsRoutes(
                 r.expires_at, r.conv_score, r.paired_delta_json,
                 r.clusters_json, r.scores_json,
                 r.paired_tests_disagreement, r.ready_at,
-                r.report_json
+                r.report_json,
+                s.urls
            FROM reports r
            JOIN studies s ON s.id = r.study_id
           WHERE r.study_id = $1`,
@@ -222,6 +224,7 @@ export async function registerReportsRoutes(
           paired_tests_disagreement: report.paired_tests_disagreement,
           ready_at: report.ready_at.toISOString(),
           report_json: report.report_json ?? null,
+          urls: report.urls ?? null,
         });
       };
 
