@@ -510,13 +510,15 @@ def _make_cli_llm_caller(llm_bin: str) -> LLMCaller:
     if not shutil.which(llm_bin):
         return _stub_llm_caller  # type: ignore[return-value]
 
+    timeout_s = int(os.environ.get("WILLBUY_LLM_LABEL_TIMEOUT_S", "30"))
+
     def _caller(prompt: str, *, kind: str) -> str:
         result = subprocess.run(
             [llm_bin],
             input=prompt,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=timeout_s,
         )
         if result.returncode != 0:
             raise RuntimeError(

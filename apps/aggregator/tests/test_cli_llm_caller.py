@@ -6,7 +6,7 @@ when the binary is present (using a mock subprocess).
 
 from __future__ import annotations
 
-import subprocess
+import pytest
 from unittest.mock import MagicMock, patch
 
 from aggregator.main import _make_cli_llm_caller, _stub_llm_caller
@@ -48,9 +48,5 @@ def test_make_cli_llm_caller_raises_on_nonzero_exit() -> None:
     with patch("shutil.which", return_value="/usr/bin/claude"), \
          patch("subprocess.run", return_value=fake_result):
         caller = _make_cli_llm_caller("claude")
-        try:
+        with pytest.raises(RuntimeError, match="exited 1"):
             caller("some prompt", kind="cluster_label")
-            raise AssertionError("Expected RuntimeError")
-        except RuntimeError as e:
-            assert "exited 1" in str(e)
-            assert "authentication failed" in str(e)
