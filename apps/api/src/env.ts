@@ -57,6 +57,13 @@ export const EnvSchema = z.object({
     .string()
     .min(32, 'SHARE_TOKEN_HMAC_KEY must be at least 32 chars (spec §5.12)')
     .default('dev-only-share-token-hmac-key-not-for-production-use'),
+  // Bearer token gating the /metrics endpoint (issue #119, spec §5.14).
+  // When unset, /metrics is locked down (returns 401 for every request) — we
+  // never silently expose metrics to unauthenticated callers. Production
+  // sources this via 1Password:
+  //   op://willbuy/metrics-bearer-token/credential
+  // Generate: openssl rand -hex 32
+  WILLBUY_METRICS_TOKEN: z.string().min(16).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
