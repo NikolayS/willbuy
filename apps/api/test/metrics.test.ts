@@ -185,14 +185,15 @@ describe('willbuy_http_request_duration_seconds histogram (issue #119 acceptance
   });
 
   it('uses the parameterized route template (not the literal URL) in the route label', async () => {
-    // Hit a parameterized route. /r/:slug exists in routes/reports.ts; an
-    // unknown slug returns 404 but the route template is still :slug.
+    // Hit a parameterized route. /reports/:slug exists in routes/reports.ts;
+    // an unknown slug returns 404 but the route template is still :slug.
     // Use a literal slug that would NEVER appear as a real registered path.
     const literalSlug = 'metrics-route-label-fixture-abc';
-    const r = await app.inject({ method: 'GET', url: `/r/${literalSlug}` });
+    const r = await app.inject({ method: 'GET', url: `/reports/${literalSlug}` });
     // Status doesn't matter for this assertion — we care about the route
-    // label being captured against the template.
-    expect([200, 302, 404]).toContain(r.statusCode);
+    // label being captured against the template. (500 is OK too: the report
+    // route touches Postgres, which is unavailable in this hermetic suite.)
+    expect([200, 302, 404, 500]).toContain(r.statusCode);
 
     const body = await scrapeMetrics();
 
@@ -202,10 +203,9 @@ describe('willbuy_http_request_duration_seconds histogram (issue #119 acceptance
       expect(route).not.toContain(literalSlug);
     }
 
-    // At least one route label must be the template form.
-    const hasTemplate = routeLabels.some(
-      (r) => r === '/r/:slug' || r === '/r/:slug/' || r?.includes(':'),
-    );
+    // At least one route label must be the parameterized template form
+    // (contains a `:param` segment, e.g. "/reports/:slug").
+    const hasTemplate = routeLabels.some((r) => r?.includes(':'));
     expect(hasTemplate).toBe(true);
   });
 

@@ -134,3 +134,109 @@ Environment variables read by `@willbuy/log`:
 3. In production set `WILLBUY_LOG_HASH_SALT` and `NODE_ENV=production`.
 4. Logs will appear at `/var/log/willbuy/<service>.jsonl`.
 5. Add the service to the table at the top of this doc.
+
+---
+
+# Metrics — Prometheus exposition (issue #119, apps/api slice)
+
+`apps/api` exposes a Prometheus exposition endpoint at **`GET /metrics`**,
+gated by a shared-secret bearer token (`WILLBUY_METRICS_TOKEN`). This is
+the v0.2 first slice of the issue-#119 metrics surface; the worker-side
+counters from spec §5.14 (capture/visit/provider attempts, circuit-breaker
+state, token-bucket fill, global in-flight) ship in follow-up issues that
+extend the same exposition pattern to `apps/capture-worker`,
+`apps/visitor-worker`, and `apps/aggregator`.
+
+## Decision: zero-dep registry, not `prom-client` (apps/api v0.2)
+
+We hand-rolled a small Prometheus 0.0.4 exposition serializer in
+`apps/api/src/metrics/registry.ts` rather than pulling `prom-client`.
+Rationale:
+
+- `prom-client` adds ~20 transitive deps and a Bun-test-runner-flaky
+  process collector we don't need; the exposition format is small and
+  stable.
+- We control label-cardinality enforcement at the call sites (TS enum
+  types) — the registry rejects unknown label keys at write time,
+  catching cardinality bugs in development.
+- Future swap to `prom-client` (or OTel Prometheus exporter for v0.3+
+  tracing) is a single-file change; the recording API
+  (`recordStudyStarted`, `recordHttpRequest`, etc.) is registry-agnostic.
+
+Worker-side metrics may pick `prom-client` independently if the worker's
+runtime story is different — this decision is scoped to apps/api.
+
+## Auth model
+
+Bearer token in `Authorization: Bearer <token>`, constant-time compare
+against `WILLBUY_METRICS_TOKEN`. **If `WILLBUY_METRICS_TOKEN` is unset
+the endpoint is locked down — every request returns 401**. This is the
+fail-closed default; never silently expose metrics on a misconfigured
+host.
+
+Operational setup:
+
+```bash
+# Generate
+op item create --vault willbuy --category 'API Credential' \
+  --title metrics-bearer-token \
+  credential[concealed]=$(openssl rand -hex 32)
+
+# Inject at boot
+op inject -i .env.template -o .env  # references op://willbuy/metrics-bearer-token/credential
+```
+
+Prometheus scrape config (single-instance Prometheus on willbuy-v01,
+follow-up issue wires this for all services):
+
+```yaml
+scrape_configs:
+  - job_name: willbuy-api
+    bearer_token_file: /etc/prometheus/willbuy-metrics-token
+    static_configs:
+      - targets: ['127.0.0.1:3001']
+    scrape_interval: 15s
+```
+
+## Metrics catalogue (apps/api v0.2 slice)
+
+### Business signals
+
+| Metric                                | Type      | Labels                  | Notes                                                                                  |
+| ------------------------------------- | --------- | ----------------------- | -------------------------------------------------------------------------------------- |
+| `willbuy_studies_started_total`       | counter   | `kind`                  | `kind` ∈ {single, paired} (§2 #12). Incremented after the `POST /studies` commit.       |
+| `willbuy_studies_completed_total`     | counter   | `kind`, `outcome`       | `outcome` ∈ {ok, partial, failed}. Wired in by the finalize path (§5.4 partial-finalize). |
+| `willbuy_visits_total`                | counter   | `persona_pool`          | `persona_pool` is the bounded ICP-archetype id (§2 #9) or `"custom"`.                  |
+| `willbuy_credits_consumed_total`      | counter   | `kind`                  | Cumulative cents debited from `credit_ledger` (§5.4).                                   |
+| `willbuy_active_studies`              | gauge     | (none)                  | Snapshot of in-flight studies (statuses pending/capturing/visiting/aggregating).        |
+
+### System signals
+
+| Metric                                       | Type      | Labels                          | Notes                                                                                              |
+| -------------------------------------------- | --------- | ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `willbuy_http_request_duration_seconds`      | histogram | `route`, `method`, `status`     | `route` is the parameterized template (`/reports/:slug`). Unmatched 404s collapse to `route="__unmatched__"` for bounded cardinality. Default buckets cover 5ms…30s. |
+| `willbuy_process_start_time_seconds`         | gauge     | (none)                          | Unix-seconds at boot. Compute uptime as `time() - willbuy_process_start_time_seconds`.              |
+| `willbuy_build_info`                         | gauge     | `version`                       | Always 1; `version` carries `apps/api/package.json` version.                                        |
+
+### Cardinality discipline
+
+The `route` label is the load-bearing one. Two guards:
+
+1. **Source.** We pull from `request.routeOptions.url` (Fastify v5) — the
+   parameterized template, not the literal request URL.
+2. **404 collapse.** Unmatched routes report `route="__unmatched__"` so a
+   path-fuzzer hitting random URLs cannot blow up the series count.
+
+A vitest suite in `apps/api/test/metrics.test.ts` asserts both invariants
+(literal-slug must NOT appear in any label value; at least one route
+label must be a `:param`-bearing template).
+
+## Out of scope (this slice)
+
+- Worker-side metrics (capture/visit/provider/circuit-breaker) — separate
+  issues, will land in their respective `apps/<worker>/src/metrics/`.
+- Alertmanager wiring (issue #120).
+- `/admin/health` UI (issue #121).
+- `infra/observability/prometheus.yml` + installer — added once the
+  worker-side metrics surface lands, so a single scrape config covers
+  every service.
