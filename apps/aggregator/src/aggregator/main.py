@@ -194,6 +194,32 @@ def _cluster_with_labels(
     return out
 
 
+# Mirrors scoreVisit() in packages/shared/src/scoring.ts (amendment A1).
+_PAID_TIERS: frozenset[str] = frozenset({"express", "starter", "scale", "enterprise"})
+_NEXT_ACTION_WEIGHTS: dict[str, float] = {
+    "purchase_paid_today": 1.0,
+    "contact_sales": 0.8,
+    "book_demo": 0.8,
+    "start_paid_trial": 0.6,
+    "bookmark_compare_later": 0.0,
+    "start_free_hobby": 0.0,
+    "ask_teammate": 0.2,
+    "leave": 0.0,
+}
+
+
+def _score_visit(output: dict) -> float:
+    """Weighted conversion score for one visit (mirrors scoreVisit() in scoring.ts)."""
+    action = output.get("next_action", "leave")
+    tier_today = output.get("tier_picked_if_buying_today", "none") or "none"
+    tier_considered = output.get("highest_tier_willing_to_consider", "none") or "none"
+    if action == "bookmark_compare_later":
+        return 0.3 if tier_today in _PAID_TIERS else 0.0
+    if action == "start_free_hobby":
+        return 0.2 if tier_considered in _PAID_TIERS else 0.0
+    return _NEXT_ACTION_WEIGHTS.get(action, 0.0)
+
+
 def _bs_map_get(backstory_map: dict[int, dict], bs_id: Any) -> dict:
     """Look up backstory payload tolerating non-integer IDs (e.g., test fixtures)."""
     try:
@@ -403,8 +429,7 @@ def run_study(
         "clusters": clusters,
     }
 
-    scores = [v["output"].get("will_to_buy") for v in visits if v["output"].get("will_to_buy") is not None]
-    conv_score = float(sum(scores) / len(scores)) if scores else 0.0
+    conv_score = float(sum(_score_visit(v["output"]) for v in visits) / len(visits)) if visits else 0.0
 
     share_token_hash = secrets.token_hex(16)
 
