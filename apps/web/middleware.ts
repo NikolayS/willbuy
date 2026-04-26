@@ -1,22 +1,68 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-// SPEC §5.10 + amendment A8 — verbatim. The string compare in
-// apps/web/test/middleware.test.ts guards against drift; do NOT reformat
-// or rebuild this from parts.
+// SPEC §5.10 + amendments A8 + A9. Drift in this directive set is
+// guarded by apps/web/test/middleware.test.ts; do NOT reformat or
+// rebuild the directive list from parts without updating that file.
 //
-// `style-src 'self' 'unsafe-inline'`: Recharts (and similar visualization
-// libraries) emit inline `style` attributes for chart dimensions. The
-// strict `style-src 'self'` caused chart SVGs to render at 0px height
-// (issue #133, all 7 §5.18 chart sections rendered as empty divs).
-// `script-src` remains strict (`'self'` only) — that is the actual XSS
-// surface; styles cannot execute JS. Inline-JS injection is independently
-// forbidden by the `react/no-danger` lint rule in `eslint.config.mjs`.
-// See amendment A8 for the full rationale and constraints.
-const CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; require-trusted-types-for 'script'";
+// `script-src 'self' 'nonce-<value>' 'strict-dynamic'` (amendment A9,
+// issue #135): Next.js 14 App Router emits inline `<script>` tags
+// during SSR that drive client hydration (the
+// `(self.__next_f = ...).push([1, "..."])` RSC flight payloads). The
+// strict `script-src 'self'` we shipped in PR #13 silently blocked
+// them, so the client never received the RSC tree and Recharts
+// never mounted. The fix is the canonical Next.js 14 nonce pattern:
+//   1. Generate a per-request nonce (16 random bytes, base64).
+//   2. Forward it on the *request* via `x-nonce` so Next.js stamps
+//      the same value on its own inline scripts (Next 14 reads this
+//      header convention internally).
+//   3. Add it to CSP `script-src` together with `'strict-dynamic'`
+//      so the nonce'd bootstrap scripts can authorize their chunk
+//      `<script src=".../_next/static/chunks/...">` loads via the
+//      transitive-trust mechanism.
+// `'self'` stays in the directive as a belt-and-suspenders fallback
+// for browsers that ignore `'strict-dynamic'` (CSP3 mandates that
+// `'self'` be ignored when `'strict-dynamic'` is present, but older
+// engines fall back to `'self'` whitelisting).
+//
+// `style-src 'self' 'unsafe-inline'` (amendment A8, issue #133):
+// Recharts' <ResponsiveContainer> emits inline `style` attributes
+// for chart dimensions; the strict `style-src 'self'` collapsed
+// charts to 0px height. Inline-JS injection paths are forbidden by
+// the `react/no-danger` lint rule independent of CSP, so this
+// loosening does not regress §5.10's XSS posture.
+//
+// `require-trusted-types-for 'script'` is preserved verbatim
+// (out-of-scope for both A8 and A9).
 
 const PERMISSIONS_POLICY =
   'camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=()';
+
+// 16 random bytes -> 24-character base64; comfortably above the
+// "sufficiently random" bar (CSP3 SHOULD be >= 128 bits of entropy).
+function generateNonce(): string {
+  const buf = new Uint8Array(16);
+  crypto.getRandomValues(buf);
+  // Build a binary string for btoa without spreading into
+  // String.fromCharCode(...) (defensive against future-larger
+  // buffers — at 16 bytes the spread would be fine, but the
+  // explicit loop reads the same as the canonical Edge example).
+  let bin = '';
+  for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i] as number);
+  return btoa(bin);
+}
+
+function buildCsp(nonce: string): string {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    "style-src 'self' 'unsafe-inline'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "require-trusted-types-for 'script'",
+  ].join('; ');
+}
 
 // Marketing routes (e.g. /) intentionally fall outside this matcher and
 // therefore receive Next.js's default (relaxed) header set. SPEC §5.10
@@ -26,16 +72,32 @@ const PERMISSIONS_POLICY =
 // fonts/analytics with no benefit since no untrusted content lands there.
 export function middleware(req: NextRequest): NextResponse {
   const { pathname } = req.nextUrl;
-  const res = NextResponse.next();
 
   if (pathname.startsWith('/dashboard') || pathname.startsWith('/r/')) {
-    res.headers.set('Content-Security-Policy', CSP);
+    const nonce = generateNonce();
+    const csp = buildCsp(nonce);
+
+    // Forward x-nonce on the *request* headers so the Next.js
+    // RSC renderer reads it and stamps it on its own inline
+    // bootstrap <script> tags. This is the documented Next 14
+    // convention. See
+    // https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set('x-nonce', nonce);
+
+    const res = NextResponse.next({
+      request: { headers: requestHeaders },
+    });
+
+    res.headers.set('Content-Security-Policy', csp);
+    res.headers.set('x-nonce', nonce);
     res.headers.set('X-Content-Type-Options', 'nosniff');
     res.headers.set('Referrer-Policy', 'no-referrer');
     res.headers.set('Permissions-Policy', PERMISSIONS_POLICY);
+    return res;
   }
 
-  return res;
+  return NextResponse.next();
 }
 
 export const config = {
