@@ -48,8 +48,7 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       if (url.pathname === '/__big-body') {
         // Returns a response body of configurable size (default 30 MB) with
         // an explicit content-length header so the total_bytes listener can
-        // tally it before the body is fully buffered. The body is repeated
-        // ASCII so it never compresses down to nothing if gzip is applied.
+        // tally it before the body is fully buffered.
         const bytes = parseInt(url.searchParams.get('bytes') ?? String(30 * 1024 * 1024), 10);
         const chunk = Buffer.alloc(65536, 'x');
         res.setHeader('content-type', 'text/html; charset=utf-8');
