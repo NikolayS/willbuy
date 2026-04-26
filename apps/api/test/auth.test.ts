@@ -63,6 +63,9 @@ function buildStubResend(): ResendClient & { lastCall: { to: string; verifyUrl: 
       callCount += 1;
       lastCall = opts;
     },
+    async sendCapWarning() {
+      // no-op stub
+    },
   };
 }
 

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import sensible from '@fastify/sensible';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import { Pool } from 'pg';
+import postgres from 'postgres';
 import Stripe from 'stripe';
 
 import type { Env } from './env.js';
@@ -76,8 +77,12 @@ export async function buildServer(opts: BuildServerOptions): Promise<FastifyInst
   // histogram captures every subsequent route (issue #119, spec §5.14).
   await registerMetricsRoute(app, env.WILLBUY_METRICS_TOKEN);
 
-  // Postgres connection pool — shared across all routes.
+  // Postgres connection pool — shared across all routes (pg.Pool for most routes).
   const pool = new Pool({ connectionString: env.DATABASE_URL });
+
+  // postgres tagged-template client — used by billing helpers (reserveSpend,
+  // maybeWarnCap) that require the postgres() API rather than pg.Pool.
+  const sql = postgres(env.DATABASE_URL, { max: 5, idle_timeout: 10 });
 
   // Initialize credit-pack tiers with price IDs from env (§5.6, issue #36).
   initPacks({
@@ -117,7 +122,7 @@ export async function buildServer(opts: BuildServerOptions): Promise<FastifyInst
   await registerApiKeyRoutes(app, pool, env);
 
   // Wire authenticated routes.
-  await registerStudiesRoutes(app, pool, env);
+  await registerStudiesRoutes(app, pool, env, sql, resend);
 
   // Wire public report route (§5.12 share-token cookie redirect, issue #76).
   await registerReportsRoutes(app, pool, env.SHARE_TOKEN_HMAC_KEY);
@@ -126,9 +131,10 @@ export async function buildServer(opts: BuildServerOptions): Promise<FastifyInst
   await registerCheckoutRoutes(app, pool, env, stripe);
   await registerStripeWebhookRoute(app, pool, stripe, env.STRIPE_WEBHOOK_SECRET);
 
-  // Close pool on server shutdown.
+  // Close pool and postgres client on server shutdown.
   app.addHook('onClose', async () => {
     await pool.end();
+    await sql.end();
   });
 
   return app;

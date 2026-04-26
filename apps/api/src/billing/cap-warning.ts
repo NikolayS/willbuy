@@ -8,13 +8,12 @@
  * inserts with a unique_violation, so only one concurrent caller succeeds.
  *
  * Returns true when this caller was the one that inserted the warning row
- * (i.e., should enqueue the email). Returns false when the row already
+ * (i.e., the email was dispatched). Returns false when the row already
  * existed (another caller beat us, or the 50% threshold hasn't been crossed).
- *
- * Email sending is stubbed — TODO wire Resend when it's available.
  */
 
 import type postgres from 'postgres';
+import type { ResendClient } from '../email/resend.js';
 
 export type MaybeWarnCapInput = {
   sql: ReturnType<typeof postgres>;
@@ -24,6 +23,12 @@ export type MaybeWarnCapInput = {
   /** The new total cents after a successful reserve (from RETURNING cents). */
   new_cents: number;
   daily_cap_cents: number;
+  /** Account owner email — recipient of the cap-warning email. */
+  owner_email: string;
+  /** The study that pushed spend over the threshold. */
+  study_id: string;
+  /** Resend client for sending the warning email. */
+  resend: ResendClient;
 };
 
 /**
@@ -38,7 +43,7 @@ export type MaybeWarnCapInput = {
  * migration 0008_llm_spend_daily.sql — that is our exactly-once gate.
  */
 export async function maybeWarnCap(input: MaybeWarnCapInput): Promise<boolean> {
-  const { sql, account_id, date, new_cents, daily_cap_cents } = input;
+  const { sql, account_id, date, new_cents, daily_cap_cents, owner_email, study_id, resend } = input;
 
   if (new_cents < daily_cap_cents * 0.5) {
     return false;
@@ -57,9 +62,22 @@ export async function maybeWarnCap(input: MaybeWarnCapInput): Promise<boolean> {
     return false;
   }
 
-  // This caller won the race — enqueue the warning email.
-  // TODO: wire Resend transactional email here once available (spec §5.6).
-  // await resend.emails.send({ to: account.owner_email, subject: '50% cap warning', ... });
+  // This caller won the race — send the warning email (spec §5.6).
+  // cap_warning_sent_at (the INSERT above) is committed first so idempotency
+  // holds even if the send fails. We log errors but do not throw — a missed
+  // email is recoverable; propagating the error here would break the study
+  // creation response.
+  try {
+    await resend.sendCapWarning({
+      to: owner_email,
+      account_id: String(account_id),
+      current_cents: new_cents,
+      cap_cents: daily_cap_cents,
+      study_id,
+    });
+  } catch (err) {
+    console.error('[cap-warning] sendCapWarning failed (non-fatal):', err);
+  }
 
   return true;
 }

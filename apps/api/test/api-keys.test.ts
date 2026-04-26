@@ -72,6 +72,9 @@ function buildStubResend(): ResendClient {
     async sendMagicLink() {
       callCount += 1;
     },
+    async sendCapWarning() {
+      // no-op stub
+    },
   };
 }
 

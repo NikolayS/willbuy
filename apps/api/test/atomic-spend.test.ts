@@ -18,6 +18,7 @@ import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgr
 import { reserveSpend } from '../src/billing/atomic-spend.js';
 import { startAttempt, endAttempt } from '../src/billing/provider-attempts.js';
 import { maybeWarnCap } from '../src/billing/cap-warning.js';
+import type { ResendClient, CapWarningEmailOptions } from '../src/email/resend.js';
 
 // ---------------------------------------------------------------------------
 // Docker availability guard
@@ -37,6 +38,26 @@ const describeIfDocker = dockerAvailable ? describe : describe.skip;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..', '..', '..');
+
+// ---------------------------------------------------------------------------
+// Stub Resend client — tracks sendCapWarning calls for assertions
+// ---------------------------------------------------------------------------
+
+interface CapWarnStub extends ResendClient {
+  capWarnCalls: CapWarningEmailOptions[];
+}
+
+function buildCapWarnStubResend(): CapWarnStub {
+  const capWarnCalls: CapWarningEmailOptions[] = [];
+  return {
+    get callCount() { return 0; },
+    async sendMagicLink() { /* no-op */ },
+    async sendCapWarning(opts) {
+      capWarnCalls.push(opts);
+    },
+    capWarnCalls,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Globals set up in beforeAll
@@ -271,8 +292,10 @@ describeIfDocker('atomic spend reservation (§5.5)', () => {
   // -------------------------------------------------------------------------
   it('AC5: concurrent cap_50_warning inserts → exactly one row in cap_warnings', async () => {
     const accountId = await newAccount();
+    const studyId = await newStudy(accountId);
     const date = '2099-01-05';
     const DAILY_CAP = 100;
+    const resend = buildCapWarnStubResend();
 
     // Two concurrent calls both indicate crossing 50%
     const results = await Promise.all([
@@ -282,6 +305,9 @@ describeIfDocker('atomic spend reservation (§5.5)', () => {
         date,
         new_cents: 51,
         daily_cap_cents: DAILY_CAP,
+        owner_email: 'ac5@example.com',
+        study_id: String(studyId),
+        resend,
       }),
       maybeWarnCap({
         sql,
@@ -289,6 +315,9 @@ describeIfDocker('atomic spend reservation (§5.5)', () => {
         date,
         new_cents: 52,
         daily_cap_cents: DAILY_CAP,
+        owner_email: 'ac5@example.com',
+        study_id: String(studyId),
+        resend,
       }),
     ]);
 
@@ -302,6 +331,106 @@ describeIfDocker('atomic spend reservation (§5.5)', () => {
       [String(accountId), date],
     );
     expect(Number(rows[0]!.count)).toBe(1);
+
+    // Exactly one sendCapWarning call dispatched (by the winner of the race).
+    expect(resend.capWarnCalls).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // AC7: sendCapWarning called with correct params when threshold crossed
+  // -------------------------------------------------------------------------
+  it('AC7: sendCapWarning called with correct params when 50% threshold crossed', async () => {
+    const accountId = await newAccount();
+    const studyId = await newStudy(accountId);
+    const date = '2099-01-07';
+    const DAILY_CAP = 200;
+    const resend = buildCapWarnStubResend();
+
+    const result = await maybeWarnCap({
+      sql,
+      account_id: accountId,
+      date,
+      new_cents: 105, // > 50% of 200
+      daily_cap_cents: DAILY_CAP,
+      owner_email: 'owner@example.com',
+      study_id: String(studyId),
+      resend,
+    });
+
+    expect(result).toBe(true);
+    expect(resend.capWarnCalls).toHaveLength(1);
+    expect(resend.capWarnCalls[0]).toMatchObject({
+      to: 'owner@example.com',
+      account_id: String(accountId),
+      current_cents: 105,
+      cap_cents: DAILY_CAP,
+      study_id: String(studyId),
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // AC8: sendCapWarning NOT called when threshold not crossed
+  // -------------------------------------------------------------------------
+  it('AC8: sendCapWarning NOT called when below 50% threshold', async () => {
+    const accountId = await newAccount();
+    const studyId = await newStudy(accountId);
+    const date = '2099-01-08';
+    const DAILY_CAP = 200;
+    const resend = buildCapWarnStubResend();
+
+    const result = await maybeWarnCap({
+      sql,
+      account_id: accountId,
+      date,
+      new_cents: 99, // < 50% of 200
+      daily_cap_cents: DAILY_CAP,
+      owner_email: 'owner@example.com',
+      study_id: String(studyId),
+      resend,
+    });
+
+    expect(result).toBe(false);
+    expect(resend.capWarnCalls).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // AC9: sendCapWarning NOT called when cap_warning_sent_at already exists
+  // -------------------------------------------------------------------------
+  it('AC9: sendCapWarning NOT called when warning already sent (idempotent)', async () => {
+    const accountId = await newAccount();
+    const studyId = await newStudy(accountId);
+    const date = '2099-01-09';
+    const DAILY_CAP = 100;
+    const resend = buildCapWarnStubResend();
+
+    // First call: inserts warning row, sends email
+    const first = await maybeWarnCap({
+      sql,
+      account_id: accountId,
+      date,
+      new_cents: 55,
+      daily_cap_cents: DAILY_CAP,
+      owner_email: 'owner@example.com',
+      study_id: String(studyId),
+      resend,
+    });
+    expect(first).toBe(true);
+    expect(resend.capWarnCalls).toHaveLength(1);
+
+    // Second call with same (account_id, date): ON CONFLICT DO NOTHING → no email
+    const second = await maybeWarnCap({
+      sql,
+      account_id: accountId,
+      date,
+      new_cents: 60,
+      daily_cap_cents: DAILY_CAP,
+      owner_email: 'owner@example.com',
+      study_id: String(studyId),
+      resend,
+    });
+    expect(second).toBe(false);
+    // Still only one call — idempotent
+    expect(resend.capWarnCalls).toHaveLength(1);
   });
 
   // -------------------------------------------------------------------------
