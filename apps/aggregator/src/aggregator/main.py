@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
 from collections import defaultdict
 from typing import Any
@@ -58,22 +59,25 @@ class _PgLedger:
 def _read_visits(conn: Any, study_id: str) -> list[dict]:
     rows = db.fetchall(
         conn,
-        "SELECT id, variant, backstory_id, status, output_json FROM visits WHERE study_id=%s",
+        "SELECT id, variant_idx, backstory_id, status, parsed FROM visits WHERE study_id=%s",
         (study_id,),
     )
     out: list[dict] = []
     for row in rows:
-        _id, variant, backstory_id, status, output_json = row
+        _id, variant_idx, backstory_id, status, parsed_col = row
         if status != "ok":
             continue
-        try:
-            parsed = json.loads(output_json)
-        except (TypeError, ValueError):
-            continue
+        if isinstance(parsed_col, dict):
+            parsed = parsed_col
+        else:
+            try:
+                parsed = json.loads(parsed_col)
+            except (TypeError, ValueError):
+                continue
         out.append(
             {
                 "id": _id,
-                "variant": variant,
+                "variant": variant_idx,
                 "backstory_id": backstory_id,
                 "output": parsed,
             },
@@ -90,7 +94,7 @@ def _build_visits_by_backstory(visits: list[dict]) -> dict[str, dict[str, dict]]
             "next_action": out.get("next_action"),
         }
     # Drop incomplete pairs.
-    return {k: v for k, v in pairs.items() if "A" in v and "B" in v}
+    return {k: v for k, v in pairs.items() if 0 in v and 1 in v}
 
 
 def _collect_findings(visits: list[dict]) -> dict[str, list[str]]:
@@ -152,10 +156,15 @@ def run_study(
         "clusters": clusters,
     }
 
+    scores = [v["output"].get("will_to_buy") for v in visits if v["output"].get("will_to_buy") is not None]
+    conv_score = float(sum(scores) / len(scores)) if scores else 0.0
+
+    share_token_hash = secrets.token_hex(16)
+
     db.execute(
         conn,
-        "INSERT INTO reports(study_id, paired_delta_json) VALUES (%s, %s)",
-        (study_id, json.dumps(payload)),
+        "INSERT INTO reports(study_id, conv_score, share_token_hash, paired_delta_json, clusters_json) VALUES (%s, %s, %s, %s, %s)",
+        (study_id, conv_score, share_token_hash, json.dumps(payload), json.dumps(clusters)),
     )
     db.execute(
         conn,

@@ -25,14 +25,17 @@ CREATE TABLE studies (
 CREATE TABLE visits (
   id TEXT PRIMARY KEY,
   study_id TEXT NOT NULL,
-  variant TEXT NOT NULL,            -- 'A' or 'B'
+  variant_idx INTEGER NOT NULL,     -- 0 (control) or 1 (treatment)
   backstory_id TEXT NOT NULL,
   status TEXT NOT NULL,             -- 'ok' or 'failed'
-  output_json TEXT NOT NULL         -- VisitorOutput as JSON
+  parsed TEXT NOT NULL              -- VisitorOutput as JSON string (sqlite; psycopg returns dict)
 );
 CREATE TABLE reports (
   study_id TEXT PRIMARY KEY,
-  paired_delta_json TEXT NOT NULL
+  conv_score REAL NOT NULL DEFAULT 0,
+  share_token_hash TEXT NOT NULL DEFAULT '',
+  paired_delta_json TEXT NOT NULL,
+  clusters_json TEXT
 );
 CREATE TABLE provider_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,15 +58,15 @@ def _seed(conn: sqlite3.Connection, study_id: str) -> None:
         b_score = a_score + 2 if i % 2 == 0 else a_score + 1
         a_action = "leave" if i % 4 != 0 else "ask_teammate"
         b_action = "contact_sales" if i % 2 == 0 else "purchase_paid_today"
-        for variant, score, action, objections in [
+        for variant_idx, score, action, objections in [
             (
-                "A",
+                0,
                 a_score,
                 a_action,
                 [f"pricing is unclear for persona {i}", "where is enterprise tier"],
             ),
             (
-                "B",
+                1,
                 b_score,
                 b_action,
                 [f"pricing is now clearer for persona {i}", "scale tier features listed"],
@@ -81,11 +84,11 @@ def _seed(conn: sqlite3.Connection, study_id: str) -> None:
                 "reasoning": f"persona {i} reasoning text",
             }
             conn.execute(
-                "INSERT INTO visits(id, study_id, variant, backstory_id, status, output_json) VALUES (?,?,?,?,?,?)",
+                "INSERT INTO visits(id, study_id, variant_idx, backstory_id, status, parsed) VALUES (?,?,?,?,?,?)",
                 (
-                    f"v_{i:02d}_{variant}",
+                    f"v_{i:02d}_{variant_idx}",
                     study_id,
-                    variant,
+                    variant_idx,
                     backstory,
                     "ok",
                     json.dumps(output),
@@ -115,10 +118,13 @@ def test_e2e_run_study_writes_report_and_clusters(tmp_path: Path) -> None:
     assert row[0] == "ready"
 
     cur = conn.execute(
-        "SELECT paired_delta_json FROM reports WHERE study_id=?",
+        "SELECT paired_delta_json, conv_score, share_token_hash FROM reports WHERE study_id=?",
         ("study_e2e_001",),
     )
-    payload = json.loads(cur.fetchone()[0])
+    report_row = cur.fetchone()
+    payload = json.loads(report_row[0])
+    assert isinstance(report_row[1], float)
+    assert isinstance(report_row[2], str) and len(report_row[2]) > 0
 
     # Paired stats present.
     assert "paired_delta" in payload
