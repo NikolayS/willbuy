@@ -6,7 +6,13 @@
 // prior bad output passed back as user-role content only — NEVER as an
 // assistant turn) and retry up to 2 times.
 //
-// Heavy lifting lives in ./visitor.js so the package barrel stays stable.
+// `pollVisitorOnce` / `runVisitorPollingLoop` poll the visits table for rows
+// with study.status='visiting' and parsed IS NULL, run the LLM visitor, and
+// write results back. When all visits for a study are processed the study
+// advances to 'aggregating'.
+//
+// Heavy lifting lives in ./visitor.js and ./poller.js so the package barrel
+// stays stable.
 
 export { runVisit, computeLogicalRequestKey } from './visitor.js';
 export type {
@@ -16,3 +22,6 @@ export type {
   VisitStatus,
   LeaseReleaseContext,
 } from './visitor.js';
+
+export { pollVisitorOnce, runVisitorPollingLoop } from './poller.js';
+export type { PollVisitorOpts, PollVisitorResult, ObjectStorage } from './poller.js';
