@@ -114,6 +114,7 @@ async function handleConnection(socket: Socket, deps: BrokerDeps): Promise<void>
     BYTE_CAPS.MESSAGE_BYTES,
     deps.frameTimeoutMs ?? READ_TIMEOUT_MS,
   );
+  socket.on('error', () => {}); // absorb EPIPE/ECONNRESET from ack write (Bun full-close)
   if (result.kind === 'too_big') {
     sendError('message_too_big', `declared ${result.declaredLen} > cap ${BYTE_CAPS.MESSAGE_BYTES}`);
     return;

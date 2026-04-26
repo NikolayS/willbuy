@@ -112,14 +112,12 @@ export async function sendToBroker(
     socket.on('connect', () => {
       const body = Buffer.from(JSON.stringify(payload), 'utf8');
       const framed = frame(body);
-      // Lifecycle (PR #96 M1 fix):
-      //   1. Write the framed request, then half-close (FIN) so the broker's
-      //      `readOneFrame` loop wakes up. The broker waits for a trailing
-      //      sentinel byte OR FIN to confirm single-shot framing — without
-      //      a half-close it would block until its frame timeout.
-      //   2. Continue listening on the readable side. socket.end() only
-      //      shuts down the WRITABLE half; the readable half keeps receiving
-      //      ack bytes from the broker.
+      // Lifecycle (PR #96 M1 fix, updated #155):
+      //   1. Write the framed request. framing.ts readOneFrame resolves as
+      //      soon as >= need bytes arrive in the onData handler — no FIN
+      //      needed to wake up the broker's read loop.
+      //   2. Continue listening on the readable side. Ack bytes arrive while
+      //      the connection is still open.
       //   3. Resolve as soon as we have parsed the full length-prefixed ack
       //      (do NOT wait for the broker's 'end'). This removes the
       //      dependency on FIN ordering that the reviewer flagged in M1.
@@ -131,7 +129,9 @@ export async function sendToBroker(
           fail(writeErr);
           return;
         }
-        socket.end();
+        // No socket.end(): Bun (v1.3.5) socket.end() is a full close (RST) not
+        // a half-close (FIN), which causes EPIPE on the broker's ack write.
+        // framing.ts now resolves on >= need bytes in onData without needing FIN.
       });
     });
 
