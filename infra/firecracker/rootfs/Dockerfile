@@ -73,6 +73,7 @@ COPY --chown=capture:capture apps/capture-worker/package.json  ./apps/capture-wo
 COPY --chown=capture:capture apps/visitor-worker/package.json  ./apps/visitor-worker/
 COPY --chown=capture:capture apps/web/package.json             ./apps/web/
 COPY --chown=capture:capture packages/llm-adapter/package.json ./packages/llm-adapter/
+COPY --chown=capture:capture packages/log/package.json         ./packages/log/
 COPY --chown=capture:capture packages/shared/package.json      ./packages/shared/
 
 # `--frozen-lockfile` is intentionally OFF here. The standard `build` CI
@@ -87,6 +88,10 @@ RUN bun install --filter @willbuy/capture-worker --production \
 # Now copy the worker source. Split from the install layer so source
 # edits don't bust the (slow) install cache.
 COPY --chown=capture:capture apps/capture-worker ./apps/capture-worker
+# packages the worker imports at runtime — same pattern as apps/.
+COPY --chown=capture:capture packages/log ./packages/log
+COPY --chown=capture:capture packages/shared ./packages/shared
+COPY --chown=capture:capture packages/llm-adapter ./packages/llm-adapter
 
 # init.sh becomes /sbin/init inside the microVM (PID 1).
 COPY --chmod=0755 infra/firecracker/rootfs/init.sh /sbin/init
