@@ -316,3 +316,35 @@ The spec's `(1,000 credits)` / `(4,000 credits)` / `(15,000 credits)` parentheti
 **Constraints.** (a) Three names are stable for v0.1; new tiers go through a fresh amendment + Stripe dashboard update. (b) The display-credit-count label is the only place the user sees a non-monetary number — keep that math consistent in `BuyCredits.tsx` (currently a known minor display bug per issue #73). (c) Stripe price IDs are environment-specific (test-mode vs live-mode); `STRIPE_PRICE_ID_*` env vars are sourced via `op inject` from the `willbuy` 1Password vault.
 
 **Tracking.** PR #71 (issue #36 close).
+
+---
+
+## 2026-04-26 — A8: CSP `style-src` includes `'unsafe-inline'` (Recharts compatibility)
+
+**Affects:** §5.10 (Content-Security-Policy on `/dashboard/*` and `/r/*`).
+
+**Driver:** Issue #133. The strict CSP from PR #13 set `style-src 'self'` (no `'unsafe-inline'`). Recharts' `<ResponsiveContainer>` emits inline `style="width:100%;height:256px"` attributes for chart dimensions; the browser silently rejected them, the container's computed height collapsed to 0px, and Recharts drew zero SVG. Result: all 7 §5.18 chart sections (paired-dots, both histograms, next-actions, tier-picked, theme-board, persona grid) rendered as empty divs in production.
+
+**Amendment.** The CSP `style-src` directive becomes `style-src 'self' 'unsafe-inline'` (was `style-src 'self'`). Verbatim CSP string after this amendment:
+
+```
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; require-trusted-types-for 'script'
+```
+
+**Rationale.** §5.10 does not mandate strict `style-src`; the `script-src` strictness is what defends against XSS. Inline styles cannot execute JavaScript. The conventional Next.js + Recharts pattern relaxes `style-src` and keeps `script-src` strict — that is what we adopt. The `dangerouslySetInnerHTML` lint (`react/no-danger` in `eslint.config.mjs`) independently forbids inline-JS injection paths, so this CSP relaxation does not regress the §5.10 XSS posture.
+
+**What is NOT changed.**
+
+- `script-src 'self'` (the XSS-relevant directive) — still strict, no `'unsafe-inline'`, no `'unsafe-eval'`.
+- `default-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`, `form-action 'self'`, `require-trusted-types-for 'script'` — unchanged.
+- The middleware matcher (`/dashboard/:path*`, `/r/:path*`) — unchanged. Marketing routes are still out of scope per the §5.10 scope-narrowing comment in `apps/web/middleware.ts`.
+- Permissions-Policy, X-Content-Type-Options, Referrer-Policy headers — unchanged.
+- The `react/no-danger` lint rule in `eslint.config.mjs` — still `error`. It still forbids `dangerouslySetInnerHTML` in `apps/web/**`.
+
+**Constraints.**
+
+- (a) Any future inline-style additions must NOT involve untrusted-data interpolation. Server-rendered styles (Recharts dimensions, Tailwind-generated class output, etc.) only. If a future feature needs to interpolate user-supplied values into a style attribute, that feature MUST sanitize at the boundary or use a class-lookup pattern (cf. PR #128 / issue #111 for the progress-bar precedent).
+- (b) `script-src` MUST stay strict. If a future change adds `'unsafe-inline'` or `'unsafe-eval'` to `script-src`, that requires its own amendment (and a strong reason — adding `'unsafe-inline'` to `script-src` defeats §5.10 entirely).
+- (c) The middleware test (`apps/web/test/middleware.test.ts`) asserts both invariants: `style-src` contains `'unsafe-inline'` AND `script-src` does NOT. Both assertions guard the directive split.
+
+**Tracking.** PR #N (set on merge), issue #133.

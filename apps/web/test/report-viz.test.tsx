@@ -12,6 +12,7 @@
 
 // @vitest-environment jsdom
 
+import { act } from 'react';
 import { describe, expect, it, beforeAll, afterEach, vi } from 'vitest';
 import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import { Report, type ReportT } from '@willbuy/shared/report';
@@ -241,6 +242,27 @@ describe('§5.18 — report visualization', () => {
         value: origGBCR,
       });
     }
+  });
+
+  it('issue #133 smoke — report fixture renders Recharts SVGs (CSP A8 regression)', async () => {
+    // Regression guard for issue #133: with the strict `style-src 'self'`
+    // CSP from PR #13, Recharts' ResponsiveContainer emits inline
+    // style="width:..;height:.." that the browser silently rejects, the
+    // measured container height collapses to 0, and Recharts draws no
+    // SVG. The fix is amendment A8 (`style-src 'self' 'unsafe-inline'`).
+    //
+    // Note: jsdom does not enforce CSP — this test cannot reproduce the
+    // browser's silent rejection. What it CAN guarantee is the
+    // end-to-end DOM shape: rendering the full report fixture must yield
+    // > 0 SVG elements. The CSP-string contract itself is asserted in
+    // apps/web/test/middleware.test.ts (also added in this PR).
+    const { container } = render(<ReportView report={fixture} mode="public" />);
+    // Flush effects so Recharts' ResizeObserver-driven layout completes.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const svgs = container.querySelectorAll('svg');
+    expect(svgs.length, 'expected ReportView to render at least one Recharts SVG').toBeGreaterThan(0);
   });
 
   it('F1 — paired-dot plot renders one SVG <line> connector per backstory (§5.18 #2)', () => {
