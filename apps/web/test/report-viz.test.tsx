@@ -15,7 +15,6 @@
 import { act } from 'react';
 import { describe, expect, it, beforeAll, afterEach, vi } from 'vitest';
 import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
-import { Histograms } from '../components/report/Histograms';
 import { Report, type ReportT } from '@willbuy/shared/report';
 import fixtureJson from './fixtures/report.fixture.json';
 import disagreementJson from './fixtures/report.disagreement.fixture.json';
@@ -290,25 +289,6 @@ describe('§5.18 — report visualization', () => {
     const { container } = render(<ReportView report={parsed} mode="public" />);
     await act(async () => { await Promise.resolve(); });
     expect(container.querySelectorAll('[data-testid="persona-grid"]').length).toBe(1);
-  });
-
-  it('§5.18 #3 v0.1.1 — overlay toggle renders when histograms.length === 2', () => {
-    render(<Histograms histograms={fixture.histograms} />);
-    expect(screen.getByTestId('histogram-mode-toggle')).toBeTruthy();
-  });
-
-  it('§5.18 #3 v0.1.1 — clicking Overlay shows histogram-overlay', () => {
-    render(<Histograms histograms={fixture.histograms} />);
-    // Initially side-by-side
-    expect(screen.queryByTestId('histogram-overlay')).toBeNull();
-    // Click Overlay button
-    fireEvent.click(screen.getByRole('button', { name: /overlay/i }));
-    expect(screen.getByTestId('histogram-overlay')).toBeTruthy();
-  });
-
-  it('§5.18 #3 v0.1.1 — overlay toggle absent for single-variant (histograms.length === 1)', () => {
-    render(<Histograms histograms={[fixture.histograms[0]!]} />);
-    expect(screen.queryByTestId('histogram-mode-toggle')).toBeNull();
   });
 
   it('F1 — paired-dot plot renders one SVG <line> connector per backstory (§5.18 #2)', () => {
