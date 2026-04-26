@@ -63,7 +63,7 @@ function PersonaCard({
       </dl>
       <div className="mt-3 flex items-center gap-3 text-sm text-gray-800">
         <span>A: {persona.score_a}</span>
-        <span>B: {persona.score_b}</span>
+        {persona.score_b !== null && <span>B: {persona.score_b}</span>}
       </div>
     </button>
   );
@@ -101,12 +101,14 @@ function PersonaDrawer({
           </p>
           <p className="mt-2 text-sm text-gray-800">{persona.verdict_a}</p>
         </div>
-        <div data-testid="drawer-verdict-B" className="rounded border border-gray-200 bg-gray-50 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-            Variant B · score {persona.score_b}
-          </p>
-          <p className="mt-2 text-sm text-gray-800">{persona.verdict_b}</p>
-        </div>
+        {persona.score_b !== null ? (
+          <div data-testid="drawer-verdict-B" className="rounded border border-gray-200 bg-gray-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+              Variant B · score {persona.score_b}
+            </p>
+            <p className="mt-2 text-sm text-gray-800">{persona.verdict_b}</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );
