@@ -213,6 +213,7 @@ async function handleConnection(socket: Socket, deps: BrokerDeps): Promise<void>
     created_at: (deps.now ?? (() => new Date().toISOString()))(),
     ...(req.study_id !== undefined && { study_id: req.study_id }),
     ...(req.url_hash !== undefined && { url_hash: req.url_hash }),
+    ...(req.side !== undefined && { side: req.side }),
   };
 
   let pageCaptureId: number | undefined;

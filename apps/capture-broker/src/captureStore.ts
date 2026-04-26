@@ -22,6 +22,8 @@ export type PageCaptureRow = {
   study_id?: number;
   /** Salted SHA-256 of the captured URL (spec §5.12); required for pgCaptureStore. */
   url_hash?: string;
+  /** A/B study side ('A' or 'B'); NULL for single-URL studies. */
+  side?: 'A' | 'B' | null;
 };
 
 export type CaptureInsertResult = {
@@ -71,12 +73,22 @@ export function pgCaptureStore(pool: Pool): CaptureStore {
 
       const result = await pool.query<{ id: string }>(
         `INSERT INTO page_captures
-           (study_id, url_hash, a11y_storage_key, screenshot_storage_key,
+           (study_id, side, url_hash, a11y_storage_key, screenshot_storage_key,
             host_count, status, breach_reason, captured_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (study_id, (COALESCE(side, '')))
+           DO UPDATE SET
+             a11y_storage_key       = EXCLUDED.a11y_storage_key,
+             screenshot_storage_key = EXCLUDED.screenshot_storage_key,
+             url_hash               = EXCLUDED.url_hash,
+             host_count             = EXCLUDED.host_count,
+             status                 = EXCLUDED.status,
+             breach_reason          = EXCLUDED.breach_reason,
+             captured_at            = EXCLUDED.captured_at
          RETURNING id`,
         [
           row.study_id,
+          row.side ?? null,
           row.url_hash,
           row.a11y_object_key,
           row.screenshot_object_key,
