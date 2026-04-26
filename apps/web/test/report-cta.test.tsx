@@ -13,9 +13,26 @@
 // not tested here — it's a one-liner and JSDOM quirks make it fragile.
 // Presence of the button is sufficient per the issue spec.
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { ReportCtaBar } from '../components/report/ReportCtaBar';
+
+// jsdom in this project's Bun/Vitest config launches without a localStorage
+// file path, which leaves window.localStorage as a non-functional stub.
+// Install a minimal in-memory shim so the useEffect inside ReportCtaBar
+// doesn't throw and doesn't incorrectly set dismissed=true.
+beforeAll(() => {
+  const store: Record<string, string> = {};
+  const stub = {
+    getItem: (k: string) => store[k] ?? null,
+    setItem: (k: string, v: string) => { store[k] = v; },
+    removeItem: (k: string) => { delete store[k]; },
+    clear: () => { for (const k of Object.keys(store)) delete store[k]; },
+    get length() { return Object.keys(store).length; },
+    key: (i: number) => Object.keys(store)[i] ?? null,
+  };
+  Object.defineProperty(window, 'localStorage', { value: stub, writable: false });
+});
 
 afterEach(() => {
   cleanup();
