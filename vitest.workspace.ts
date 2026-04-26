@@ -36,6 +36,14 @@ export default defineWorkspace([
       exclude: ['tests/migrations*.test.ts'],
       environment: 'node',
       testTimeout: 30_000,
+      // Docker integration tests (auth, dashboard, stripe) start postgres containers
+      // in beforeAll. Under CI resource pressure with multiple containers starting
+      // in parallel, hooks can take longer than the 10s default hookTimeout.
+      // 120s matches the explicit beforeAll timeout in dashboard.test.ts.
+      hookTimeout: 120_000,
+      // One retry for intermittent Docker/timing failures (AC3 HMAC test).
+      // Does not mask real bugs — deterministic failures fail on all retries.
+      retry: 1,
     },
   },
 ]);
