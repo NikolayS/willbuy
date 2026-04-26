@@ -87,6 +87,7 @@ function StudyStatusInner({ id }: { id: string }) {
   // Fetch once on mount, then poll every 5 s until terminal.
   useEffect(() => {
     let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | undefined;
 
     async function fetchStudy() {
       const result = await getStudy(id);
@@ -95,6 +96,13 @@ function StudyStatusInner({ id }: { id: string }) {
       if (result.ok) {
         setStudy(result.data);
         setLoadError(null);
+        // Issue #74 MINOR-1: stop polling once terminal status is reached.
+        // Without this, the page keeps hitting GET /studies/:id every 5 s
+        // forever as long as the tab stays open.
+        const s = result.data.status;
+        if (s === 'ready' || s === 'failed') {
+          if (interval !== undefined) clearInterval(interval);
+        }
       } else {
         setLoadError(result.error);
       }
@@ -104,13 +112,13 @@ function StudyStatusInner({ id }: { id: string }) {
     void fetchStudy();
 
     // Set up polling interval.
-    const interval = setInterval(() => {
+    interval = setInterval(() => {
       void fetchStudy();
     }, POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (interval !== undefined) clearInterval(interval);
     };
   }, [id]);
 
@@ -165,8 +173,13 @@ function StudyStatusInner({ id }: { id: string }) {
           <p className="text-sm font-medium text-green-800">
             Your study is ready! View the report to see results.
           </p>
+          {/* Issue #74 MINOR-2: GET /studies/:id returns the study's slug
+              field (per PR #102 dashboard-summary endpoint pattern). Use it
+              when available; fall back to /r/${s.id} (matches the bare-id
+              shape used by /dashboard/studies/StudiesListView). The previous
+              fallback (/r/study-${s.id}) would 404. */}
           <a
-            href={s.slug ? `/r/${s.slug}` : `/r/study-${s.id}`}
+            href={s.slug ? `/r/${s.slug}` : `/r/${s.id}`}
             className="mt-3 inline-block rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
           >
             View report
