@@ -35,7 +35,8 @@ CREATE TABLE reports (
   conv_score REAL NOT NULL DEFAULT 0,
   share_token_hash TEXT NOT NULL DEFAULT '',
   paired_delta_json TEXT NOT NULL,
-  clusters_json TEXT
+  clusters_json TEXT,
+  report_json TEXT
 );
 CREATE TABLE provider_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,13 +119,16 @@ def test_e2e_run_study_writes_report_and_clusters(tmp_path: Path) -> None:
     assert row[0] == "ready"
 
     cur = conn.execute(
-        "SELECT paired_delta_json, conv_score, share_token_hash FROM reports WHERE study_id=?",
+        "SELECT paired_delta_json, conv_score, share_token_hash, report_json FROM reports WHERE study_id=?",
         ("study_e2e_001",),
     )
     report_row = cur.fetchone()
     payload = json.loads(report_row[0])
     assert isinstance(report_row[1], float)
     assert isinstance(report_row[2], str) and len(report_row[2]) > 0
+    # report_json is non-NULL and valid JSON.
+    assert report_row[3] is not None
+    rj = json.loads(report_row[3])
 
     # Paired stats present.
     assert "paired_delta" in payload
@@ -151,3 +155,11 @@ def test_e2e_run_study_writes_report_and_clusters(tmp_path: Path) -> None:
     )
     n_label_rows = cur.fetchone()[0]
     assert n_label_rows == total_clusters
+
+    # report_json slug matches share_token_hash.
+    assert rj["meta"]["slug"] == report_row[2]
+    # histograms has at least 1 entry (both variants present in seed data).
+    assert isinstance(rj["histograms"], list)
+    assert len(rj["histograms"]) >= 1
+    # theme_board has all four required keys.
+    assert set(rj["theme_board"].keys()) == {"blockers", "objections", "confusions", "questions"}
