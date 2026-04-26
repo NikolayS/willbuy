@@ -1,9 +1,19 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-// SPEC §5.10 — verbatim. The string compare in apps/web/test/middleware.test.ts
-// guards against drift; do NOT reformat or rebuild this from parts.
+// SPEC §5.10 + amendment A8 — verbatim. The string compare in
+// apps/web/test/middleware.test.ts guards against drift; do NOT reformat
+// or rebuild this from parts.
+//
+// `style-src 'self' 'unsafe-inline'`: Recharts (and similar visualization
+// libraries) emit inline `style` attributes for chart dimensions. The
+// strict `style-src 'self'` caused chart SVGs to render at 0px height
+// (issue #133, all 7 §5.18 chart sections rendered as empty divs).
+// `script-src` remains strict (`'self'` only) — that is the actual XSS
+// surface; styles cannot execute JS. Inline-JS injection is independently
+// forbidden by the `react/no-danger` lint rule in `eslint.config.mjs`.
+// See amendment A8 for the full rationale and constraints.
 const CSP =
-  "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; require-trusted-types-for 'script'";
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; require-trusted-types-for 'script'";
 
 const PERMISSIONS_POLICY =
   'camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=()';
