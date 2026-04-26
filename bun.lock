@@ -23,6 +23,7 @@
       "dependencies": {
         "@fastify/sensible": "^6.0.1",
         "@types/pg": "^8.20.0",
+        "@willbuy/log": "workspace:*",
         "fastify": "^5.2.1",
         "nanoid": "^5.1.9",
         "pg": "^8.20.0",
@@ -43,6 +44,8 @@
       "name": "@willbuy/capture-broker",
       "version": "0.0.0",
       "dependencies": {
+        "@willbuy/log": "workspace:*",
+        "pino": "^9.5.0",
         "yaml": "^2.5.1",
         "zod": "^3.23.0",
       },
@@ -56,7 +59,9 @@
       "name": "@willbuy/capture-worker",
       "version": "0.0.0",
       "dependencies": {
+        "@willbuy/log": "workspace:*",
         "pg": "^8.20.0",
+        "pino": "^9.5.0",
         "playwright": "1.45.0",
       },
       "devDependencies": {
@@ -73,7 +78,9 @@
       "version": "0.0.0",
       "dependencies": {
         "@willbuy/llm-adapter": "workspace:*",
+        "@willbuy/log": "workspace:*",
         "@willbuy/shared": "workspace:*",
+        "pino": "^9.5.0",
         "zod": "^3.23.8",
       },
       "devDependencies": {

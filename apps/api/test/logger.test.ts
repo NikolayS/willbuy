@@ -79,11 +79,15 @@ describe('logger redaction (spec §5.12)', () => {
     expect(JSON.stringify(rec)).not.toContain('sk_live_secret');
   });
 
-  it('removes email field entirely', () => {
+  // Issue #118 — the spec calls for emails to be MASKED (a***@b***.com) not
+  // dropped entirely, so log lines retain a domain shape for grouping while
+  // never carrying the local-part identifier. The earlier "remove" behaviour
+  // pre-dated the §5.12 clarification.
+  it('masks email field to local-letter + domain shape', () => {
     const { logger, logs } = captureLogs(salt);
     logger.info({ email: 'a@b.com', account_id: 'acc_1' }, 'evt');
     const [rec] = logs();
-    expect(rec!['email']).toBeUndefined();
+    expect(rec!['email']).toBe('a***@b***.com');
     expect(rec!['account_id']).toBe('acc_1');
     expect(JSON.stringify(rec)).not.toContain('a@b.com');
   });
@@ -125,7 +129,8 @@ describe('logger redaction (spec §5.12)', () => {
     );
     const [rec] = logs();
     const inner = (rec!['ctx'] as Record<string, unknown>)['inner'] as Record<string, unknown>;
-    expect(inner['email']).toBeUndefined();
+    // Email is masked (issue #118) not removed; raw value still must not appear.
+    expect(inner['email']).toBe('d***@x***.com');
     expect(inner['api_key']).toBe('***wxyz');
     expect(JSON.stringify(rec)).not.toContain('deep@x.com');
   });
