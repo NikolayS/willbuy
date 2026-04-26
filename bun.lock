@@ -56,16 +56,16 @@
       "name": "@willbuy/capture-worker",
       "version": "0.0.0",
       "dependencies": {
-        "@types/pg": "^8.20.0",
-        "@willbuy/capture-broker": "workspace:*",
         "pg": "^8.20.0",
         "playwright": "1.45.0",
-        "zod": "^3.23.0",
       },
       "devDependencies": {
         "@types/node": "^22.10.2",
+        "@types/pg": "^8.20.0",
+        "@willbuy/capture-broker": "workspace:*",
         "typescript": "^5.7.2",
         "vitest": "^2.1.8",
+        "zod": "^3.23.0",
       },
     },
     "apps/visitor-worker": {
@@ -113,6 +113,18 @@
     "packages/llm-adapter": {
       "name": "@willbuy/llm-adapter",
       "version": "0.0.0",
+      "devDependencies": {
+        "@types/node": "^22.10.2",
+        "typescript": "^5.7.2",
+        "vitest": "^2.1.8",
+      },
+    },
+    "packages/log": {
+      "name": "@willbuy/log",
+      "version": "0.0.0",
+      "dependencies": {
+        "pino": "^9.5.0",
+      },
       "devDependencies": {
         "@types/node": "^22.10.2",
         "typescript": "^5.7.2",
@@ -421,6 +433,8 @@
     "@willbuy/capture-worker": ["@willbuy/capture-worker@workspace:apps/capture-worker"],
 
     "@willbuy/llm-adapter": ["@willbuy/llm-adapter@workspace:packages/llm-adapter"],
+
+    "@willbuy/log": ["@willbuy/log@workspace:packages/log"],
 
     "@willbuy/shared": ["@willbuy/shared@workspace:packages/shared"],
 
