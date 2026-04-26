@@ -32,6 +32,8 @@ export const VALID_VISITOR_OUTPUT: VisitorOutputT = {
   confidence: 8,
   reasoning:
     'Strong pricing-page clarity but missing compliance signals; for a regulated fintech buyer the next step is sales.',
+  tier_picked_if_buying_today: 'starter',
+  highest_tier_willing_to_consider: 'scale',
 };
 
 export function validVisitorJsonString(): string {

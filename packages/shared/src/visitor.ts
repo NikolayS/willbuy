@@ -58,6 +58,17 @@ export const VisitorOutput = z
       .string()
       .max(1200, 'reasoning capped at 1200 chars (spec §2 #15)')
       .describe('Spec §2 #15: reasoning, ≤ 1200 chars.'),
+    // Issue #173: tier fields for scoreVisit() bump rules (§5.5 + scoring.ts).
+    // Optional with default 'none' so existing parsed rows without these fields
+    // still validate (schema is .passthrough() — old rows keep passing).
+    tier_picked_if_buying_today: z
+      .enum(['none', 'hobby', 'express', 'starter', 'scale', 'enterprise'])
+      .default('none')
+      .describe('Issue #173: pricing tier the visitor would pick if buying today.'),
+    highest_tier_willing_to_consider: z
+      .enum(['none', 'hobby', 'express', 'starter', 'scale', 'enterprise'])
+      .default('none')
+      .describe('Issue #173: highest tier the visitor would consider if budget allowed.'),
   })
   .passthrough();
 

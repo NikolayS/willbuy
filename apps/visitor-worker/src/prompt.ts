@@ -43,6 +43,8 @@ const STATIC_PREFIX = [
   '  next_action ∈ {purchase_paid_today, contact_sales, book_demo,',
   '                 start_paid_trial, bookmark_compare_later,',
   '                 start_free_hobby, ask_teammate, leave}',
+  '  tier_picked_if_buying_today ∈ {none, hobby, express, starter, scale, enterprise}',
+  '  highest_tier_willing_to_consider ∈ {none, hobby, express, starter, scale, enterprise}',
   'Do NOT include commentary outside the JSON object. Do NOT wrap the',
   'JSON in code fences. Output exactly one valid JSON object.',
 ].join('\n');
