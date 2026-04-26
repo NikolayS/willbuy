@@ -31,10 +31,13 @@ import tldts from 'tldts';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
+import type postgres from 'postgres';
 
 import { buildApiKeyMiddleware } from '../auth/api-key.js';
 import { buildSessionMiddleware } from '../auth/session.js';
 import type { Env } from '../env.js';
+import type { ResendClient } from '../email/resend.js';
+import { maybeWarnCap } from '../billing/cap-warning.js';
 import { recordStudyStarted } from '../metrics/registry.js';
 
 // Per-visit estimated cost ceiling = 5¢ per spec §5.5 (cost-model ceiling).
@@ -90,6 +93,8 @@ export async function registerStudiesRoutes(
   app: FastifyInstance,
   pool: Pool,
   env: Env,
+  sql: ReturnType<typeof postgres>,
+  resend: ResendClient,
 ): Promise<void> {
   const apiKeyMiddleware = buildApiKeyMiddleware(pool);
 
@@ -201,6 +206,20 @@ export async function registerStudiesRoutes(
         // Issue #119 / spec §5.14: business-counter increment AFTER commit so
         // we don't inflate the count for rolled-back transactions.
         recordStudyStarted({ kind });
+
+        // §5.6: fire-and-forget cap-warning email. maybeWarnCap is idempotent
+        // (ON CONFLICT DO NOTHING) — safe to call without awaiting in the
+        // response path. Errors are logged inside maybeWarnCap, not propagated.
+        void maybeWarnCap({
+          sql,
+          account_id: account.id,
+          date: today,
+          new_cents: spendRows.rows[0]!.cents,
+          daily_cap_cents: env.DAILY_CAP_CENTS,
+          owner_email: account.owner_email,
+          study_id: studyId,
+          resend,
+        });
 
         return reply.code(201).send({ study_id: Number(studyId), status: 'capturing' });
       } catch (err) {
