@@ -40,3 +40,11 @@ This repo is **public**. No secrets, no IPs, no anything that leaks operational 
 ## TDD
 
 `CLAUDE.md` §"TDD: red → green → refactor" is mandatory. PRs without a red commit before the green commit get sent back.
+
+## 💰 Bounty Contribution
+
+- **Task:** ops: wire Stripe sandbox keys to production server (issue #77 follow-up)
+- **Reward:** $16
+- **Source:** GitHub-Paid
+- **Date:** 2026-04-27
+
