@@ -21,7 +21,7 @@ export default async function ReportPage({
   const { slug } = await params;
   const result = await fetchReport(slug);
 
-  if (result === 'not_found' || result === null) {
+  if (result === 'not_found') {
     return (
       <>
         <main className="mx-auto max-w-3xl px-6 py-16">
