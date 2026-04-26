@@ -87,7 +87,6 @@ function StudyStatusInner({ id }: { id: string }) {
   // Fetch once on mount, then poll every 5 s until terminal.
   useEffect(() => {
     let cancelled = false;
-    let interval: ReturnType<typeof setInterval> | undefined;
 
     async function fetchStudy() {
       const result = await getStudy(id);
@@ -101,7 +100,7 @@ function StudyStatusInner({ id }: { id: string }) {
         // forever as long as the tab stays open.
         const s = result.data.status;
         if (s === 'ready' || s === 'failed') {
-          if (interval !== undefined) clearInterval(interval);
+          clearInterval(interval);
         }
       } else {
         setLoadError(result.error);
@@ -111,14 +110,15 @@ function StudyStatusInner({ id }: { id: string }) {
     // Initial fetch.
     void fetchStudy();
 
-    // Set up polling interval.
-    interval = setInterval(() => {
+    // Set up polling interval (declared after fetchStudy so it's referenceable
+    // inside the closure without `let` — Issue #74 MINOR-1).
+    const interval = setInterval(() => {
       void fetchStudy();
     }, POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      if (interval !== undefined) clearInterval(interval);
+      clearInterval(interval);
     };
   }, [id]);
 
