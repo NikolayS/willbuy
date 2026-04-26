@@ -35,7 +35,8 @@ CREATE TABLE reports (
   conv_score REAL NOT NULL DEFAULT 0,
   share_token_hash TEXT NOT NULL DEFAULT '',
   paired_delta_json TEXT NOT NULL,
-  clusters_json TEXT
+  clusters_json TEXT,
+  report_json TEXT
 );
 CREATE TABLE provider_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,15 +119,18 @@ def test_e2e_run_study_writes_report_and_clusters(tmp_path: Path) -> None:
     assert row[0] == "ready"
 
     cur = conn.execute(
-        "SELECT paired_delta_json, conv_score, share_token_hash FROM reports WHERE study_id=?",
+        "SELECT paired_delta_json, conv_score, share_token_hash, report_json FROM reports WHERE study_id=?",
         ("study_e2e_001",),
     )
     report_row = cur.fetchone()
     payload = json.loads(report_row[0])
     assert isinstance(report_row[1], float)
     assert isinstance(report_row[2], str) and len(report_row[2]) > 0
+    # report_json is non-NULL and valid JSON.
+    assert report_row[3] is not None
+    rj = json.loads(report_row[3])
 
-    # paired_delta_json stores only paired stats (flat dict, no wrapper key).
+    # Paired stats present (paired_delta_json now stores paired.to_dict() directly).
     assert "mean_delta" in payload
     assert "paired_t_p" in payload
     assert "wilcoxon_p" in payload
@@ -134,21 +138,29 @@ def test_e2e_run_study_writes_report_and_clusters(tmp_path: Path) -> None:
     assert "disagreement" in payload
     assert payload["n"] == 15
 
-    # clusters_json is stored as a separate column.
+    # Clusters present in clusters_json (separate column).
     cur2 = conn.execute(
         "SELECT clusters_json FROM reports WHERE study_id=?",
         ("study_e2e_001",),
     )
-    clusters = json.loads(cur2.fetchone()[0])
+    clusters_payload = json.loads(cur2.fetchone()[0])
+    assert isinstance(clusters_payload, dict)
     # At least one of the four finding kinds yields a cluster list.
-    assert isinstance(clusters, dict)
-    total_clusters = sum(len(v) for v in clusters.values())
+    total_clusters = sum(len(v) for v in clusters_payload.values())
     assert total_clusters >= 1
 
     # provider_attempts has at least one cluster_label row (only one per cluster).
-    cur3 = conn.execute(
+    cur = conn.execute(
         "SELECT COUNT(*) FROM provider_attempts WHERE study_id=? AND kind='cluster_label'",
         ("study_e2e_001",),
     )
-    n_label_rows = cur3.fetchone()[0]
+    n_label_rows = cur.fetchone()[0]
     assert n_label_rows == total_clusters
+
+    # report_json slug matches share_token_hash.
+    assert rj["meta"]["slug"] == report_row[2]
+    # histograms has at least 1 entry (both variants present in seed data).
+    assert isinstance(rj["histograms"], list)
+    assert len(rj["histograms"]) >= 1
+    # theme_board has all four required keys.
+    assert set(rj["theme_board"].keys()) == {"blockers", "objections", "confusions", "questions"}
