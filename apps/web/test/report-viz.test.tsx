@@ -15,11 +15,11 @@
 import { act } from 'react';
 import { describe, expect, it, beforeAll, afterEach, vi } from 'vitest';
 import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
-import { Histograms } from '../components/report/Histograms';
 import { Report, type ReportT } from '@willbuy/shared/report';
 import fixtureJson from './fixtures/report.fixture.json';
 import disagreementJson from './fixtures/report.disagreement.fixture.json';
 import { ReportView } from '../components/report/ReportView';
+import { NextActions } from '../components/report/NextActions';
 import { PairedDots } from '../components/report/PairedDots';
 import { exportElementToPng } from '../lib/png-export';
 
@@ -292,24 +292,18 @@ describe('§5.18 — report visualization', () => {
     expect(container.querySelectorAll('[data-testid="persona-grid"]').length).toBe(1);
   });
 
-  it('§5.18 #3 v0.1.1 — overlay toggle renders when histograms.length === 2', () => {
-    render(<Histograms histograms={fixture.histograms} />);
-    expect(screen.getByTestId('histogram-mode-toggle')).toBeTruthy();
+
+  it('§5.18 #4 v0.1.1 — next-actions Sankey toggle renders and switches view (#175)', () => {
+    // data-testid="next-actions-mode-toggle" must be present by default.
+    render(<NextActions rows={fixture.next_actions} />);
+    expect(screen.getByTestId('next-actions-mode-toggle')).toBeTruthy();
+    // Sankey view should not be visible initially (bar mode is default).
+    expect(screen.queryByTestId('next-actions-sankey')).toBeNull();
+    // Clicking "Sankey" button shows the Sankey view.
+    fireEvent.click(screen.getByRole('button', { name: /sankey/i }));
+    expect(screen.getByTestId('next-actions-sankey')).toBeTruthy();
   });
 
-  it('§5.18 #3 v0.1.1 — clicking Overlay shows histogram-overlay', () => {
-    render(<Histograms histograms={fixture.histograms} />);
-    // Initially side-by-side
-    expect(screen.queryByTestId('histogram-overlay')).toBeNull();
-    // Click Overlay button
-    fireEvent.click(screen.getByRole('button', { name: /overlay/i }));
-    expect(screen.getByTestId('histogram-overlay')).toBeTruthy();
-  });
-
-  it('§5.18 #3 v0.1.1 — overlay toggle absent for single-variant (histograms.length === 1)', () => {
-    render(<Histograms histograms={[fixture.histograms[0]!]} />);
-    expect(screen.queryByTestId('histogram-mode-toggle')).toBeNull();
-  });
 
   it('F1 — paired-dot plot renders one SVG <line> connector per backstory (§5.18 #2)', () => {
     // Spec §5.18 #2: "Per-visitor dots showing A-score vs B-score with a
