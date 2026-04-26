@@ -85,6 +85,11 @@ export async function captureUrl(url: string, opts?: CaptureOpts): Promise<Captu
     // Total-bytes listener — accumulates response body sizes (spec §2 #6).
     // Aborts as soon as the running total crosses the ceiling so we don't
     // buffer an unbounded response into memory before we can check.
+    //
+    // Caveat (issue #67): chunked-encoding responses (no Content-Length
+    // header) are silently NOT counted here — this is best-effort. The
+    // deeper boundary is the iptables egress + host-budget enforcement
+    // (PR #42 / spec §2 #5), which still caps the host-budget regardless.
     page.on('response', (resp) => {
       const contentLength = resp.headers()['content-length'];
       if (contentLength) {
