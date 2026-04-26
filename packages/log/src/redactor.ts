@@ -29,6 +29,32 @@ import { createHash } from 'node:crypto';
 
 import { LogPayloadOversizeError, MAX_FIELD_BYTES } from './errors.js';
 
+/**
+ * Strict-mode allowlist (spec §5.12).
+ *
+ * When the logger is built with `strict: true`, only keys in this set (or
+ * matching the `duration_` prefix) are emitted. All other fields are dropped
+ * at the top level of the log object before any deny-list rules run.
+ *
+ * Pino adds `msg`, `level`, `time` to every line internally; those are NOT
+ * passed through the `formatters.log` hook, so they do not need to be listed
+ * here (they will always appear). We list them anyway as documentation.
+ */
+const STRICT_ALLOWLIST = new Set([
+  'account_id',
+  'study_id',
+  'visit_id',
+  'provider_attempt_id',
+  'transport_attempt_id',
+  'event',
+  'error_class',
+  'msg',
+  'level',
+  'time',
+  'service',
+]);
+const STRICT_DURATION_PREFIX = 'duration_';
+
 // Field NAMES whose values must NEVER reach the log line.
 const REMOVE_FIELDS = new Set([
   'share_token',
@@ -134,8 +160,12 @@ function maskLargeString(value: string): string {
  *
  * `ancestry` tracks the depth-first call stack only; on backtrack the node is
  * removed so DAG-shared subtrees don't get falsely flagged as [Circular].
+ *
+ * `strict` — when true, any top-level field NOT in STRICT_ALLOWLIST (and not
+ * matching the `duration_` prefix) is dropped before deny-list rules run.
+ * Nested objects inside allowlisted fields are still redacted normally.
  */
-export function redact(value: unknown, salt: string, ancestry = new WeakSet<object>()): unknown {
+export function redact(value: unknown, salt: string, ancestry = new WeakSet<object>(), strict = false): unknown {
   if (value === null) return value;
   if (typeof value === 'string') {
     // Bare-URL string at a leaf (e.g. an array of urls): hash it. The caller
@@ -152,11 +182,16 @@ export function redact(value: unknown, salt: string, ancestry = new WeakSet<obje
   ancestry.add(value as object);
   try {
     if (Array.isArray(value)) {
-      return value.map((v) => redact(v, salt, ancestry));
+      return value.map((v) => redact(v, salt, ancestry, false));
     }
 
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      // Strict-mode allowlist: drop any top-level key not in the allowlist.
+      // Nested recursion always uses strict=false so inner objects are still
+      // scrubbed by deny-list rules without additional field dropping.
+      if (strict && !STRICT_ALLOWLIST.has(k) && !k.startsWith(STRICT_DURATION_PREFIX)) continue;
+
       if (REMOVE_FIELDS.has(k)) continue;
 
       // Spec §5.12 / issue #118 TDD #4: oversize string fields are a smell of
@@ -219,7 +254,7 @@ export function redact(value: unknown, salt: string, ancestry = new WeakSet<obje
         continue;
       }
 
-      out[k] = redact(v, salt, ancestry);
+      out[k] = redact(v, salt, ancestry, false);
     }
     return out;
   } finally {

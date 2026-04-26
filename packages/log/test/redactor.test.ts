@@ -385,3 +385,69 @@ describe('redact() direct calls', () => {
     expect(r.urls).toEqual([hashUrl(salt, 'https://a.test/'), hashUrl(salt, 'https://b.test/')]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 11. Strict allowlist mode — unknown fields are dropped when strict=true.
+// ---------------------------------------------------------------------------
+describe('strict allowlist mode', () => {
+  it('drops a field not in the allowlist when strict=true', () => {
+    const r = redact(
+      { event: 'capture.started', study_id: 'st_1', secret_data: 'should-be-gone' },
+      salt,
+      undefined,
+      true,
+    ) as Record<string, unknown>;
+    expect(r['secret_data']).toBeUndefined();
+    expect(r['event']).toBe('capture.started');
+    expect(r['study_id']).toBe('st_1');
+  });
+
+  it('passes through a non-allowlisted field when strict=false (default)', () => {
+    const r = redact(
+      { event: 'capture.started', secret_data: 'passes-through' },
+      salt,
+    ) as Record<string, unknown>;
+    expect(r['secret_data']).toBe('passes-through');
+  });
+
+  it('passes through duration_* fields when strict=true', () => {
+    const r = redact(
+      { event: 'capture.done', duration_ms: 1234, duration_capture_ms: 999 },
+      salt,
+      undefined,
+      true,
+    ) as Record<string, unknown>;
+    expect(r['duration_ms']).toBe(1234);
+    expect(r['duration_capture_ms']).toBe(999);
+  });
+
+  it('strips secret_data via buildLogger strict:true but not strict:false', () => {
+    function captureWithStrict(strict: boolean): Record<string, unknown> {
+      const chunks: string[] = [];
+      const stream = new Writable({
+        write(chunk, _enc, cb) {
+          chunks.push(chunk.toString('utf8'));
+          cb();
+        },
+      });
+      const strictLogger = buildLogger({
+        service: 'test-strict',
+        level: 'info',
+        urlHashSalt: salt,
+        destination: stream,
+        strict,
+      });
+      strictLogger.info({ event: 'test', secret_data: 'boom', study_id: 'st_99' }, 'msg');
+      const parsed = chunks.join('').split('\n').filter(Boolean)
+        .map((l) => JSON.parse(l) as Record<string, unknown>);
+      return parsed[0] ?? {};
+    }
+
+    const strictRec = captureWithStrict(true);
+    expect(strictRec['secret_data']).toBeUndefined();
+    expect(strictRec['study_id']).toBe('st_99');
+
+    const permissiveRec = captureWithStrict(false);
+    expect(permissiveRec['secret_data']).toBe('boom');
+  });
+});

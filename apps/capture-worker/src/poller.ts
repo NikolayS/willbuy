@@ -38,7 +38,10 @@
 import { Pool, type PoolClient } from 'pg';
 import { captureUrl } from './capture.js';
 import { sendToBroker, type CaptureRequestPayload } from './broker-client.js';
+import { buildCaptureWorkerLogger } from './logger.js';
 import type { CaptureResult } from './types.js';
+
+const log = buildCaptureWorkerLogger();
 
 export type PollOpts = {
   pool: Pool;
@@ -150,10 +153,9 @@ export async function pollOnce(opts: PollOpts): Promise<PollResult> {
     } else if (!targetUrl) {
       // Production safety (B3 fix): refuse to silently capture about:blank.
       // Fail-fast: write 'failed' status, skip the broker write entirely.
-      console.error(
-        `[capture-worker] visit ${visitId} has no URL configured (study ${studyId}); ` +
-          `studies.urls[variant_idx] is null AND no targetUrlOverride. ` +
-          `Marking visit failed.`,
+      log.error(
+        { event: 'capture.no_url', visit_id: String(visitId), study_id: String(studyId) },
+        'visit has no URL configured; studies.urls[variant_idx] is null AND no targetUrlOverride — marking visit failed',
       );
       noUrlFailure = true;
     } else {
@@ -183,11 +185,17 @@ export async function pollOnce(opts: PollOpts): Promise<PollResult> {
       try {
         const ack = await sendToBroker(brokerPayload, brokerOpts);
         if (!ack.ok) {
-          console.error(`[capture-worker] broker rejected artifact for visit ${visitId}: ${ack.error}${ack.detail ? ' — ' + ack.detail : ''}`);
+          log.error(
+            { event: 'broker.rejected', visit_id: String(visitId), error_class: ack.error, detail: ack.detail },
+            'broker rejected artifact',
+          );
           visitStatus = 'failed';
         }
       } catch (brokerErr) {
-        console.error(`[capture-worker] broker send failed for visit ${visitId}:`, brokerErr);
+        log.error(
+          { event: 'broker.send_failed', visit_id: String(visitId), error_class: brokerErr instanceof Error ? brokerErr.name : 'UnknownError' },
+          'broker send failed',
+        );
         visitStatus = 'failed';
       }
     }
@@ -289,7 +297,10 @@ export async function runPollingLoop(opts: PollOpts): Promise<void> {
         await sleepUnlessAborted(5_000, signal);
       }
     } catch (err) {
-      console.error('[capture-worker] poll error:', err);
+      log.error(
+        { event: 'poll.error', error_class: err instanceof Error ? err.name : 'UnknownError' },
+        'poll error',
+      );
       // Brief pause so a persistent DB error doesn't spin at full speed.
       await sleepUnlessAborted(1_000, signal);
     }

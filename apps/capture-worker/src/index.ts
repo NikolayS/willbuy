@@ -32,10 +32,13 @@ const isMain =
 if (isMain) {
   const { Pool } = await import('pg');
   const { runPollingLoop: startLoop } = await import('./poller.js');
+  const { buildCaptureWorkerLogger } = await import('./logger.js');
+
+  const log = buildCaptureWorkerLogger();
 
   const dbUrl = process.env['DATABASE_URL'];
   if (!dbUrl) {
-    console.error('[capture-worker] DATABASE_URL is required');
+    log.error({ event: 'startup.missing_env', var: 'DATABASE_URL' }, 'DATABASE_URL is required');
     process.exit(1);
   }
 
@@ -45,19 +48,19 @@ if (isMain) {
   const ac = new AbortController();
 
   process.on('SIGTERM', () => {
-    console.log('[capture-worker] SIGTERM — draining in-flight captures…');
+    log.info({ event: 'shutdown.sigterm' }, 'SIGTERM — draining in-flight captures…');
     ac.abort();
     // Give in-flight captures 60 s to drain before forcing exit.
     setTimeout(() => process.exit(0), 60_000).unref();
   });
   process.on('SIGINT', () => ac.abort());
 
-  console.log('[capture-worker] starting polling loop');
+  log.info({ event: 'startup.polling_loop' }, 'starting polling loop');
   await startLoop({
     pool,
     signal: ac.signal,
     ...(brokerSocketPath !== undefined && { brokerSocketPath }),
   });
   await pool.end();
-  console.log('[capture-worker] drained; exiting');
+  log.info({ event: 'shutdown.drained' }, 'drained; exiting');
 }
