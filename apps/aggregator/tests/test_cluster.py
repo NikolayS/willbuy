@@ -81,8 +81,41 @@ def test_cluster_findings_returns_lex_sorted_inputs_in_member_indices() -> None:
 
 def test_cluster_findings_handles_empty_and_tiny_inputs() -> None:
     assert cluster_findings([]) == []
-    # 2 inputs cannot meet min_cluster_size=3 → all noise → 0 clusters.
+    # 2 inputs: early bail (< min_cluster_size=3) before HDBSCAN → no fallback.
     assert cluster_findings(["alpha", "beta"]) == []
+
+
+def test_cluster_findings_small_dataset_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #180: when HDBSCAN returns no clusters, return one catch-all cluster.
+
+    With sparse strings in a small study HDBSCAN with min_cluster_size=3 labels
+    everything as noise. The fallback must surface a single cluster with all
+    normalized strings rather than an empty list.
+    """
+    import numpy as np
+    import aggregator.cluster as cluster_mod
+
+    strings = [
+        "no transparent pricing for enterprise",
+        "unclear about storage limits",
+        "missing sla documentation",
+        "cannot find cancellation policy",
+    ]
+
+    # Random spread embeddings → no HDBSCAN density cluster guaranteed.
+    rng = np.random.default_rng(99)
+    vectors = rng.standard_normal((len(strings), 16)).astype(np.float32)
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    vectors = vectors / norms
+
+    monkeypatch.setattr(cluster_mod, "_embed", lambda _strs: vectors)
+
+    result = cluster_mod.cluster_findings(strings)
+
+    assert len(result) == 1
+    assert result[0].id == 0
+    assert len(result[0].members) == len(strings)
+    assert result[0].member_indices == tuple(range(len(strings)))
 
 
 # ---------------------------------------------------------------------------
