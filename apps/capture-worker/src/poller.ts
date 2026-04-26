@@ -35,6 +35,7 @@
  * docker/playwright call (≤ CAPTURE_CEILINGS.WALL_CLOCK_MS = 45s).
  */
 
+import { createHash } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import { captureUrl } from './capture.js';
 import { sendToBroker, type CaptureRequestPayload } from './broker-client.js';
@@ -66,6 +67,12 @@ export type PollOpts = {
    * Callers can set this to stop the loop from outside.
    */
   signal?: AbortSignal;
+  /**
+   * Salt for SHA-256 URL hashing (spec §5.12). Read from URL_HASH_SALT env var
+   * in production. When absent, url_hash is not sent to the broker and
+   * page_captures rows will not be written by pgCaptureStore.
+   */
+  urlHashSalt?: string;
 };
 
 export type PollResult =
@@ -163,9 +170,18 @@ export async function pollOnce(opts: PollOpts): Promise<PollResult> {
     }
 
     // ── 3. Send artifact to broker (skipped on no-URL fail-fast) ──────────────
+    let pageCaptureId: number | undefined;
+
     if (noUrlFailure) {
       visitStatus = 'failed';
     } else if (captureResult) {
+      // Compute url_hash when a salt is available (spec §5.12).
+      const urlHashSalt = opts.urlHashSalt ?? process.env['URL_HASH_SALT'];
+      const capturedUrl = opts.targetUrlOverride ?? row.study_url ?? '';
+      const urlHash = urlHashSalt
+        ? createHash('sha256').update(urlHashSalt + capturedUrl).digest('hex').slice(0, 16)
+        : undefined;
+
       const brokerPayload: CaptureRequestPayload = {
         status: captureResult.status,
         a11y_tree_b64: Buffer.from(JSON.stringify(captureResult.a11y_tree), 'utf8').toString('base64'),
@@ -174,6 +190,8 @@ export async function pollOnce(opts: PollOpts): Promise<PollResult> {
         host_count: captureResult.host_count,
         ...(captureResult.blocked_reason !== undefined && { blocked_reason: captureResult.blocked_reason }),
         ...(captureResult.breach_reason !== undefined && { breach_reason: captureResult.breach_reason }),
+        study_id: studyId,
+        ...(urlHash !== undefined && { url_hash: urlHash }),
       };
 
       const brokerOpts = {
@@ -190,6 +208,9 @@ export async function pollOnce(opts: PollOpts): Promise<PollResult> {
             'broker rejected artifact',
           );
           visitStatus = 'failed';
+        } else {
+          // Carry the page_captures PK so we can link visits.capture_id below.
+          pageCaptureId = ack.page_capture_id;
         }
       } catch (brokerErr) {
         log.error(
@@ -202,10 +223,19 @@ export async function pollOnce(opts: PollOpts): Promise<PollResult> {
 
     // ── 4. Write terminal visit status WITHIN the lease transaction ───────────
     // Updating the row we hold FOR UPDATE is safe; commit releases the lock.
-    await client.query(
-      `UPDATE visits SET status = $1, ended_at = now() WHERE id = $2`,
-      [visitStatus, visitId],
-    );
+    // Set capture_id when the broker returned the page_captures PK (production
+    // pgCaptureStore path); NULL in test/smoke paths where id=0 is not returned.
+    if (pageCaptureId !== undefined) {
+      await client.query(
+        `UPDATE visits SET status = $1, capture_id = $2, ended_at = now() WHERE id = $3`,
+        [visitStatus, pageCaptureId, visitId],
+      );
+    } else {
+      await client.query(
+        `UPDATE visits SET status = $1, ended_at = now() WHERE id = $2`,
+        [visitStatus, visitId],
+      );
+    }
     await client.query('COMMIT');
     leaseHeld = false;
   } catch (err) {

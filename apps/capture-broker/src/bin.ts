@@ -14,9 +14,10 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect } from 'node:net';
+import { Pool } from 'pg';
 import { startBroker } from './server.js';
-import { inMemoryStorage } from './storage.js';
-import { inMemoryCaptureStore } from './captureStore.js';
+import { inMemoryStorage, localFileStorage } from './storage.js';
+import { inMemoryCaptureStore, pgCaptureStore } from './captureStore.js';
 import { frame, HEADER_BYTES } from './framing.js';
 import type { BrokerAck } from './schema.js';
 
@@ -89,27 +90,29 @@ function sendProbe(socketPath: string, payload: string): Promise<BrokerAck> {
 }
 
 async function runProduction(): Promise<void> {
-  // Production wiring: Supabase Storage + Postgres.
-  // These are loaded lazily so that `--smoke` (CI) never requires env vars.
+  // Production wiring: local-fs artifact storage + Postgres capture store.
   const socketPath = process.env['BROKER_SOCKET_PATH'] ?? '/run/willbuy/broker.sock';
 
-  // Dynamically import production adapters. They are not bundled into the
-  // in-memory test doubles to keep CI free of live backend dependencies.
-  //
-  // If adapters are not yet wired (v0.1 skeleton), fall back to in-memory so
-  // the binary stays startable. A TODO is left here so the follow-up issue
-  // (#N — production storage wiring) can land cleanly.
-  // TODO(#32-followup): wire real Supabase Storage + Postgres client here.
-  const storage = inMemoryStorage();
-  const store = inMemoryCaptureStore();
+  const dbUrl = process.env['DATABASE_URL'];
+  if (!dbUrl) {
+    process.stderr.write('[willbuy-capture-broker] DATABASE_URL is required\n');
+    process.exit(1);
+  }
+
+  const pool = new Pool({ connectionString: dbUrl });
+  const captureBasePath = process.env['CAPTURE_STORAGE_PATH'] ?? '/tmp/willbuy/captures';
+  const storage = localFileStorage(captureBasePath);
+  const store = pgCaptureStore(pool);
 
   process.stdout.write(`[willbuy-capture-broker] starting on ${socketPath}\n`);
+  process.stdout.write(`[willbuy-capture-broker] artifact storage: ${captureBasePath}\n`);
 
   const handle = await startBroker({ storage, store, socketPath });
 
   const shutdown = async (signal: string): Promise<void> => {
     process.stdout.write(`[willbuy-capture-broker] ${signal} received, shutting down\n`);
     await handle.close();
+    await pool.end();
     process.exit(0);
   };
 

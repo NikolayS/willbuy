@@ -211,17 +211,26 @@ async function handleConnection(socket: Socket, deps: BrokerDeps): Promise<void>
     breach_reason: req.breach_reason ?? null,
     redactor_v: REDACTOR_VERSION,
     created_at: (deps.now ?? (() => new Date().toISOString()))(),
+    ...(req.study_id !== undefined && { study_id: req.study_id }),
+    ...(req.url_hash !== undefined && { url_hash: req.url_hash }),
   };
 
+  let pageCaptureId: number | undefined;
   try {
-    await deps.store.insert(row);
+    const inserted = await deps.store.insert(row);
+    // id=0 from inMemoryCaptureStore (smoke/tests); real bigint PK from pgCaptureStore.
+    if (inserted.id > 0) pageCaptureId = inserted.id;
   } catch (e) {
     sendError('db_failed', e instanceof Error ? e.message.slice(0, 200) : undefined);
     return;
   }
 
-  const ackOk: BrokerAck = screenshotKey
-    ? { ok: true, capture_id: captureId, a11y_object_key: a11yKey, screenshot_object_key: screenshotKey }
-    : { ok: true, capture_id: captureId, a11y_object_key: a11yKey };
+  const ackOk: BrokerAck = {
+    ok: true,
+    capture_id: captureId,
+    a11y_object_key: a11yKey,
+    ...(screenshotKey !== undefined && { screenshot_object_key: screenshotKey }),
+    ...(pageCaptureId !== undefined && { page_capture_id: pageCaptureId }),
+  };
   sendAck(ackOk);
 }
