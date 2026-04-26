@@ -389,3 +389,21 @@ default-src 'self'; script-src 'self' 'nonce-<NONCE>' 'strict-dynamic'; style-sr
 - (f) The middleware test (`apps/web/test/middleware.test.ts`) asserts: `script-src` contains `'self'` + `'nonce-<value>'` + `'strict-dynamic'`; `script-src` does NOT contain `'unsafe-inline'` / `'unsafe-eval'`; `x-nonce` is exposed on the response; `x-nonce` is forwarded on the request via the Next 14 `x-middleware-request-x-nonce` shadow header; successive requests get distinct nonces; nonce is URL-safe-base64. All six assertions guard the A9 invariants.
 
 **Tracking.** PR #N (set on merge), issue #135. Future spec rev folds nonce + `'strict-dynamic'` into §5.10 directly and drops the verbatim string-form there (now request-scoped).
+
+---
+
+## 2026-04-26 — A10: HDBSCAN small-dataset fallback — single catch-all cluster when density pass finds nothing
+
+**Affects:** §17 (HDBSCAN params: clustering output), §5.7 (clustering algorithm).
+
+**Driver:** Issue #180 (PR #181). Spec §17 defines HDBSCAN with `min_cluster_size=3`. With sparse finding strings from a small study (< ~50 visits), the density-based pass labels all points as noise and returns an empty label array. In the Sprint 6 dogfood (n=10 visits), `unanswered_blockers` produced zero clusters despite ~30 total strings, leaving the theme board section entirely empty on the report.
+
+**Amendment.** When `cluster_findings()` receives `len(normalized) >= 3` strings but HDBSCAN assigns every point to noise (i.e. no clusters in the output), return **one catch-all cluster** containing all normalized strings with `id=0`. When `len(normalized) < 3`, the existing early bail (`return []`) still applies — HDBSCAN cannot form a cluster regardless, and returning a trivial singleton "cluster" adds no signal.
+
+This fallback fires only for small datasets; large studies with sufficient density pass through the normal HDBSCAN path and are unaffected.
+
+**What is NOT changed.** HDBSCAN parameters (`min_cluster_size=3`, `min_samples=3`, `cluster_selection_method='eom'`, `approx_min_span_tree=False`, `random_state=42`, `metric='precomputed'`), the L2-normalization in `_embed`, the normalize-dedupe-lex-sort pipeline, and the determinism guarantee within a pinned image digest — all unchanged. The spec §17 statement "Noise points (HDBSCAN label == -1) are excluded" still applies to the normal path; the fallback fires only when the normal path produces zero clusters.
+
+**Regression test.** `test_cluster_findings_small_dataset_fallback` in `apps/aggregator/tests/test_cluster.py` monkeypatches `_embed` with random-spread vectors that HDBSCAN cannot cluster and asserts one catch-all cluster is returned.
+
+**Tracking.** PR #181 (issue #180). Future spec rev folds fallback behavior into §17 / §5.7.
