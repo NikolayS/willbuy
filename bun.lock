@@ -23,6 +23,7 @@
       "dependencies": {
         "@fastify/sensible": "^6.0.1",
         "@types/pg": "^8.20.0",
+        "@willbuy/log": "workspace:*",
         "fastify": "^5.2.1",
         "nanoid": "^5.1.9",
         "pg": "^8.20.0",
@@ -43,6 +44,8 @@
       "name": "@willbuy/capture-broker",
       "version": "0.0.0",
       "dependencies": {
+        "@willbuy/log": "workspace:*",
+        "pino": "^9.5.0",
         "yaml": "^2.5.1",
         "zod": "^3.23.0",
       },
@@ -56,16 +59,18 @@
       "name": "@willbuy/capture-worker",
       "version": "0.0.0",
       "dependencies": {
-        "@types/pg": "^8.20.0",
-        "@willbuy/capture-broker": "workspace:*",
+        "@willbuy/log": "workspace:*",
         "pg": "^8.20.0",
+        "pino": "^9.5.0",
         "playwright": "1.45.0",
-        "zod": "^3.23.0",
       },
       "devDependencies": {
         "@types/node": "^22.10.2",
+        "@types/pg": "^8.20.0",
+        "@willbuy/capture-broker": "workspace:*",
         "typescript": "^5.7.2",
         "vitest": "^2.1.8",
+        "zod": "^3.23.0",
       },
     },
     "apps/visitor-worker": {
@@ -73,7 +78,9 @@
       "version": "0.0.0",
       "dependencies": {
         "@willbuy/llm-adapter": "workspace:*",
+        "@willbuy/log": "workspace:*",
         "@willbuy/shared": "workspace:*",
+        "pino": "^9.5.0",
         "zod": "^3.23.8",
       },
       "devDependencies": {
@@ -113,6 +120,18 @@
     "packages/llm-adapter": {
       "name": "@willbuy/llm-adapter",
       "version": "0.0.0",
+      "devDependencies": {
+        "@types/node": "^22.10.2",
+        "typescript": "^5.7.2",
+        "vitest": "^2.1.8",
+      },
+    },
+    "packages/log": {
+      "name": "@willbuy/log",
+      "version": "0.0.0",
+      "dependencies": {
+        "pino": "^9.5.0",
+      },
       "devDependencies": {
         "@types/node": "^22.10.2",
         "typescript": "^5.7.2",
@@ -421,6 +440,8 @@
     "@willbuy/capture-worker": ["@willbuy/capture-worker@workspace:apps/capture-worker"],
 
     "@willbuy/llm-adapter": ["@willbuy/llm-adapter@workspace:packages/llm-adapter"],
+
+    "@willbuy/log": ["@willbuy/log@workspace:packages/log"],
 
     "@willbuy/shared": ["@willbuy/shared@workspace:packages/shared"],
 
