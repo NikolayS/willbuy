@@ -1,0 +1,22 @@
+[Unit]
+# willbuy Next.js web — spec §5 front-end layer.
+#
+# Runs `next start -p 3000` directly to guarantee port 3000, bypassing
+# the PORT env var in the shared EnvironmentFile (which is set to 3001
+# for the API). Using `-p` flag rather than Environment=PORT= because
+# `bun run --filter` does not propagate Environment overrides to Next.js.
+
+Description=willbuy web
+After=willbuy-api.service
+
+[Service]
+Type=simple
+User=willbuy
+WorkingDirectory=/srv/willbuy
+EnvironmentFile=/etc/willbuy/app.env
+ExecStart=/bin/bash -c "cd /srv/willbuy/apps/web && /home/willbuy/.bun/bin/bun run next start -p 3000"
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
