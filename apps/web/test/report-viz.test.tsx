@@ -19,6 +19,7 @@ import { Report, type ReportT } from '@willbuy/shared/report';
 import fixtureJson from './fixtures/report.fixture.json';
 import disagreementJson from './fixtures/report.disagreement.fixture.json';
 import { ReportView } from '../components/report/ReportView';
+import { NextActions } from '../components/report/NextActions';
 import { PairedDots } from '../components/report/PairedDots';
 import { exportElementToPng } from '../lib/png-export';
 
@@ -290,6 +291,19 @@ describe('§5.18 — report visualization', () => {
     await act(async () => { await Promise.resolve(); });
     expect(container.querySelectorAll('[data-testid="persona-grid"]').length).toBe(1);
   });
+
+
+  it('§5.18 #4 v0.1.1 — next-actions Sankey toggle renders and switches view (#175)', () => {
+    // data-testid="next-actions-mode-toggle" must be present by default.
+    render(<NextActions rows={fixture.next_actions} />);
+    expect(screen.getByTestId('next-actions-mode-toggle')).toBeTruthy();
+    // Sankey view should not be visible initially (bar mode is default).
+    expect(screen.queryByTestId('next-actions-sankey')).toBeNull();
+    // Clicking "Sankey" button shows the Sankey view.
+    fireEvent.click(screen.getByRole('button', { name: /sankey/i }));
+    expect(screen.getByTestId('next-actions-sankey')).toBeTruthy();
+  });
+
 
   it('F1 — paired-dot plot renders one SVG <line> connector per backstory (§5.18 #2)', () => {
     // Spec §5.18 #2: "Per-visitor dots showing A-score vs B-score with a
