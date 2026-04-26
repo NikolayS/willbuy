@@ -367,6 +367,51 @@ describeIfDocker('auth magic-link (issue #79, real DB)', () => {
   });
 
   // -------------------------------------------------------------------------
+  // AC2-regression (issue #99 N3): idempotent re-request of magic-link keeps
+  // the FIRST token usable. Two POSTs for the same email within 30 min must
+  // not invalidate the earlier token; the first token still verifies → 302.
+  // -------------------------------------------------------------------------
+  it('AC2-regression: re-requesting magic-link does not invalidate the first token (issue #99)', async () => {
+    const email = 'ac2-regression@example.com';
+
+    // First request — capture the first verifyUrl/token.
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/auth/magic-link',
+      payload: { email },
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(first.statusCode).toBe(202);
+    const firstVerifyUrl = resendStub.lastCall?.verifyUrl ?? '';
+    const firstMatch = /[?&]token=([^&]+)/.exec(firstVerifyUrl);
+    const firstToken = firstMatch?.[1] ?? '';
+    expect(firstToken).toBeTruthy();
+
+    // Second request for the same email (within the 30-min expiry window).
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/auth/magic-link',
+      payload: { email },
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(second.statusCode).toBe(202);
+    const secondVerifyUrl = resendStub.lastCall?.verifyUrl ?? '';
+    const secondMatch = /[?&]token=([^&]+)/.exec(secondVerifyUrl);
+    const secondToken = secondMatch?.[1] ?? '';
+    expect(secondToken).toBeTruthy();
+
+    // The two tokens may or may not be equal (current impl issues a fresh
+    // row each time); the spec only requires that the FIRST token remains
+    // valid. That's the AC2 invariant we're regression-locking here.
+    const verifyFirst = await app.inject({
+      method: 'GET',
+      url: `/api/auth/verify?token=${firstToken}`,
+    });
+    expect(verifyFirst.statusCode).toBe(302);
+    expect(verifyFirst.headers.location).toBe('/dashboard');
+  });
+
+  // -------------------------------------------------------------------------
   // AC9: Dev mode (WILLBUY_DEV_SESSION set) — verify URL in body, no email sent.
   // -------------------------------------------------------------------------
   it('AC9: WILLBUY_DEV_SESSION set → verifyUrl in body, Resend NOT called', async () => {

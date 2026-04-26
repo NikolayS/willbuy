@@ -131,6 +131,13 @@ function StudyStatusInner({ id }: { id: string }) {
       if (result.ok) {
         setStudy(result.data);
         setLoadError(null);
+        // Issue #74 MINOR-1: stop polling once terminal status is reached.
+        // Without this, the page keeps hitting GET /studies/:id every 5 s
+        // forever as long as the tab stays open.
+        const s = result.data.status;
+        if (s === 'ready' || s === 'failed') {
+          clearInterval(interval);
+        }
       } else {
         setLoadError(result.error);
       }
@@ -139,7 +146,8 @@ function StudyStatusInner({ id }: { id: string }) {
     // Initial fetch.
     void fetchStudy();
 
-    // Set up polling interval.
+    // Set up polling interval (declared after fetchStudy so it's referenceable
+    // inside the closure without `let` — Issue #74 MINOR-1).
     const interval = setInterval(() => {
       void fetchStudy();
     }, POLL_INTERVAL_MS);
@@ -201,8 +209,13 @@ function StudyStatusInner({ id }: { id: string }) {
           <p className="text-sm font-medium text-green-800">
             Your study is ready! View the report to see results.
           </p>
+          {/* Issue #74 MINOR-2: GET /studies/:id returns the study's slug
+              field (per PR #102 dashboard-summary endpoint pattern). Use it
+              when available; fall back to /r/${s.id} (matches the bare-id
+              shape used by /dashboard/studies/StudiesListView). The previous
+              fallback (/r/study-${s.id}) would 404. */}
           <a
-            href={s.slug ? `/r/${s.slug}` : `/r/study-${s.id}`}
+            href={s.slug ? `/r/${s.slug}` : `/r/${s.id}`}
             className="mt-3 inline-block rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
           >
             View report
