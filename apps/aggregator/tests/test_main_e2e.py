@@ -126,28 +126,29 @@ def test_e2e_run_study_writes_report_and_clusters(tmp_path: Path) -> None:
     assert isinstance(report_row[1], float)
     assert isinstance(report_row[2], str) and len(report_row[2]) > 0
 
-    # Paired stats present.
-    assert "paired_delta" in payload
-    pd = payload["paired_delta"]
-    assert "mean_delta" in pd
-    assert "paired_t_p" in pd
-    assert "wilcoxon_p" in pd
-    assert "mcnemar_p" in pd
-    assert "disagreement" in pd
-    assert pd["n"] == 15
+    # paired_delta_json stores only paired stats (flat dict, no wrapper key).
+    assert "mean_delta" in payload
+    assert "paired_t_p" in payload
+    assert "wilcoxon_p" in payload
+    assert "mcnemar_p" in payload
+    assert "disagreement" in payload
+    assert payload["n"] == 15
 
-    # Clusters present (objections sample is duplicated enough across personas
-    # that we expect at least ONE non-noise cluster from the embedding pass).
-    assert "clusters" in payload
-    assert isinstance(payload["clusters"], dict)
+    # clusters_json is stored as a separate column.
+    cur2 = conn.execute(
+        "SELECT clusters_json FROM reports WHERE study_id=?",
+        ("study_e2e_001",),
+    )
+    clusters = json.loads(cur2.fetchone()[0])
     # At least one of the four finding kinds yields a cluster list.
-    total_clusters = sum(len(v) for v in payload["clusters"].values())
+    assert isinstance(clusters, dict)
+    total_clusters = sum(len(v) for v in clusters.values())
     assert total_clusters >= 1
 
     # provider_attempts has at least one cluster_label row (only one per cluster).
-    cur = conn.execute(
+    cur3 = conn.execute(
         "SELECT COUNT(*) FROM provider_attempts WHERE study_id=? AND kind='cluster_label'",
         ("study_e2e_001",),
     )
-    n_label_rows = cur.fetchone()[0]
+    n_label_rows = cur3.fetchone()[0]
     assert n_label_rows == total_clusters

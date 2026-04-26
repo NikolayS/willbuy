@@ -14,6 +14,7 @@ function trusts that the caller (API service) has already acquired the row.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import secrets
@@ -191,14 +192,12 @@ def run_study(
         ledger = _PgLedger(conn, study_id)
     clusters = _cluster_with_labels(findings, llm_caller=llm_caller, ledger=ledger)
 
-    payload = {
-        "paired_delta": paired.to_dict(),
-        "clusters": clusters,
-    }
+    payload = paired.to_dict()
 
     conv_score = float(sum(_score_visit(v["output"]) for v in visits) / len(visits)) if visits else 0.0
 
-    share_token_hash = secrets.token_hex(16)
+    raw_token = secrets.token_urlsafe(32)
+    share_token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
     db.execute(
         conn,
