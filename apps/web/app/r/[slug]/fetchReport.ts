@@ -21,8 +21,13 @@ export async function fetchReport(slug: string): Promise<unknown | null> {
     return fixture;
   }
 
-  const jar = await cookies();
-  const cookieVal = jar.get(`wb_rt_${slug}`)?.value;
+  // cookies() throws outside a request scope (e.g. in unit tests); treat as no cookie.
+  let cookieVal: string | undefined;
+  try {
+    cookieVal = (await cookies()).get(`wb_rt_${slug}`)?.value;
+  } catch {
+    cookieVal = undefined;
+  }
   const headers: Record<string, string> = {};
   if (cookieVal !== undefined) {
     headers['cookie'] = `wb_rt_${slug}=${cookieVal}`;
