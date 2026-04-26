@@ -74,6 +74,15 @@ export function pgCaptureStore(pool: Pool): CaptureStore {
            (study_id, url_hash, a11y_storage_key, screenshot_storage_key,
             host_count, status, breach_reason, captured_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (study_id, (COALESCE(side, ''::text)))
+           DO UPDATE SET
+             a11y_storage_key       = EXCLUDED.a11y_storage_key,
+             screenshot_storage_key = EXCLUDED.screenshot_storage_key,
+             url_hash               = EXCLUDED.url_hash,
+             host_count             = EXCLUDED.host_count,
+             status                 = EXCLUDED.status,
+             breach_reason          = EXCLUDED.breach_reason,
+             captured_at            = EXCLUDED.captured_at
          RETURNING id`,
         [
           row.study_id,
