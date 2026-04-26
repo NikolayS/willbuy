@@ -11,6 +11,7 @@
   "references": [
     { "path": "./apps/api" },
     { "path": "./apps/capture-broker/tsconfig.build.json" },
+    { "path": "./packages/log" },
     { "path": "./packages/shared" },
     { "path": "./packages/llm-adapter" }
   ]

@@ -18,7 +18,9 @@
   },
   "dependencies": {
     "@willbuy/llm-adapter": "workspace:*",
+    "@willbuy/log": "workspace:*",
     "@willbuy/shared": "workspace:*",
+    "pino": "^9.5.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
