@@ -5,14 +5,15 @@
 // Return value is a discriminated union:
 //   - 'not_found'  API returned 404 (study_id invalid, report expired, or fetch error)
 //   - 'pending'    API returned 200 but report_json is null (aggregator not yet run)
-//   - unknown      API returned 200 with valid report_json (parsed payload)
+//   - ReportPayload  API returned 200 with valid report_json (parsed payload + urls)
 
 import { cookies } from 'next/headers';
 import fixture from '../../../test/fixtures/report.fixture.json';
 
 const FIXTURE_SLUG = 'test-fixture';
 
-export type FetchReportResult = 'not_found' | 'pending' | unknown;
+export type ReportPayload = { reportJson: unknown; urls: string[] | null };
+export type FetchReportResult = 'not_found' | 'pending' | ReportPayload;
 
 function apiBaseUrl(): string {
   const explicit = process.env['WILLBUY_API_URL'] ?? process.env['NEXT_PUBLIC_API_URL'];
@@ -25,7 +26,7 @@ export async function fetchReport(slug: string): Promise<FetchReportResult> {
     process.env.WILLBUY_REPORT_FIXTURE === 'enabled' &&
     slug === FIXTURE_SLUG
   ) {
-    return fixture;
+    return { reportJson: fixture, urls: null };
   }
 
   // cookies() throws outside a request scope (e.g. in unit tests); treat as no cookie.
@@ -56,5 +57,6 @@ export async function fetchReport(slug: string): Promise<FetchReportResult> {
   const body = (await res.json()) as Record<string, unknown>;
   const reportJson = body['report_json'];
   if (reportJson === null || reportJson === undefined) return 'pending';
-  return reportJson;
+  const urls = Array.isArray(body['urls']) ? (body['urls'] as string[]) : null;
+  return { reportJson, urls };
 }
