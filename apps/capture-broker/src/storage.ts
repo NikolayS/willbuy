@@ -51,7 +51,7 @@ export function inMemoryStorage(): ObjectStorage & {
  */
 export function localFileStorage(basePath: string): ObjectStorage {
   return {
-    async put(key: string, body: Buffer, _contentType: string): Promise<void> {
+    async put(key: string, body: Buffer): Promise<void> {
       const dest = join(basePath, key);
       await mkdir(dirname(dest), { recursive: true });
       await writeFile(dest, body);
