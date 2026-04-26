@@ -421,6 +421,16 @@ describe('strict allowlist mode', () => {
     expect(r['duration_capture_ms']).toBe(999);
   });
 
+  it('drops error_detail regardless of strict mode (REMOVE_FIELDS)', () => {
+    const r = redact(
+      { event: 'broker.rejected', visit_id: 'v_1', error_class: 'ValidationError', error_detail: 'some debug string' },
+      salt,
+    ) as Record<string, unknown>;
+    expect(r['error_detail']).toBeUndefined();
+    expect(r['event']).toBe('broker.rejected');
+    expect(r['error_class']).toBe('ValidationError');
+  });
+
   it('strips secret_data via buildLogger strict:true but not strict:false', () => {
     function captureWithStrict(strict: boolean): Record<string, unknown> {
       const chunks: string[] = [];

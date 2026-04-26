@@ -64,6 +64,7 @@ const REMOVE_FIELDS = new Set([
   'provider_payload',
   'password',
   'page_bytes',
+  'error_detail',
 ]);
 const API_KEY_FIELD = 'api_key';
 const EMAIL_FIELD = 'email';
