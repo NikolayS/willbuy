@@ -20,13 +20,27 @@ export default async function ReportPage({
   const { slug } = await params;
   const result = await fetchReport(slug);
 
-  if (result === null) {
+  if (result === 'not_found' || result === null) {
     return (
       <>
         <main className="mx-auto max-w-3xl px-6 py-16">
           <h1 className="text-3xl font-bold tracking-tight">Report not found</h1>
           <p className="mt-6 text-gray-700">
             No report exists for <code>{slug}</code>, or the share link has been revoked.
+          </p>
+        </main>
+        <ReportCtaBar />
+      </>
+    );
+  }
+
+  if (result === 'pending') {
+    return (
+      <>
+        <main className="mx-auto max-w-3xl px-6 py-16">
+          <h1 className="text-3xl font-bold tracking-tight">Report is being prepared</h1>
+          <p className="mt-6 text-gray-700">
+            The analysis for <code>{slug}</code> is still running. Refresh in a moment.
           </p>
         </main>
         <ReportCtaBar />
