@@ -27,28 +27,39 @@ const BASELINE: CanaryBaseline = {
   // on purpose so a Chromium minor-version bump that re-arranges role
   // nesting still passes — the canary watches for symptom-level
   // regressions, not pixel diffs.
+  //
+  // Note: "MEAN Δ WILL-TO-BUY" is uppercased here on purpose. The DOM
+  // text content is lowercase ("mean Δ will-to-buy"), but the span
+  // applies CSS `text-transform: uppercase` and Chromium computes the
+  // accessible name from the *rendered* string. Asserting on the a11y
+  // form keeps the unit-test honest with what live capture sees.
   requiredA11yPhrases: [
     'Paired-delta dot plot',
     'Persona cards',
-    'mean Δ will-to-buy',
+    'MEAN Δ WILL-TO-BUY',
     'test-fixture',
   ],
   maxBannerSelectorsMatched: 0,
   maxHostCount: 5,
 };
 
+// Stub a11y tree shaped after the live /r/test-fixture render
+// (apps/web/app/r/[slug]/page.tsx + ReportView): page-level h1 names the
+// study slug, then the report sections expose their h2 headings and the
+// headline-stat label. Only the substrings BASELINE asserts on need to
+// be present; structure is illustrative.
 const goldResult: CaptureResult = {
   status: 'ok',
   url: 'http://127.0.0.1:3014/r/test-fixture',
   a11y_tree: [
     {
       role: 'RootWebArea',
-      name: 'Simple capture fixture',
+      name: 'willbuy.dev — public report',
       children: [
-        { role: 'heading', name: 'Pricing that scales with you', level: 1, children: [] },
-        { role: 'image', name: 'Postgres logo', children: [] },
-        { role: 'button', name: 'Start free', children: [] },
-        { role: 'link', name: 'Talk to sales', children: [] },
+        { role: 'heading', name: 'Study test-fixture', level: 1, children: [] },
+        { role: 'text', name: 'MEAN Δ WILL-TO-BUY', children: [] },
+        { role: 'heading', name: 'Paired-delta dot plot', level: 2, children: [] },
+        { role: 'heading', name: 'Persona cards', level: 2, children: [] },
       ],
     },
   ],
@@ -77,13 +88,15 @@ describe('compareCanaryToBaseline (spec §5.16 weekly canary)', () => {
       a11y_tree: [
         {
           role: 'RootWebArea',
-          name: 'Simple capture fixture',
-          // "Start free" button is gone — exactly the kind of regression a
-          // browser bump might silently introduce by changing role mapping.
+          name: 'willbuy.dev — public report',
+          // "Persona cards" h2 is gone — exactly the kind of regression a
+          // browser bump might silently introduce by changing role mapping
+          // (e.g. h2 → generic), and a real one if the component stops
+          // rendering the section header at all.
           children: [
-            { role: 'heading', name: 'Pricing that scales with you', level: 1, children: [] },
-            { role: 'image', name: 'Postgres logo', children: [] },
-            { role: 'link', name: 'Talk to sales', children: [] },
+            { role: 'heading', name: 'Study test-fixture', level: 1, children: [] },
+            { role: 'text', name: 'MEAN Δ WILL-TO-BUY', children: [] },
+            { role: 'heading', name: 'Paired-delta dot plot', level: 2, children: [] },
           ],
         },
       ],
@@ -91,7 +104,7 @@ describe('compareCanaryToBaseline (spec §5.16 weekly canary)', () => {
     const verdict = compareCanaryToBaseline(stripped, BASELINE);
     expect(verdict.ok).toBe(false);
     if (!verdict.ok) {
-      expect(verdict.reason).toMatch(/Start free/);
+      expect(verdict.reason).toMatch(/Persona cards/);
     }
   });
 

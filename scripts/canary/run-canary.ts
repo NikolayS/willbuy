@@ -20,13 +20,26 @@ const FIXTURE_PATH = process.env.WILLBUY_CANARY_FIXTURE_PATH ?? '/r/test-fixture
 // Same baseline the unit test pins. Substring-only on purpose so a
 // Chromium minor bump that re-arranges role nesting still passes — the
 // canary watches for symptom-level regressions, not pixel diffs.
+//
+// Phrases below are the structural anchors of the /r/test-fixture
+// report-page render (spec §5.18, apps/web/components/report/*): two
+// h2 section headings, the headline-stat label (which exercises the Δ
+// codepoint round-trip through the a11y tree), and the study slug
+// (proves the WILLBUY_REPORT_FIXTURE loader fired and we got the
+// fixture report rather than the "Report not found" 404 branch).
+//
+// Note: "MEAN Δ WILL-TO-BUY" is uppercase on purpose — the DOM text
+// is "mean Δ will-to-buy" but CSS `text-transform: uppercase` on the
+// span causes Chromium to compute the accessible name off the
+// rendered (uppercased) string. The unit-test BASELINE in
+// apps/capture-worker/test/canary-smoke.test.ts mirrors this.
 const BASELINE: CanaryBaseline = {
   expectedStatus: 'ok',
   requiredA11yPhrases: [
-    'Pricing that scales with you',
-    'Postgres logo',
-    'Start free',
-    'Talk to sales',
+    'Paired-delta dot plot',
+    'Persona cards',
+    'MEAN Δ WILL-TO-BUY',
+    'test-fixture',
   ],
   maxBannerSelectorsMatched: 0,
   maxHostCount: 5,
