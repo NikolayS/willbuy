@@ -45,6 +45,8 @@ VALID_NEXT_ACTIONS: list[str] = [
     "start_paid_trial",
     "bookmark_compare_later",
     "start_free_hobby",
+    "ask_teammate",
+    "leave",
 ]
 
 VALID_TIERS: list[str] = ["none", "hobby", "express", "starter", "scale", "enterprise"]
