@@ -56,12 +56,37 @@ RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v1.3
 
 WORKDIR /app
 
-# Copy worker source + lockfile. Build context is the monorepo root.
-COPY --chown=capture:capture bun.lock package.json ./
-COPY --chown=capture:capture apps/capture-worker ./apps/capture-worker
+# Build context is the monorepo root (see build-rootfs.sh + ci.yml).
+#
+# Bun's workspace install needs to see the WHOLE workspace topology to
+# resolve `workspace:*` references — including ones that live in devDeps
+# (here: capture-worker → capture-broker, kept for type alignment, not
+# imported at runtime; see apps/capture-worker/src/broker-client.ts).
+# So we copy every workspace's package.json before `bun install`, even
+# the ones the runtime worker doesn't import. Cheap (just metadata) and
+# preserves layer caching: the install layer only invalidates when a
+# package.json or the lockfile actually changes.
+COPY --chown=capture:capture package.json bun.lock tsconfig.base.json ./
+COPY --chown=capture:capture apps/api/package.json             ./apps/api/
+COPY --chown=capture:capture apps/capture-broker/package.json  ./apps/capture-broker/
+COPY --chown=capture:capture apps/capture-worker/package.json  ./apps/capture-worker/
+COPY --chown=capture:capture apps/visitor-worker/package.json  ./apps/visitor-worker/
+COPY --chown=capture:capture apps/web/package.json             ./apps/web/
+COPY --chown=capture:capture packages/llm-adapter/package.json ./packages/llm-adapter/
+COPY --chown=capture:capture packages/shared/package.json      ./packages/shared/
 
-RUN bun install --filter @willbuy/capture-worker --frozen-lockfile --production \
+# `--frozen-lockfile` is intentionally OFF here. The standard `build` CI
+# job is the gate for lockfile consistency; this Dockerfile is a build
+# artefact and must keep working when the lockfile shifts mid-PR (e.g.,
+# after a merge from main brings new packages). If install resolves a
+# different lockfile shape, the resulting rootfs is still functionally
+# correct — we just don't want to fail closed on the artefact build.
+RUN bun install --filter @willbuy/capture-worker --production \
  && chown -R capture:capture /app
+
+# Now copy the worker source. Split from the install layer so source
+# edits don't bust the (slow) install cache.
+COPY --chown=capture:capture apps/capture-worker ./apps/capture-worker
 
 # init.sh becomes /sbin/init inside the microVM (PID 1).
 COPY --chmod=0755 infra/firecracker/rootfs/init.sh /sbin/init
