@@ -1,0 +1,48 @@
+{
+  "_comment": [
+    "Firecracker config for manual smoke testing of the willbuy guest image.",
+    "Usage:",
+    "  cd infra/firecracker",
+    "  bash kernel/build-kernel.sh",
+    "  bash rootfs/build-rootfs.sh",
+    "  gunzip -k build/rootfs.ext4.gz",
+    "  sudo firecracker --no-api --config-file test-boot.json",
+    "",
+    "Network bring-up on the host (run BEFORE firecracker, requires NET_ADMIN):",
+    "  sudo ip tuntap add tap-fc0 mode tap user $(id -u)",
+    "  sudo ip addr add 169.254.0.1/30 dev tap-fc0",
+    "  sudo ip link set tap-fc0 up",
+    "",
+    "After boot you should see kernel logs followed by '[init] mounting",
+    "pseudo-filesystems' and the broker shim line. Issue #117 wires this",
+    "into an automated smoke gate; until then this config is operator-only."
+  ],
+  "boot-source": {
+    "kernel_image_path": "build/vmlinux",
+    "boot_args": "console=ttyS0 reboot=k panic=1 pci=off i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd init=/sbin/init willbuy.broker_cid=2 willbuy.broker_port=5555"
+  },
+  "drives": [
+    {
+      "drive_id": "rootfs",
+      "path_on_host": "build/rootfs.ext4",
+      "is_root_device": true,
+      "is_read_only": false
+    }
+  ],
+  "machine-config": {
+    "vcpu_count": 2,
+    "mem_size_mib": 1024,
+    "smt": false
+  },
+  "network-interfaces": [
+    {
+      "iface_id": "eth0",
+      "host_dev_name": "tap-fc0",
+      "guest_mac": "06:00:AC:10:00:02"
+    }
+  ],
+  "vsock": {
+    "guest_cid": 3,
+    "uds_path": "/tmp/willbuy-fc.vsock"
+  }
+}

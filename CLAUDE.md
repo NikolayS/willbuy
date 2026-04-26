@@ -108,6 +108,10 @@ Then:
 
 Use binary units (KiB, MiB, GiB, TiB) for memory, storage, and data sizes in prose, reports, and documentation. Exception: provider-native config formats stay as the provider writes them (e.g. Postgres `shared_buffers = '2GB'`).
 
+## Firecracker microVM base image (v0.2 isolation upgrade)
+
+The Sprint 4 microVM substrate (kernel + rootfs build pipeline, spec §2 #2 + §5.13 v0.2) lives under `infra/firecracker/`. Read its README before changing anything in the kernel config or rootfs Dockerfile — the artefact format is the contract issues #115/#116/#117 consume.
+
 ## Working with migrations
 
 New migration? Use `bash scripts/next-migration.sh <slug>` — it picks the next free 4-digit prefix and creates both `infra/migrations/` and `infra/sqlever/deploy/` stubs at once. Then add the matching entry to `infra/sqlever/sqitch.plan`. CI runs `bash scripts/check-migrations.sh` (issue #100) to fail fast on prefix collisions.
