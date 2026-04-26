@@ -157,8 +157,8 @@ def test_e2e_run_study_writes_report_and_clusters(tmp_path: Path) -> None:
     n_label_rows = cur.fetchone()[0]
     assert n_label_rows == total_clusters
 
-    # report_json slug matches share_token_hash.
-    assert rj["meta"]["slug"] == report_row[2]
+    # report_json slug matches study_id (the URL route key), not the share_token_hash.
+    assert rj["meta"]["slug"] == "study_e2e_001"
     # histograms has at least 1 entry (both variants present in seed data).
     assert isinstance(rj["histograms"], list)
     assert len(rj["histograms"]) >= 1

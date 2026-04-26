@@ -258,10 +258,11 @@ def _build_report_json(
     clusters: dict[str, list[dict]],
     backstory_map: dict[int, dict],
     share_token_hash: str,
+    study_id: str,
 ) -> dict:
     """Compute the full §5.18 Report visualization blob."""
     meta = {
-        "slug": share_token_hash,
+        "slug": str(study_id),
         "low_power": len(visits) < 20,
     }
 
@@ -460,6 +461,7 @@ def run_study(
         clusters=clusters,
         backstory_map=backstory_map,
         share_token_hash=share_token_hash,
+        study_id=study_id,
     )
 
     db.execute(
