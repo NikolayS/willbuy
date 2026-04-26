@@ -19,9 +19,11 @@ import type { Writable } from 'node:stream';
 
 import pino, { type Logger, type LoggerOptions, destination, type DestinationStream } from 'pino';
 
+import { LogPayloadOversizeError } from './errors.js';
 import { redact } from './redactor.js';
 
 export { hashUrl, maskApiKey, maskEmail, redact } from './redactor.js';
+export { LogPayloadOversizeError, MAX_FIELD_BYTES } from './errors.js';
 
 export interface BuildLoggerOptions {
   service: string;
@@ -75,9 +77,44 @@ function buildFileDestination(service: string, logDir: string): DestinationStrea
 
 export function buildLogger(opts: BuildLoggerOptions): Logger {
   const salt = resolveSalt(opts.urlHashSalt);
+
+  // Forward-reference: the formatter needs to emit an alert event via the
+  // logger itself when a redact() throw is caught (spec §5.12 / issue #118
+  // TDD #4). We resolve this circular dependency by closing over a `let`
+  // assigned right after pino() returns.
+  let loggerRef: Logger | null = null;
+
   const formatters: NonNullable<LoggerOptions['formatters']> = {
     log(obj) {
-      return redact(obj, salt) as Record<string, unknown>;
+      try {
+        return redact(obj, salt) as Record<string, unknown>;
+      } catch (err) {
+        if (err instanceof LogPayloadOversizeError) {
+          // Emit a structured alert event on the SAME logger so it lands at
+          // the same destination, then return a redacted stub for the
+          // original line so the caller's log call still produces output
+          // (without leaking the oversize payload).
+          //
+          // The alert is best-effort: if it itself throws (e.g. nested
+          // oversize, which shouldn't happen — the alert payload is small),
+          // we silently swallow to avoid taking down the host.
+          try {
+            loggerRef?.error(
+              { event: 'log_payload_oversize', field: err.field, size: err.size },
+              'log_payload_oversize',
+            );
+          } catch {
+            /* best-effort alert; never fatal */
+          }
+          return {
+            event: 'log_payload_oversize_caller',
+            field: err.field,
+            size: err.size,
+          };
+        }
+        // Unknown error — re-throw so the bug is visible.
+        throw err;
+      }
     },
   };
   const options: LoggerOptions = {
@@ -86,12 +123,15 @@ export function buildLogger(opts: BuildLoggerOptions): Logger {
     formatters,
   };
 
+  let logger: Logger;
   if (opts.destination) {
-    return pino(options, opts.destination as DestinationStream);
-  }
-  if (shouldWriteToFile()) {
+    logger = pino(options, opts.destination as DestinationStream);
+  } else if (shouldWriteToFile()) {
     const logDir = opts.logDir ?? DEFAULT_LOG_DIR;
-    return pino(options, buildFileDestination(opts.service, logDir));
+    logger = pino(options, buildFileDestination(opts.service, logDir));
+  } else {
+    logger = pino(options);
   }
-  return pino(options);
+  loggerRef = logger;
+  return logger;
 }

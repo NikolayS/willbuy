@@ -27,6 +27,8 @@
  */
 import { createHash } from 'node:crypto';
 
+import { LogPayloadOversizeError, MAX_FIELD_BYTES } from './errors.js';
+
 // Field NAMES whose values must NEVER reach the log line.
 const REMOVE_FIELDS = new Set([
   'share_token',
@@ -156,6 +158,19 @@ export function redact(value: unknown, salt: string, ancestry = new WeakSet<obje
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (REMOVE_FIELDS.has(k)) continue;
+
+      // Spec §5.12 / issue #118 TDD #4: oversize string fields are a smell of
+      // accidental payload leaks. Throw a typed error so the pino formatter
+      // emits an alert event instead of silently truncating with a size
+      // marker. We check this BEFORE the api_key / email / url-hash rules:
+      // even a "legitimate" field name carrying 9 KiB of data is treated as
+      // a leak (e.g. a 9 KiB url is itself worth alerting on).
+      if (typeof v === 'string') {
+        const bytes = Buffer.byteLength(v, 'utf8');
+        if (bytes > MAX_FIELD_BYTES) {
+          throw new LogPayloadOversizeError(k, bytes);
+        }
+      }
 
       if (k === API_KEY_FIELD && typeof v === 'string') {
         out[k] = maskApiKey(v);

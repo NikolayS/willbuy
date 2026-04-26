@@ -239,13 +239,18 @@ describe('§5.12 #8 — captured page bytes', () => {
     expect(raw()).not.toContain('leaked-secret-content');
   });
 
-  it('replaces any string > 16 KiB regardless of shape', () => {
-    const { logger, logs, raw } = captureLogs();
+  // Issue #118 TDD #4 supersedes the older silent-size-marker behaviour for
+  // very large strings: a single field exceeding the 8 KiB cap now throws
+  // LogPayloadOversizeError, which the formatter catches and emits as a
+  // structured `log_payload_oversize` alert event. See test/oversize.test.ts
+  // for the full alert-path contract; this test just confirms the original
+  // 20 KiB blob never reaches the wire.
+  it('20 KiB string in a field is alerted on (TDD #4) — never reaches wire', () => {
+    const { logger, raw } = captureLogs();
     const big = 'x'.repeat(20 * 1024);
     logger.info({ blob: big }, 'capture');
-    const [rec] = logs();
-    expect(rec!['blob']).toMatch(/^\[redacted:\d+b\]$/);
     expect(raw()).not.toContain(big);
+    expect(raw()).toContain('log_payload_oversize');
   });
 });
 
