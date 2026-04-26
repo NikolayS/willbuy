@@ -164,6 +164,21 @@ def cluster_findings(strings: Sequence[str]) -> list[Cluster]:
         key=lambda g: g[0],  # tie-break by lowest sorted-input index
     )
 
+    # Small-dataset fallback (issue #180): when HDBSCAN finds no clusters but
+    # strings exist, return one catch-all cluster rather than an empty list.
+    # Prevents hollow report sections for finding kinds with sparse data (< ~50
+    # visits); HDBSCAN needs density ≥ min_cluster_size to form any cluster, so
+    # small studies always fall through to noise. The fallback fires only when
+    # the density-based pass found nothing — large datasets are unaffected.
+    if not groups:
+        return [
+            Cluster(
+                id=0,
+                members=tuple(normalized),
+                member_indices=tuple(range(len(normalized))),
+            )
+        ]
+
     return [
         Cluster(
             id=new_id,
