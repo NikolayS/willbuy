@@ -14,7 +14,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from aggregator.main import run_study
+from aggregator.main import run_study, _coerce_role
 
 
 SCHEMA_SQL = """
@@ -164,3 +164,100 @@ def test_e2e_run_study_writes_report_and_clusters(tmp_path: Path) -> None:
     assert len(rj["histograms"]) >= 1
     # theme_board has all four required keys.
     assert set(rj["theme_board"].keys()) == {"blockers", "objections", "confusions", "questions"}
+
+
+def _seed_with_unknown_role(conn: sqlite3.Connection, study_id: str) -> None:
+    """Seed a minimal study with one backstory whose role_archetype is unknown."""
+    conn.executescript(SCHEMA_SQL)
+    conn.execute("INSERT INTO studies(id, status) VALUES (?, ?)", (study_id, "aggregating"))
+    conn.execute(
+        "INSERT INTO visits(id, study_id, variant_idx, backstory_id, status, parsed) VALUES (?,?,?,?,?,?)",
+        (
+            "v_role_00",
+            study_id,
+            0,
+            "bs_unknown_role",
+            "ok",
+            json.dumps({
+                "first_impression": "looks interesting",
+                "will_to_buy": 6,
+                "questions": [],
+                "confusions": [],
+                "objections": ["price too high"],
+                "unanswered_blockers": [],
+                "next_action": "contact_sales",
+                "confidence": 7,
+                "reasoning": "solid product",
+                "role_archetype": "unknown_role",
+            }),
+        ),
+    )
+    conn.execute(
+        "INSERT INTO visits(id, study_id, variant_idx, backstory_id, status, parsed) VALUES (?,?,?,?,?,?)",
+        (
+            "v_role_01",
+            study_id,
+            1,
+            "bs_unknown_role",
+            "ok",
+            json.dumps({
+                "first_impression": "variant B looks better",
+                "will_to_buy": 8,
+                "questions": [],
+                "confusions": [],
+                "objections": [],
+                "unanswered_blockers": [],
+                "next_action": "purchase_paid_today",
+                "confidence": 8,
+                "reasoning": "great deal",
+                "role_archetype": "unknown_role",
+            }),
+        ),
+    )
+    # Insert a backstory row with an unknown role_archetype so _read_backstories
+    # picks it up.  We simulate via the backstories table.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS backstories (id TEXT PRIMARY KEY, payload TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO backstories(id, payload) VALUES (?, ?)",
+        (
+            "bs_unknown_role",
+            json.dumps({"name": "Unknown Role Persona", "role_archetype": "unknown_role"}),
+        ),
+    )
+    conn.commit()
+
+
+def test_unknown_role_archetype_coerced_to_ic_engineer(tmp_path: Path) -> None:
+    """Backstory with role_archetype='unknown_role' must produce 'ic_engineer' in report."""
+    # Unit-level sanity check on the coercion helper itself.
+    assert _coerce_role("unknown_role") == "ic_engineer"
+    assert _coerce_role(None) == "ic_engineer"
+    assert _coerce_role("ic_engineer") == "ic_engineer"
+    assert _coerce_role("cto") == "cto"
+
+    db_path = tmp_path / "role_test.sqlite"
+    conn = sqlite3.connect(db_path)
+    _seed_with_unknown_role(conn, "study_role_001")
+
+    def llm_caller(prompt: str, *, kind: str) -> str:
+        return "stub label"
+
+    run_study(study_id="study_role_001", conn=conn, llm_caller=llm_caller)
+
+    cur = conn.execute(
+        "SELECT report_json FROM reports WHERE study_id=?", ("study_role_001",)
+    )
+    rj = json.loads(cur.fetchone()[0])
+
+    # Both paired_dots and personas must have role='ic_engineer', not 'unknown_role'.
+    roles_in_dots = [d["role"] for d in rj.get("paired_dots", [])]
+    roles_in_personas = [p["role"] for p in rj.get("personas", [])]
+
+    assert all(r == "ic_engineer" for r in roles_in_dots), (
+        f"paired_dots contained unexpected roles: {roles_in_dots}"
+    )
+    assert all(r == "ic_engineer" for r in roles_in_personas), (
+        f"personas contained unexpected roles: {roles_in_personas}"
+    )
