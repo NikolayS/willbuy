@@ -190,10 +190,47 @@ export async function registerAuthRoutes(
 
   // ---------------------------------------------------------------------------
   // POST /api/auth/sign-out
+  //
+  // Wrapped in an encapsulated scope so the content-type parser overrides are
+  // local to this route and do not affect other routes.
+  //
+  // Browsers submit HTML forms as application/x-www-form-urlencoded (or with no
+  // Content-Type header when the body is empty). Fastify's default parser only
+  // handles application/json, so bare form POSTs would receive a 415 before the
+  // handler runs. Since the sign-out handler never uses the request body we
+  // simply register parsers that discard whatever arrives (fixes #476).
   // ---------------------------------------------------------------------------
-  app.post('/api/auth/sign-out', async (_req: FastifyRequest, reply: FastifyReply) => {
-    const clearCookie = buildClearCookieHeader(env.NODE_ENV);
-    void reply.header('Set-Cookie', clearCookie);
-    return reply.code(302).redirect('/sign-in');
+  await app.register(async function signOutScope(scope) {
+    // Accept application/x-www-form-urlencoded — discard the body.
+    scope.addContentTypeParser(
+      'application/x-www-form-urlencoded',
+      { parseAs: 'string' },
+      function formBodyParser(
+        _req: FastifyRequest,
+        _body: string,
+        done: (err: Error | null, body?: unknown) => void,
+      ) {
+        done(null, {});
+      },
+    );
+
+    // Accept requests with no Content-Type header (empty form body).
+    scope.addContentTypeParser(
+      '*',
+      { parseAs: 'string' },
+      function wildcardBodyParser(
+        _req: FastifyRequest,
+        _body: string,
+        done: (err: Error | null, body?: unknown) => void,
+      ) {
+        done(null, {});
+      },
+    );
+
+    scope.post('/api/auth/sign-out', async (_req: FastifyRequest, reply: FastifyReply) => {
+      const clearCookie = buildClearCookieHeader(env.NODE_ENV);
+      void reply.header('Set-Cookie', clearCookie);
+      return reply.code(302).redirect('/sign-in');
+    });
   });
 }
