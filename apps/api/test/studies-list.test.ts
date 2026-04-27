@@ -367,4 +367,45 @@ describeIfDocker('GET /api/studies (issue #85, real DB)', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  // -------------------------------------------------------------------------
+  // AC7: report_public field in list response (PR #232).
+  // -------------------------------------------------------------------------
+  it('AC7: list includes report_public=true when a public report exists', async () => {
+    const db = new Client({ connectionString: dbUrl });
+    await db.connect();
+    let studyId: string;
+    try {
+      const s = await db.query<{ id: string }>(
+        `INSERT INTO studies (account_id, kind, status, urls)
+           VALUES ($1, 'single', 'ready', ARRAY['https://a.example.com/rp-test']::text[])
+           RETURNING id`,
+        [accountA],
+      );
+      studyId = s.rows[0]!.id;
+      // Insert a public report for this study.
+      await db.query(
+        `INSERT INTO reports (study_id, share_token_hash, conv_score, paired_delta_json, public)
+           VALUES ($1, 'hash-rp-test', 0.5, '{}', true)`,
+        [studyId],
+      );
+    } finally {
+      await db.end();
+    }
+    const cookie = buildSessionCookie({
+      accountId: accountA,
+      ownerEmail: accountAEmail,
+      expiresAtIso: futureIso(),
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/studies?limit=100',
+      headers: { cookie },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<ListResponse>();
+    const target = body.studies.find((s) => s.id === Number(studyId));
+    expect(target).toBeDefined();
+    expect((target as Record<string, unknown>)['report_public']).toBe(true);
+  });
 });
