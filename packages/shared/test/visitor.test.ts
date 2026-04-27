@@ -56,4 +56,30 @@ describe('VisitorOutput (spec §2 #15)', () => {
     const bad = { ...validFixture, reasoning: 'r'.repeat(1201) };
     expect(() => VisitorOutput.parse(bad)).toThrow();
   });
+
+  it('rejects a list item > 200 chars (§2 #15 per-item cap)', () => {
+    const longItem = 'q'.repeat(201);
+    const bad = { ...validFixture, questions: [longItem] };
+    expect(() => VisitorOutput.parse(bad)).toThrow();
+  });
+
+  it('rejects a list with more than 10 items (§2 #15 list-length cap)', () => {
+    const elevenItems = Array.from({ length: 11 }, (_, i) => `item ${i}`);
+    const bad = { ...validFixture, objections: elevenItems };
+    expect(() => VisitorOutput.parse(bad)).toThrow();
+  });
+
+  it('accepts a list with exactly 10 items (boundary, §2 #15)', () => {
+    const tenItems = Array.from({ length: 10 }, (_, i) => `item ${i}`);
+    const good = { ...validFixture, confusions: tenItems };
+    const parsed = VisitorOutput.parse(good);
+    expect(parsed.confusions).toHaveLength(10);
+  });
+
+  it('accepts a list item with exactly 200 chars (boundary)', () => {
+    const exactly200 = 'q'.repeat(200);
+    const good = { ...validFixture, questions: [exactly200] };
+    const parsed = VisitorOutput.parse(good);
+    expect(parsed.questions[0]).toHaveLength(200);
+  });
 });
