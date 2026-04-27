@@ -79,14 +79,14 @@ export default async function DomainsListPage(): Promise<JSX.Element> {
     (c) => c.name === 'wb_session' || c.name === '__Host-wb_session',
   );
   if (!hasSession) {
-    redirect('/sign-in');
+    redirect('/sign-in?redirect=%2Fdashboard%2Fdomains');
   }
 
   const result = await fetchDomains(cookieHeader);
 
   if (!result.ok) {
     if (result.status === 401) {
-      redirect('/sign-in');
+      redirect('/sign-in?redirect=%2Fdashboard%2Fdomains');
     }
     return (
       <main className="mx-auto max-w-2xl px-6 py-16">

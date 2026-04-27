@@ -62,16 +62,16 @@ export default async function CreditsPage({
         headers: { cookie: `wb_session=${sessionCookie.value}` },
         cache: 'no-store',
       });
-      if (res.status === 401) redirect('/sign-in');
+      if (res.status === 401) redirect('/sign-in?redirect=%2Fdashboard%2Fcredits');
       if (res.ok) {
         const data = (await res.json()) as DashboardSummary;
         balance_cents = data.balance_cents;
       }
     } catch {
-      redirect('/sign-in');
+      redirect('/sign-in?redirect=%2Fdashboard%2Fcredits');
     }
   } else {
-    redirect('/sign-in');
+    redirect('/sign-in?redirect=%2Fdashboard%2Fcredits');
   }
 
   const balanceVisits = Math.max(0, Math.floor(balance_cents / 3.5));
