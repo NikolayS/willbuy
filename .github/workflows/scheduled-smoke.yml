@@ -1,0 +1,88 @@
+name: scheduled-smoke
+
+# Runs the public-facing smoke test against https://willbuy.dev every hour.
+# Opens a GitHub issue if it fails so prod regressions are visible without
+# waiting for a user to report them.
+#
+# The smoke test only hits public endpoints (no auth, no SSH). Safe to run
+# from a stock GitHub-hosted runner with no secrets.
+
+on:
+  schedule:
+    - cron: '17 * * * *'  # 17 minutes past every hour (avoid round-hour CI rush)
+  workflow_dispatch:
+
+concurrency:
+  group: scheduled-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run smoke test
+        id: smoke
+        run: |
+          set +e
+          bash scripts/smoke-test.sh > /tmp/smoke.out 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          # Save for the next step (GitHub Actions trims long outputs in
+          # subsequent steps if you don't capture them)
+          {
+            echo "output<<EOF"
+            cat /tmp/smoke.out
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          # Always show in step log too
+          cat /tmp/smoke.out
+
+      - name: Open issue on failure (deduped)
+        if: steps.smoke.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OUTPUT: ${{ steps.smoke.outputs.output }}
+        run: |
+          # Look for an existing open "prod-smoke-failing" issue. If found,
+          # comment on it with the latest run; otherwise open a new one.
+          existing=$(gh issue list --state open --label prod-smoke-failing --json number --jq '.[0].number' 2>/dev/null || echo "")
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" --body "Still failing — run: $run_url
+
+\`\`\`
+$OUTPUT
+\`\`\`"
+          else
+            gh issue create \
+              --title "prod smoke test failing on willbuy.dev" \
+              --label prod-smoke-failing \
+              --body "Hourly scheduled smoke test failed against https://willbuy.dev.
+
+Run: $run_url
+
+\`\`\`
+$OUTPUT
+\`\`\`
+
+Likely causes:
+- Service down — check \`systemctl status willbuy-api willbuy-web\` on willbuy-v01
+- Recent deploy regressed something — check the most recent deploy.yml run
+- nginx misconfig — check \`nginx -t\` on the server
+- Cloudflare outage / DNS issue — check Cloudflare status
+
+Closes when the next hourly smoke run passes."
+          fi
+
+      - name: Close issue when smoke recovers
+        if: steps.smoke.outputs.exit_code == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          existing=$(gh issue list --state open --label prod-smoke-failing --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [[ -n "$existing" ]]; then
+            run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            gh issue close "$existing" --comment "Smoke test recovered — run: $run_url"
+          fi
