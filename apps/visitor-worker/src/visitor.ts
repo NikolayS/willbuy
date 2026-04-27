@@ -219,3 +219,10 @@ export async function runVisit(opts: RunVisitOptions): Promise<VisitResult> {
     }
   }
 }
+
+// Test-only export: spec-critical LLM call constants for unit testing
+// without spawning a real LLM subprocess.
+export const __test__ = {
+  MAX_OUTPUT_TOKENS,
+  MAX_REPAIR_GENERATION,
+};
