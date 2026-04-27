@@ -54,4 +54,24 @@ describe('LocalCliProvider — capabilities()', () => {
       }
     }
   });
+
+  // Spec-pin: LOCAL_CLI_CAPABILITIES flag values
+  // These flags gate behavior in the visitor-worker: if idempotency were
+  // true, the worker would send idempotency keys to the provider (which
+  // the local CLI doesn't support, silently breaking retry deduplication).
+  it('idempotency is false (local CLI does not support idempotency keys)', () => {
+    expect(LOCAL_CLI_CAPABILITIES.idempotency).toBe(false);
+  });
+
+  it('zero_retention is false (local CLI may retain context across runs)', () => {
+    expect(LOCAL_CLI_CAPABILITIES.zero_retention).toBe(false);
+  });
+
+  it('structured_output is false (v0.1 uses string output)', () => {
+    expect(LOCAL_CLI_CAPABILITIES.structured_output).toBe(false);
+  });
+
+  it('prompt_caching is false (not yet implemented for local CLI)', () => {
+    expect(LOCAL_CLI_CAPABILITIES.prompt_caching).toBe(false);
+  });
 });
