@@ -84,3 +84,5 @@ export function TierPicked({ rows }: { rows: ReportT['tier_picked'] }) {
     </section>
   );
 }
+
+export const __test__ = { ORDERED_TIERS, TIER_LABEL };

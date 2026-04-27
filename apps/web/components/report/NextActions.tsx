@@ -222,3 +222,5 @@ export function NextActions({ rows }: { rows: ReportT['next_actions'] }) {
     </section>
   );
 }
+
+export const __test__ = { ORDERED_ACTIONS, ACTION_LABEL };
