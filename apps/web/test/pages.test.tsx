@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import LandingPage from '../app/page';
 import ReportPage, { metadata as reportMetadata } from '../app/r/[slug]/page';
@@ -33,6 +33,19 @@ describe('public report — GET /r/[slug]', () => {
     expect(html).toMatch(/converts better/i);
     // Slug rendered as <code> per §5.10.
     expect(html).toMatch(/<code[^>]*>test-fixture<\/code>/);
+  });
+
+  it('renders "being prepared" when the API returns report_json: null (pending state)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ report_json: null, urls: null }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const el = await ReportPage({ params: Promise.resolve({ slug: 'pending-slug' }) });
+    const html = renderToStaticMarkup(el);
+    expect(html).toMatch(/being prepared/i);
+    vi.restoreAllMocks();
   });
 
   it('exports metadata with noindex (per SPEC §5.10 untrusted-content boundary)', () => {
