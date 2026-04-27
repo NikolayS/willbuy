@@ -691,3 +691,11 @@ export async function registerStudiesRoutes(
     },
   );
 }
+
+// Test seam — not part of the public API surface.
+export const __test__ = {
+  CreateStudyBodySchema,
+  ICP_PRESETS,
+  CENTS_PER_VISIT_EST,
+  CENTS_PER_STUDY_CLUSTER_LABEL,
+};
