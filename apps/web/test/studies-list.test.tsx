@@ -136,3 +136,38 @@ describe('/dashboard/studies view (issue #85)', () => {
     expect(html).not.toMatch(/\sstyle="/i);
   });
 });
+
+// ── formatCreatedAt — observable via StudiesListView rendered output ────────
+
+describe('StudiesListView — formatCreatedAt timestamp display', () => {
+  const base = {
+    id: 200,
+    status: 'ready' as const,
+    finalized_at: null,
+    n_visits: 1,
+    urls: ['https://example.com'],
+    visit_progress: { ok: 1, failed: 0, total: 1 },
+  };
+
+  it('valid ISO created_at renders in YYYY-MM-DD HH:MM UTC format', () => {
+    // '2026-04-20T12:00:00.000Z' → '2026-04-20 12:00 UTC'
+    const html = renderToStaticMarkup(
+      <StudiesListView
+        studies={[{ ...base, created_at: '2026-04-20T12:00:00.000Z' }]}
+        nextCursor={null}
+      />,
+    );
+    expect(html).toContain('2026-04-20 12:00 UTC');
+  });
+
+  it('invalid date string is returned unchanged (no NaN)', () => {
+    const html = renderToStaticMarkup(
+      <StudiesListView
+        studies={[{ ...base, created_at: 'not-a-date' }]}
+        nextCursor={null}
+      />,
+    );
+    expect(html).toContain('not-a-date');
+    expect(html).not.toContain('NaN');
+  });
+});
