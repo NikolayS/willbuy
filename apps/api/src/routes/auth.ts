@@ -197,3 +197,11 @@ export async function registerAuthRoutes(
     return reply.code(302).redirect('/sign-in');
   });
 }
+
+// Test seam — not part of the public API surface.
+export const __test__ = {
+  SESSION_7_DAYS_SECONDS,
+  MAGIC_LINK_EXPIRY_MINUTES,
+  MagicLinkBody,
+  safeRedirect,
+};
