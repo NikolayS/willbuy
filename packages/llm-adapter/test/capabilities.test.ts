@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { LocalCliProvider, LOCAL_CLI_CAPABILITIES } from '../src/index.js';
+import {
+  LocalCliProvider,
+  LOCAL_CLI_CAPABILITIES,
+  LOCAL_CLI_DEFAULT_BACKOFF_MS,
+  LOCAL_CLI_DEFAULT_TIMEOUT_MS,
+  LOCAL_CLI_MAX_TRANSPORT_ATTEMPTS,
+} from '../src/index.js';
 
 // Spec §2 #27: pluggable LLM adapter declares capability flags
 // (idempotency, zero_retention, structured_output, prompt_caching).
@@ -53,5 +59,31 @@ describe('LocalCliProvider — capabilities()', () => {
         process.env.WILLBUY_LLM_MODEL = prev;
       }
     }
+  });
+});
+
+// ── Transport retry constants spec-pin (spec §5.15) ──────────────────────────
+//
+// These three constants govern how many transport attempts are made and how
+// long the system waits between them. Silently changing [500, 2000, 8000] or
+// MAX_TRANSPORT_ATTEMPTS=3 would alter total retry latency (max ~10.5 s).
+// DEFAULT_TIMEOUT_MS=120_000 is the per-subprocess timeout matching the
+// capture worst-case wall-clock (spec §5.13 WALL_CLOCK_MS=45_000 + margin).
+
+describe('LLM adapter retry/timeout constants spec-pin (spec §5.15)', () => {
+  it('DEFAULT_BACKOFF_MS is [500, 2000, 8000] — three exponential steps', () => {
+    expect(LOCAL_CLI_DEFAULT_BACKOFF_MS).toEqual([500, 2000, 8000]);
+  });
+
+  it('DEFAULT_BACKOFF_MS has exactly 3 elements (one per retry slot)', () => {
+    expect(LOCAL_CLI_DEFAULT_BACKOFF_MS).toHaveLength(3);
+  });
+
+  it('MAX_TRANSPORT_ATTEMPTS is 3', () => {
+    expect(LOCAL_CLI_MAX_TRANSPORT_ATTEMPTS).toBe(3);
+  });
+
+  it('DEFAULT_TIMEOUT_MS is 120_000 (2 minutes per subprocess call)', () => {
+    expect(LOCAL_CLI_DEFAULT_TIMEOUT_MS).toBe(120_000);
   });
 });
