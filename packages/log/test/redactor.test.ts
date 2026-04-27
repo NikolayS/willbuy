@@ -461,3 +461,42 @@ describe('strict allowlist mode', () => {
     expect(permissiveRec['secret_data']).toBe('boom');
   });
 });
+
+// ── backstory and password REMOVE_FIELDS entries (spec §5.12) ────────────────
+//
+// These two entries in REMOVE_FIELDS are not covered by any other test.
+// `backstory` carries persona text that must never reach structured logs.
+// `password` is self-explanatory. Both are always stripped regardless of value.
+
+describe('§5.12 — backstory field always removed (REMOVE_FIELDS)', () => {
+  it('strips backstory string from the log line', () => {
+    const { logs, logger } = captureLogs();
+    logger.info({ backstory: 'I am a senior DBA at a fintech startup' }, 'visit.started');
+    const rec = logs()[0]!;
+    expect(rec['backstory']).toBeUndefined();
+    expect(rec).not.toHaveProperty('backstory');
+  });
+
+  it('never emits the backstory value in the raw JSON', () => {
+    const { raw, logger } = captureLogs();
+    const secret = 'senior DBA at fintech';
+    logger.info({ backstory: secret }, 'visit.started');
+    expect(raw()).not.toContain(secret);
+  });
+});
+
+describe('§5.12 — password field always removed (REMOVE_FIELDS)', () => {
+  it('strips password string from the log line', () => {
+    const { logs, logger } = captureLogs();
+    logger.info({ password: 'hunter2' }, 'auth.attempt');
+    const rec = logs()[0]!;
+    expect(rec['password']).toBeUndefined();
+    expect(rec).not.toHaveProperty('password');
+  });
+
+  it('never emits the password value in the raw JSON', () => {
+    const { raw, logger } = captureLogs();
+    logger.info({ password: 'hunter2' }, 'auth.attempt');
+    expect(raw()).not.toContain('hunter2');
+  });
+});
