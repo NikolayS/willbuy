@@ -259,3 +259,13 @@ export async function acquireLeaseWithBackoff(
 // client checkout/release themselves for simple single-statement work.
 // For transactional sequences the caller provides a PoolClient directly.
 export type { Pool, PoolClient };
+
+// Test-only export: backoff constants and helpers for unit testing without
+// a Postgres connection.
+export const __test__ = {
+  BACKOFF_BASE_MS,
+  BACKOFF_FACTOR,
+  BACKOFF_MAX_TRIES,
+  backoffMs,
+  jitter,
+};
