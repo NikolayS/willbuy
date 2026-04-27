@@ -183,6 +183,64 @@ http_get_with_body() {
 }
 
 # ──────────────────────────────────────────────
+# Test 9 — Share-token mint endpoint registered (issue #487 / PR #496)
+# POST /api/studies/1/share-token (no session) → 401 (not 404)
+# Confirms the route is wired and protected.
+# ──────────────────────────────────────────────
+{
+  status=$(http_get \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "{}" \
+    "${BASE_URL}/api/studies/1/share-token")
+  if [[ "$status" == "401" ]]; then
+    pass "9. Share-token route (POST /api/studies/1/share-token → 401, route exists)"
+  elif [[ "$status" == "404" ]]; then
+    fail "9. Share-token route" "got 404 — route not registered (PR #496 not deployed)"
+  else
+    fail "9. Share-token route" "expected 401, got $status"
+  fi
+}
+
+# ──────────────────────────────────────────────
+# Test 10 — Publish endpoint registered (PR #479)
+# POST /api/studies/1/publish (no session) → 401 (not 404)
+# ──────────────────────────────────────────────
+{
+  status=$(http_get \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "{}" \
+    "${BASE_URL}/api/studies/1/publish")
+  if [[ "$status" == "401" ]]; then
+    pass "10. Publish route (POST /api/studies/1/publish → 401, route exists)"
+  elif [[ "$status" == "404" ]]; then
+    fail "10. Publish route" "got 404 — route not registered"
+  else
+    fail "10. Publish route" "expected 401, got $status"
+  fi
+}
+
+# ──────────────────────────────────────────────
+# Test 11 — Reports endpoint returns 200 for public report
+# GET /reports/1 → 200 (study #1 is published) with report_json
+# ──────────────────────────────────────────────
+{
+  tmp=$(mktemp)
+  status=$(curl -s --max-time 10 -w "%{http_code}" -o "$tmp" "${BASE_URL}/reports/1" 2>/dev/null) || status="000"
+  body=$(cat "$tmp"); rm -f "$tmp"
+  if [[ "$status" == "200" ]] && echo "$body" | grep -q '"report_json"'; then
+    pass "11. Reports API (GET /reports/1 → 200 + report_json)"
+  elif [[ "$status" == "200" ]]; then
+    fail "11. Reports API" "got 200 but response missing report_json field"
+  elif [[ "$status" == "404" ]]; then
+    fail "11. Reports API" "got 404 — study #1 may not be published, or route missing"
+  else
+    fail "11. Reports API" "expected 200, got $status"
+  fi
+}
+
+# ──────────────────────────────────────────────
 # Summary
 # ──────────────────────────────────────────────
 echo ""
