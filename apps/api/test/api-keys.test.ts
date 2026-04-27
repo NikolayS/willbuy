@@ -429,4 +429,48 @@ describeIfDocker('/api/api-keys (issue #81, real DB)', () => {
     // Last 4 chars + ***  must appear.
     expect(joined).toMatch(/\*\*\*xt9z/);
   });
+
+  // -------------------------------------------------------------------------
+  // AC9: third POST /api/api-keys on the same account → 409 (§2 #21 cap).
+  // -------------------------------------------------------------------------
+  it('AC9: creating a third active key returns 409 (≤2 cap per §2 #21)', async () => {
+    // Create a fresh account so we don't interfere with A/B state.
+    const accRow = await dbClient.query<{ id: string }>(
+      `INSERT INTO accounts (owner_email) VALUES ('cap-test@example.com') RETURNING id`,
+    );
+    const accId = accRow.rows[0]!.id;
+    const capCookie = buildSessionCookie({
+      accountId: accId,
+      ownerEmail: 'cap-test@example.com',
+      expiresAtIso: futureIso(),
+    });
+
+    // First key — must succeed.
+    const r1 = await app.inject({
+      method: 'POST',
+      url: '/api/api-keys',
+      headers: { cookie: capCookie, 'content-type': 'application/json' },
+      payload: { label: 'key one' },
+    });
+    expect(r1.statusCode).toBe(201);
+
+    // Second key — must succeed.
+    const r2 = await app.inject({
+      method: 'POST',
+      url: '/api/api-keys',
+      headers: { cookie: capCookie, 'content-type': 'application/json' },
+      payload: { label: 'key two' },
+    });
+    expect(r2.statusCode).toBe(201);
+
+    // Third key — must be rejected with 409.
+    const r3 = await app.inject({
+      method: 'POST',
+      url: '/api/api-keys',
+      headers: { cookie: capCookie, 'content-type': 'application/json' },
+      payload: { label: 'key three' },
+    });
+    expect(r3.statusCode).toBe(409);
+    expect(r3.json<{ error: string }>().error).toMatch(/maximum of 2 active/i);
+  });
 });
