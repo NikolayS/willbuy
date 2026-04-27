@@ -53,4 +53,20 @@ describe('captureUrl ceiling enforcement — total_bytes, a11y_tree_bytes, dom_n
   it('CAPTURE_CEILINGS.TOTAL_BYTES is set to 25 MB per spec §2 #6', () => {
     expect(CAPTURE_CEILINGS.TOTAL_BYTES).toBe(25 * 1024 * 1024);
   });
+
+  it('CAPTURE_CEILINGS.WALL_CLOCK_MS is 45 s per spec §2 #6', () => {
+    expect(CAPTURE_CEILINGS.WALL_CLOCK_MS).toBe(45_000);
+  });
+
+  it('CAPTURE_CEILINGS.DOM_NODES is 250 000 per spec §2 #6', () => {
+    expect(CAPTURE_CEILINGS.DOM_NODES).toBe(250_000);
+  });
+
+  it('CAPTURE_CEILINGS.A11Y_TREE_BYTES is 10 MB per spec §2 #6', () => {
+    expect(CAPTURE_CEILINGS.A11Y_TREE_BYTES).toBe(10 * 1024 * 1024);
+  });
+
+  it('CAPTURE_CEILINGS.HOST_COUNT is 50 per spec §2 #5', () => {
+    expect(CAPTURE_CEILINGS.HOST_COUNT).toBe(50);
+  });
 });
