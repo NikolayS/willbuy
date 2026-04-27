@@ -529,30 +529,25 @@ def _make_cli_llm_caller(llm_bin: str) -> LLMCaller:
     return _caller
 
 
-def _send_ready_email(study_id: str, conn: Any) -> None:
-    """Fire-and-forget Resend email to the study owner when the report is ready.
-
-    Requires RESEND_API_KEY in the environment. Silently skips if the key is
-    missing or set to the placeholder 're_not_configured'.
-    """
-    import urllib.request  # noqa: WPS433 — lazy import; keep stdlib-only.
-
-    api_key = os.environ.get("RESEND_API_KEY", "re_not_configured")
-    if not api_key or api_key == "re_not_configured":
-        return
-
-    # Look up the owner email via the accounts → studies join.
+def _lookup_owner_email(conn: Any, study_id: str) -> str | None:
     row = db.fetchone(
         conn,
         "SELECT a.owner_email FROM studies s JOIN accounts a ON a.id = s.account_id WHERE s.id = %s",
         (study_id,),
     )
-    if not row:
-        return
-    owner_email = row[0]
+    return row[0] if row else None
 
-    report_url = f"https://willbuy.dev/dashboard/studies/{study_id}"
-    payload = json.dumps({
+
+def _send_ready_email(study_id: str, conn: Any) -> None:
+    """Fire-and-forget email to the study owner when the report is ready."""
+    api_key = os.environ.get("RESEND_API_KEY", "re_not_configured")
+    if not api_key or api_key == "re_not_configured":
+        return
+    owner_email = _lookup_owner_email(conn, study_id)
+    if not owner_email:
+        return
+    study_url = f"https://willbuy.dev/dashboard/studies/{study_id}"
+    _send_resend_email(api_key, {
         "from": "willbuy.dev <alerts@willbuy.dev>",
         "to": [owner_email],
         "subject": f"Your study #{study_id} is ready — willbuy.dev",
@@ -560,7 +555,7 @@ def _send_ready_email(study_id: str, conn: Any) -> None:
             f"Your synthetic visitor study #{study_id} has completed.",
             "",
             "View and publish the report here:",
-            report_url,
+            study_url,
             "",
             "— willbuy.dev",
         ]),
@@ -568,15 +563,53 @@ def _send_ready_email(study_id: str, conn: Any) -> None:
             "<!DOCTYPE html><html><body style=\"font-family:sans-serif;max-width:600px;margin:auto;padding:24px\">",
             f"<h2 style=\"color:#111\">Study #{study_id} is ready</h2>",
             "<p>Your synthetic visitor study has completed. Click below to view the report.</p>",
-            f"<p><a href=\"{report_url}\" style=\"display:inline-block;padding:12px 24px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:6px;font-weight:600\">View report</a></p>",
+            f"<p><a href=\"{study_url}\" style=\"display:inline-block;padding:12px 24px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:6px;font-weight:600\">View report</a></p>",
             "<p style=\"color:#666;font-size:13px\">You'll need to publish the report to share it publicly.</p>",
             "</body></html>",
         ]),
-    }).encode()
+    })
+
+
+def _send_failed_email(study_id: str, conn: Any) -> None:
+    """Fire-and-forget email to the study owner when aggregation fails."""
+    api_key = os.environ.get("RESEND_API_KEY", "re_not_configured")
+    if not api_key or api_key == "re_not_configured":
+        return
+    owner_email = _lookup_owner_email(conn, study_id)
+    if not owner_email:
+        return
+    retry_url = f"https://willbuy.dev/dashboard/studies/new"
+    _send_resend_email(api_key, {
+        "from": "willbuy.dev <alerts@willbuy.dev>",
+        "to": [owner_email],
+        "subject": f"Study #{study_id} failed — willbuy.dev",
+        "text": "\n".join([
+            f"Your synthetic visitor study #{study_id} could not be completed.",
+            "",
+            "This can happen if the target page was unreachable or the aggregation",
+            "encountered an error. You can start a new study here:",
+            retry_url,
+            "",
+            "— willbuy.dev",
+        ]),
+        "html": "\n".join([
+            "<!DOCTYPE html><html><body style=\"font-family:sans-serif;max-width:600px;margin:auto;padding:24px\">",
+            f"<h2 style=\"color:#b91c1c\">Study #{study_id} failed</h2>",
+            "<p>Your synthetic visitor study could not be completed.</p>",
+            "<p style=\"color:#6b7280;font-size:14px\">This can happen if the target page was unreachable or the aggregation encountered an error.</p>",
+            f"<p><a href=\"{retry_url}\" style=\"display:inline-block;padding:12px 24px;background:#111;color:#fff;text-decoration:none;border-radius:6px;font-weight:600\">Try a new study</a></p>",
+            "</body></html>",
+        ]),
+    })
+
+
+def _send_resend_email(api_key: str, payload: dict) -> None:
+    """POST payload to the Resend API. Silently swallows exceptions (fire-and-forget)."""
+    import urllib.request  # noqa: WPS433 — lazy import; keep stdlib-only.
 
     req = urllib.request.Request(
         "https://api.resend.com/emails",
-        data=payload,
+        data=json.dumps(payload).encode(),
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -585,7 +618,7 @@ def _send_ready_email(study_id: str, conn: Any) -> None:
     )
     try:
         urllib.request.urlopen(req, timeout=10)
-    except Exception:  # noqa: BLE001 — fire-and-forget; never fail the aggregator
+    except Exception:  # noqa: BLE001 — fire-and-forget
         pass
 
 
@@ -596,11 +629,15 @@ def cli(argv: list[str] | None = None) -> int:
 
     llm_bin = os.environ.get("WILLBUY_LLM_BIN", "claude")
     llm_caller = _make_cli_llm_caller(llm_bin)
+    study_id = args.study_id
 
     conn = _connect_from_env()
     try:
-        run_study(study_id=args.study_id, conn=conn, llm_caller=llm_caller, ledger=_NoOpLedger())
-        _send_ready_email(study_id=args.study_id, conn=conn)
+        run_study(study_id=study_id, conn=conn, llm_caller=llm_caller, ledger=_NoOpLedger())
+        _send_ready_email(study_id=study_id, conn=conn)
+    except Exception:
+        _send_failed_email(study_id=study_id, conn=conn)
+        raise
     finally:
         conn.close()
     return 0
