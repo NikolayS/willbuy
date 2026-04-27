@@ -57,12 +57,17 @@ http_get_with_body() {
 
 # ──────────────────────────────────────────────
 # Test 2 — Demo report fixture
-# GET /r/test-fixture → 200
+# GET /r/test-fixture → 200 + body contains report content (not "Report not found")
+# Next.js returns 200 even for the "not found" error page, so check body too.
 # ──────────────────────────────────────────────
 {
-  status=$(http_get "${BASE_URL}/r/test-fixture")
-  if [[ "$status" == "200" ]]; then
-    pass "2. Demo report (GET /r/test-fixture → 200)"
+  tmp=$(mktemp)
+  status=$(curl -s --max-time 10 -w "%{http_code}" -o "$tmp" "${BASE_URL}/r/test-fixture" 2>/dev/null) || status="000"
+  body=$(cat "$tmp"); rm -f "$tmp"
+  if [[ "$status" == "200" ]] && ! echo "$body" | grep -q "Report not found"; then
+    pass "2. Demo report (GET /r/test-fixture → 200 + fixture rendered)"
+  elif [[ "$status" == "200" ]] && echo "$body" | grep -q "Report not found"; then
+    fail "2. Demo report" "got 200 but page shows 'Report not found' — run next build to deploy fixture"
   else
     fail "2. Demo report" "expected 200, got $status"
   fi
@@ -70,18 +75,19 @@ http_get_with_body() {
 
 # ──────────────────────────────────────────────
 # Test 3 — Dashboard auth redirect
-# GET /dashboard (no cookie) → 302 to /sign-in
+# GET /dashboard (no cookie) → 302 or 307 to /sign-in
+# Next.js redirect() sends 307; accept both.
 # ──────────────────────────────────────────────
 {
   location=$(curl -s --max-time 10 -o /dev/null -w "%{redirect_url}" \
     "${BASE_URL}/dashboard" 2>/dev/null) || location=""
   status=$(http_get "${BASE_URL}/dashboard")
-  if [[ "$status" == "302" ]] && echo "$location" | grep -q "sign-in"; then
-    pass "3. Dashboard auth redirect (GET /dashboard → 302 → /sign-in)"
-  elif [[ "$status" == "302" ]]; then
-    fail "3. Dashboard auth redirect" "got 302 but redirect_url='$location' (expected /sign-in)"
+  if [[ "$status" == "302" || "$status" == "307" ]] && echo "$location" | grep -q "sign-in"; then
+    pass "3. Dashboard auth redirect (GET /dashboard → $status → /sign-in)"
+  elif [[ "$status" == "302" || "$status" == "307" ]]; then
+    fail "3. Dashboard auth redirect" "got $status but redirect_url='$location' (expected /sign-in)"
   else
-    fail "3. Dashboard auth redirect" "expected 302, got $status"
+    fail "3. Dashboard auth redirect" "expected 302/307, got $status"
   fi
 }
 
@@ -160,18 +166,19 @@ http_get_with_body() {
 }
 
 # ──────────────────────────────────────────────
-# Test 8 — Credits page (no session) → 302 to /sign-in
+# Test 8 — Credits page (no session) → 302 or 307 to /sign-in
+# Next.js redirect() sends 307; accept both.
 # ──────────────────────────────────────────────
 {
   location=$(curl -s --max-time 10 -o /dev/null -w "%{redirect_url}" \
     "${BASE_URL}/dashboard/credits" 2>/dev/null) || location=""
   status=$(http_get "${BASE_URL}/dashboard/credits")
-  if [[ "$status" == "302" ]] && echo "$location" | grep -q "sign-in"; then
-    pass "8. Credits page redirect (GET /dashboard/credits → 302 → /sign-in)"
-  elif [[ "$status" == "302" ]]; then
-    fail "8. Credits page redirect" "got 302 but redirect_url='$location' (expected /sign-in)"
+  if [[ "$status" == "302" || "$status" == "307" ]] && echo "$location" | grep -q "sign-in"; then
+    pass "8. Credits page redirect (GET /dashboard/credits → $status → /sign-in)"
+  elif [[ "$status" == "302" || "$status" == "307" ]]; then
+    fail "8. Credits page redirect" "got $status but redirect_url='$location' (expected /sign-in)"
   else
-    fail "8. Credits page redirect" "expected 302, got $status"
+    fail "8. Credits page redirect" "expected 302/307, got $status"
   fi
 }
 
