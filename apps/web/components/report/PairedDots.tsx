@@ -32,6 +32,8 @@ const SWING_COLOR: Record<ReportT['paired_dots'][number]['swing'], string> = {
   b_wins: '#16a34a', // green — variant B (NEW) scored higher
 };
 
+export const __test__ = { SWING_COLOR };
+
 // Shape passed by Recharts to <Customized component={...} />.
 // We only use the axis maps to compute pixel coordinates.
 interface CustomizedProps {

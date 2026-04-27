@@ -14,6 +14,8 @@ import { useState, useEffect } from 'react';
 
 const STORAGE_KEY = 'willbuy_report_cta_dismissed';
 
+export const __test__ = { STORAGE_KEY };
+
 export function ReportCtaBar() {
   // Initialise as visible so the SSR HTML always includes the bar.
   // After hydration, check localStorage and hide if already dismissed.

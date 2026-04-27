@@ -21,6 +21,8 @@ const VARIANT_COLOR: Record<VariantId, string> = {
   B: '#16a34a', // green (matches dot-plot "B wins")
 };
 
+export const __test__ = { VARIANT_COLOR };
+
 function HistOne({ row }: { row: ReportT['histograms'][number] }) {
   const data = row.bins.map((count, score) => ({ score, count }));
   return (
