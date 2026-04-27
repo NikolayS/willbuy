@@ -104,6 +104,8 @@ const LABEL_KEYWORDS = [
   'pwd',
 ];
 
+export const __test__ = { LABEL_KEYWORDS };
+
 const LABEL_PATTERN = LABEL_KEYWORDS.join('|');
 
 /** Proximity window (chars) from end of separator to start of blob. */

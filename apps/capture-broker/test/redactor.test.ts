@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { redact, REDACTOR_VERSION, type RedactionKind } from '../src/redactor.js';
+import { redact, REDACTOR_VERSION, LABEL_PROXIMITY_CHARS, __test__ } from '../src/redactor.js';
+import type { RedactionKind } from '../src/redactor.js';
+
+const { LABEL_KEYWORDS } = __test__;
 
 // Spec §5.9 + §6.1: the redactor MUST have a positive AND a false-positive
 // fixture suite, and the labeled-context boundary rule MUST cleanly
@@ -76,6 +79,46 @@ describe('redactor — spec §5.9 false-positive fixtures (boundary rule)', () =
 // §6.1 boundary suite — tests the 32-char proximity window for the
 // labeled-context rule. The spec says:
 //   label 31 chars away → redact
+// ── Spec-pin assertions for exported constants ─────────────────────────────
+
+describe('REDACTOR_VERSION spec-pin (§5.9)', () => {
+  it('is 1 — bump only on redactor logic changes that require reprocessing older artifacts', () => {
+    expect(REDACTOR_VERSION).toBe(1);
+  });
+});
+
+describe('LABEL_PROXIMITY_CHARS spec-pin (§6.1)', () => {
+  it('is 32 chars — the exact window from the spec proximity rule', () => {
+    expect(LABEL_PROXIMITY_CHARS).toBe(32);
+  });
+});
+
+describe('LABEL_KEYWORDS spec-pin (§5.9)', () => {
+  it('has exactly 15 entries', () => {
+    expect(LABEL_KEYWORDS).toHaveLength(15);
+  });
+
+  it('contains "authorization" — catches Authorization: Bearer headers', () => {
+    expect(LABEL_KEYWORDS).toContain('authorization');
+  });
+
+  it('contains "bearer" — catches standalone Bearer token headers', () => {
+    expect(LABEL_KEYWORDS).toContain('bearer');
+  });
+
+  it('contains "secret" — catches generic secret fields', () => {
+    expect(LABEL_KEYWORDS).toContain('secret');
+  });
+
+  it('contains "password" — catches password fields', () => {
+    expect(LABEL_KEYWORDS).toContain('password');
+  });
+
+  it('does NOT contain "nonce" — CSP nonces are designed to be public', () => {
+    expect(LABEL_KEYWORDS.every((k) => !k.includes('nonce'))).toBe(true);
+  });
+});
+
 //   label 33 chars away → don't redact
 //   two labels at 29 and 35 chars → redact (the 29-char label fires)
 //   label separated by a newline → redact (newlines count toward distance)
