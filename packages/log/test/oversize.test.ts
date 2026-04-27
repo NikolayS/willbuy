@@ -114,3 +114,9 @@ describe('TDD #4 — pino formatter catches and emits alert event', () => {
     expect(raw()).not.toContain(big);
   });
 });
+
+describe('MAX_FIELD_BYTES spec-pin (spec §5.12)', () => {
+  it('MAX_FIELD_BYTES is 8192 (8 KiB)', () => {
+    expect(MAX_FIELD_BYTES).toBe(8192);
+  });
+});
