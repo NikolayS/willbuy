@@ -74,4 +74,17 @@ describe('/pricing page (issue #144)', () => {
     const html = await getHtml();
     expect(html).toMatch(/sign-in/i);
   });
+
+  it('authenticated: renders "Buy →" button (not sign-in redirect) when session cookie present', async () => {
+    // Override the mock to simulate an authenticated user.
+    const { cookies } = await import('next/headers');
+    (cookies as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ has: () => true });
+    const html = await getHtml();
+    // BuyButton renders a <button> with "Buy →" text.
+    expect(html).toMatch(/Buy →/);
+    // The sign-in redirect link for unauthenticated users should NOT appear as the CTA.
+    // (The secondary "Already have credits? Sign in" link still appears — that's correct.)
+    // Assert no href pointing to /sign-in?redirect=/pricing which is the unauthenticated CTA.
+    expect(html).not.toMatch(/href="\/sign-in\?redirect=\/pricing/);
+  });
 });
