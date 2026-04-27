@@ -20,7 +20,7 @@ echo "[aggregator-trigger] starting poll loop"
 while true; do
   study_id=$(psql "$DATABASE_URL" --no-align --tuples-only --command \
     "SELECT id FROM studies WHERE status='aggregating' ORDER BY created_at ASC LIMIT 1" \
-    2>/dev/null || true)
+    2>/dev/null | tr -d '[:space:]' || true)
 
   if [[ -n "$study_id" ]]; then
     echo "[aggregator-trigger] running aggregator for study $study_id"

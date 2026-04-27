@@ -4,7 +4,8 @@
 # transitioning studies aggregating→ready.
 
 Description=willbuy aggregator trigger
-After=network.target willbuy-api.service
+Requires=docker.service
+After=network.target docker.service willbuy-api.service
 
 [Service]
 Type=simple
