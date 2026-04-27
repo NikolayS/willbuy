@@ -272,6 +272,7 @@ describe('§5.18 — report visualization', () => {
     // schema was relaxed from .length(2) to .min(1).max(2) in PR #171.
     const singleVariant: ReportT = {
       ...fixture,
+      headline: { ...fixture.headline, n_paired: 0 },
       histograms: [fixture.histograms[0]!],
       next_actions: [fixture.next_actions[0]!],
       tier_picked: [fixture.tier_picked[0]!],
@@ -290,6 +291,12 @@ describe('§5.18 — report visualization', () => {
     const { container } = render(<ReportView report={parsed} mode="public" />);
     await act(async () => { await Promise.resolve(); });
     expect(container.querySelectorAll('[data-testid="persona-grid"]').length).toBe(1);
+    // Single-URL studies: HeadlineDelta shows informational message, not paired stats.
+    expect(container.querySelector('[data-testid="headline-delta"]')!.textContent).toMatch(
+      /single-url study/i,
+    );
+    // PairedDots returns null when empty — its section should not appear.
+    expect(container.querySelectorAll('[data-testid="paired-dots"]').length).toBe(0);
   });
 
 
