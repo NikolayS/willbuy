@@ -442,4 +442,96 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  // --- POST /studies/:id/publish (issue #204) ---
+  describe('POST /studies/:id/publish', () => {
+    let publishStudyId: bigint;
+
+    beforeAll(async () => {
+      const client = new Client({ connectionString: dbUrl });
+      await client.connect();
+      try {
+        const s = await client.query<{ id: bigint }>(
+          `INSERT INTO studies (account_id, kind, status)
+           VALUES ($1, 'single', 'ready') RETURNING id`,
+          [String(accountId)],
+        );
+        publishStudyId = s.rows[0]!.id;
+        await client.query(
+          `INSERT INTO reports (study_id, share_token_hash, conv_score, paired_delta_json, public)
+           VALUES ($1, $2, 0.5, '{}', false)`,
+          [String(publishStudyId), sha256hex(`publish-test-token-${uid()}`)],
+        );
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('401 without API key', async () => {
+      const res = await app.inject({ method: 'POST', url: `/studies/${String(publishStudyId)}/publish` });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('404 when study belongs to a different account', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/studies/${String(publishStudyId)}/publish`,
+        headers: { Authorization: `Bearer ${otherApiKey}` },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('200 + public:true on happy path', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/studies/${String(publishStudyId)}/publish`,
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { study_id: number; public: boolean };
+      expect(body.study_id).toBe(Number(publishStudyId));
+      expect(body.public).toBe(true);
+    });
+
+    it('200 idempotent — second publish call also succeeds', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/studies/${String(publishStudyId)}/publish`,
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('report is now accessible without share token', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/reports/${String(publishStudyId)}`,
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('404 when study has no report yet', async () => {
+      // Insert a study with no report row.
+      const client = new Client({ connectionString: dbUrl });
+      await client.connect();
+      let noReportStudyId: bigint;
+      try {
+        const s = await client.query<{ id: bigint }>(
+          `INSERT INTO studies (account_id, kind, status)
+           VALUES ($1, 'single', 'aggregating') RETURNING id`,
+          [String(accountId)],
+        );
+        noReportStudyId = s.rows[0]!.id;
+      } finally {
+        await client.end();
+      }
+      const res = await app.inject({
+        method: 'POST',
+        url: `/studies/${String(noReportStudyId)}/publish`,
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      expect(res.statusCode).toBe(404);
+      expect((res.json() as { error: string }).error).toMatch(/not ready/i);
+    });
+  });
 });
