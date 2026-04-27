@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { redact, REDACTOR_VERSION, type RedactionKind } from '../src/redactor.js';
+import { redact, REDACTOR_VERSION, LABEL_PROXIMITY_CHARS, type RedactionKind } from '../src/redactor.js';
 
 // Spec §5.9 + §6.1: the redactor MUST have a positive AND a false-positive
 // fixture suite, and the labeled-context boundary rule MUST cleanly
@@ -95,4 +95,15 @@ describe('redactor — spec §6.1 labeled-context boundary fixtures', () => {
       }
     });
   }
+});
+
+// Spec-pins for exported constants
+describe('redactor spec-pin constants (spec §5.9 + §6.1)', () => {
+  it('REDACTOR_VERSION is 1', () => {
+    expect(REDACTOR_VERSION).toBe(1);
+  });
+
+  it('LABEL_PROXIMITY_CHARS is 32', () => {
+    expect(LABEL_PROXIMITY_CHARS).toBe(32);
+  });
 });
