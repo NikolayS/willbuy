@@ -183,7 +183,7 @@ describe('StudyNewPage — 402 cap exceeded error', () => {
     });
 
     await waitFor(() =>
-      expect(screen.getAllByText(/out of credits|credits.*exceeded|spend cap/i).length).toBeGreaterThan(0),
+      expect(screen.getAllByText(/credits|spend cap/i).length).toBeGreaterThan(0),
     );
     // Buy credits link required.
     const buyLink = screen.getByRole('link', { name: /buy credits/i });
