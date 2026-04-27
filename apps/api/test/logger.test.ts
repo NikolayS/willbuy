@@ -135,3 +135,12 @@ describe('logger redaction (spec §5.12)', () => {
     expect(JSON.stringify(rec)).not.toContain('deep@x.com');
   });
 });
+
+describe('buildLogger — service label', () => {
+  it('injects service="api" into every log record', () => {
+    const { logger, logs } = captureLogs('a'.repeat(32));
+    logger.info({}, 'hello');
+    const [rec] = logs();
+    expect(rec!['service']).toBe('api');
+  });
+});
