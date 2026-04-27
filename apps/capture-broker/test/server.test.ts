@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { statSync } from 'node:fs';
-import { startBroker, type BrokerHandle } from '../src/server.js';
+import { startBroker, SOCKET_MODE, type BrokerHandle } from '../src/server.js';
 import { inMemoryStorage } from '../src/storage.js';
 import { inMemoryCaptureStore } from '../src/captureStore.js';
 import { BYTE_CAPS } from '../src/byteCaps.js';
@@ -278,5 +278,12 @@ describe('Capture Broker server — spec §5.13 acceptance scenarios', () => {
     expect(ack.ok).toBe(false);
     if (ack.ok) throw new Error('unreachable');
     expect(ack.error).toBe('schema_invalid');
+  });
+});
+
+// Spec-pin: SOCKET_MODE (spec §5.13)
+describe('SOCKET_MODE spec-pin (spec §5.13)', () => {
+  it('SOCKET_MODE is 0o660 (owner+group rw, others none)', () => {
+    expect(SOCKET_MODE).toBe(0o660);
   });
 });
