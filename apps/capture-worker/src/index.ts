@@ -56,7 +56,7 @@ if (isMain) {
     captureRuntime = selectRuntimeFromEnv(process.env);
   } catch (e) {
     if (e instanceof RuntimeConfigError) {
-      log.error({ event: 'startup.invalid_runtime', value: (e as RuntimeConfigError).value }, e.message);
+      log.error({ event: 'startup.invalid_runtime', value: e.value }, e.message);
       process.exit(2);
     }
     throw e;
