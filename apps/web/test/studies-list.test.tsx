@@ -136,3 +136,68 @@ describe('/dashboard/studies view (issue #85)', () => {
     expect(html).not.toMatch(/\sstyle="/i);
   });
 });
+
+// ── StudiesListView — pctToWidthClass via ProgressBar rendering ──────────────
+
+describe('StudiesListView — ProgressBar width class (pctToWidthClass)', () => {
+  const base = {
+    status: 'capturing' as const,
+    created_at: '2026-04-20T12:00:00.000Z',
+    finalized_at: null,
+    n_visits: 10,
+    urls: ['https://example.com'],
+  };
+
+  it('0% (0/10 ok) renders w-0 class', () => {
+    const html = renderToStaticMarkup(
+      <StudiesListView
+        studies={[{ ...base, id: 1, visit_progress: { ok: 0, failed: 0, total: 10 } }]}
+        nextCursor={null}
+      />,
+    );
+    expect(html).toMatch(/\bw-0\b/);
+  });
+
+  it('100% (10/10 ok) renders w-full class', () => {
+    const html = renderToStaticMarkup(
+      <StudiesListView
+        studies={[{ ...base, id: 2, visit_progress: { ok: 10, failed: 0, total: 10 } }]}
+        nextCursor={null}
+      />,
+    );
+    expect(html).toMatch(/\bw-full\b/);
+  });
+
+  it('50% (5/10 ok) renders w-1/2 class', () => {
+    const html = renderToStaticMarkup(
+      <StudiesListView
+        studies={[{ ...base, id: 3, visit_progress: { ok: 5, failed: 0, total: 10 } }]}
+        nextCursor={null}
+      />,
+    );
+    expect(html).toMatch(/\bw-1\/2\b/);
+  });
+
+  it('total=0 renders em-dash placeholder instead of a progress bar', () => {
+    const html = renderToStaticMarkup(
+      <StudiesListView
+        studies={[{ ...base, id: 4, visit_progress: { ok: 0, failed: 0, total: 0 } }]}
+        nextCursor={null}
+      />,
+    );
+    // When total=0, ProgressBar returns the em-dash span, not a bar.
+    expect(html).toContain('text-gray-400">—');
+    // The bar container (w-24 div) must not be rendered when total=0.
+    expect(html).not.toContain('class="w-24"');
+  });
+
+  it('contains no inline style= (CSP §5.10 — no unsafe-inline)', () => {
+    const html = renderToStaticMarkup(
+      <StudiesListView
+        studies={[{ ...base, id: 5, visit_progress: { ok: 7, failed: 1, total: 10 } }]}
+        nextCursor={null}
+      />,
+    );
+    expect(html).not.toMatch(/\sstyle="/i);
+  });
+});
