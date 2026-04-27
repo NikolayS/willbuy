@@ -37,7 +37,7 @@ export default function NewApiKeyPage({
     (c) => c.name === 'wb_session' || c.name === '__Host-wb_session',
   );
   if (!hasSession) {
-    redirect('/sign-in');
+    redirect('/sign-in?redirect=%2Fdashboard%2Fapi-keys%2Fnew');
   }
 
   // exactOptionalPropertyTypes: only pass error when it's a string (not undefined).

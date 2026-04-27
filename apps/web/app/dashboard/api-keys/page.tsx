@@ -55,13 +55,13 @@ export default async function ApiKeysPage(): Promise<JSX.Element> {
     (c) => c.name === 'wb_session' || c.name === '__Host-wb_session',
   );
   if (!hasSession) {
-    redirect('/sign-in');
+    redirect('/sign-in?redirect=%2Fdashboard%2Fapi-keys');
   }
 
   const result = await fetchKeys(cookieHeader);
 
   if (!result.ok) {
-    if (result.status === 401) redirect('/sign-in');
+    if (result.status === 401) redirect('/sign-in?redirect=%2Fdashboard%2Fapi-keys');
     return (
       <main className="mx-auto max-w-2xl px-6 py-16">
         <h1 className="text-2xl font-bold text-gray-900">API keys unavailable</h1>
