@@ -154,7 +154,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   if (res.status === 401) {
-    return NextResponse.redirect(new URL('/sign-in', req.url), 303);
+    return NextResponse.redirect(new URL('/sign-in?redirect=%2Fdashboard%2Fapi-keys%2Fnew', req.url), 303);
   }
   if (!res.ok) {
     let msg = `Could not create key (${res.status})`;
