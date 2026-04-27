@@ -4,9 +4,8 @@
  * Server Component. Fetches /api/dashboard/summary for the current balance,
  * redirects to /sign-in if unauthenticated (401), and renders the pack tiles.
  *
- * Pack buy buttons link to /pricing (the public pack-selection page).
- * After Stripe keys are configured (#195), this page can be upgraded to
- * initiate a checkout session directly for already-authenticated users.
+ * ?success=1  — shown after Stripe redirect on successful payment
+ * ?cancelled=1 — shown after Stripe redirect on cancelled payment
  */
 
 import { cookies } from 'next/headers';
@@ -45,9 +44,16 @@ function formatCents(cents: number): string {
   return `$${dollars}.${String(remaining).padStart(2, '0')}`;
 }
 
-export default async function CreditsPage() {
+export default async function CreditsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ success?: string; cancelled?: string }>;
+}) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get('wb_session');
+  const params = await searchParams;
+  const didSucceed = params.success === '1';
+  const didCancel = params.cancelled === '1';
 
   let balance_cents = 0;
   if (sessionCookie) {
@@ -72,6 +78,18 @@ export default async function CreditsPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
+      {/* Stripe redirect banners */}
+      {didSucceed && (
+        <div className="mb-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          Payment successful — your credits have been added.
+        </div>
+      )}
+      {didCancel && (
+        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+          Payment cancelled. Your account has not been charged.
+        </div>
+      )}
+
       {/* Balance card */}
       <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <p className="text-sm font-medium text-gray-500">Current balance</p>
