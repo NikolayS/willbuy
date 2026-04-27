@@ -34,7 +34,7 @@ export function PublishButton({ studyId, reportSlug, initialPublished = false }:
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/studies/${studyId}/publish`, { method: 'POST' });
+      const res = await fetch(`/api/studies/${studyId}/publish`, { method: 'POST', credentials: 'include' });
       if (res.ok) {
         setPublished(true);
       } else {
