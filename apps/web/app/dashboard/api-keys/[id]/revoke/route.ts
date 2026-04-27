@@ -50,7 +50,7 @@ export async function POST(
   }
 
   if (res.status === 401) {
-    return NextResponse.redirect(new URL('/sign-in', req.url), 303);
+    return NextResponse.redirect(new URL('/sign-in?redirect=%2Fdashboard%2Fapi-keys', req.url), 303);
   }
   // For 200 (success) and 404 (already revoked / not found) we redirect
   // back to the list either way. The list will reflect the current state.

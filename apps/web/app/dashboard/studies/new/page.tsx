@@ -83,7 +83,7 @@ export default function StudyNewPage() {
 
       // Map API error codes to inline error UI.
       if (result.status === 401) {
-        router.push('/dashboard/sign-in');
+        router.push('/sign-in?redirect=%2Fdashboard%2Fstudies%2Fnew');
         return;
       }
       if (result.status === 402) {
