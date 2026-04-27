@@ -1124,4 +1124,79 @@ describeIfDocker('migrations schema (issue #26)', () => {
       expect(count).toBe('1');
     });
   });
+
+  describe('migration 0017 — studies.urls cardinality constraint', () => {
+    it('studies.urls column exists and is text[]', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns
+           where table_name='studies' and column_name='urls';`,
+        'studies.urls column type',
+      );
+      expect(out).toBe('ARRAY');
+    });
+
+    it('studies_urls_cardinality_chk rejects an array of 3 URLs', () => {
+      psql(pg.container, `insert into accounts (owner_email) values ('urls-chk@example.com');`);
+      expectSqlError(
+        pg.container,
+        `insert into studies (account_id, kind, status, urls)
+           select id, 'single', 'pending', ARRAY['https://a.com','https://b.com','https://c.com']
+           from accounts where owner_email='urls-chk@example.com';`,
+        /violates check constraint/i,
+        'studies_urls_cardinality_chk 3 URLs',
+      );
+    });
+
+    it('studies_urls_cardinality_chk rejects an empty array', () => {
+      expectSqlError(
+        pg.container,
+        `insert into studies (account_id, kind, status, urls)
+           select id, 'single', 'pending', ARRAY[]::text[]
+           from accounts where owner_email='urls-chk@example.com';`,
+        /violates check constraint/i,
+        'studies_urls_cardinality_chk 0 URLs',
+      );
+    });
+
+    it('studies.urls accepts 1 and 2 URLs', () => {
+      const r1 = psql(
+        pg.container,
+        `insert into studies (account_id, kind, status, urls)
+           select id, 'single', 'pending', ARRAY['https://example.com']
+           from accounts where owner_email='urls-chk@example.com';`,
+      );
+      expect(r1.code, `1-URL insert: ${r1.stderr}`).toBe(0);
+
+      const r2 = psql(
+        pg.container,
+        `insert into studies (account_id, kind, status, urls)
+           select id, 'paired', 'pending', ARRAY['https://a.com','https://b.com']
+           from accounts where owner_email='urls-chk@example.com';`,
+      );
+      expect(r2.code, `2-URL insert: ${r2.stderr}`).toBe(0);
+    });
+  });
+
+  describe('migration 0020 — reports.report_json column', () => {
+    it('reports.report_json column exists as jsonb', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select data_type from information_schema.columns
+           where table_name='reports' and column_name='report_json';`,
+        'reports.report_json column type',
+      );
+      expect(out).toBe('jsonb');
+    });
+
+    it('reports.report_json is nullable (NULL until aggregator runs)', () => {
+      const out = expectSqlOk(
+        pg.container,
+        `select is_nullable from information_schema.columns
+           where table_name='reports' and column_name='report_json';`,
+        'reports.report_json nullable',
+      );
+      expect(out).toBe('YES');
+    });
+  });
 });
