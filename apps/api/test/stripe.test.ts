@@ -23,6 +23,7 @@ import Stripe from 'stripe';
 import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgres.js';
 import { buildServer } from '../src/server.js';
 import { PACKS } from '../src/billing/packs.js';
+import { encodeSession } from '../src/auth/session.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -489,4 +490,122 @@ describe('Stripe checkout error-handling (issue #73)', () => {
       }
     },
   );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/checkout/sessions — session-cookie auth mirror (issue #36)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CHECKOUT_SESSION_HMAC_KEY = 'test_checkout_session_hmac_key_at_least_32c';
+const STUB_CHECKOUT_URL_SESSION = 'https://checkout.stripe.com/pay/cs_test_session_auth_stub';
+
+function buildCheckoutStripeStub(): Stripe {
+  return {
+    checkout: {
+      sessions: {
+        create: async () => ({
+          id: `cs_test_session_stub_${Date.now()}`,
+          url: STUB_CHECKOUT_URL_SESSION,
+          object: 'checkout.session',
+        }),
+      },
+    },
+    webhooks: { constructEvent: () => { throw new Error('not used'); } },
+  } as unknown as Stripe;
+}
+
+function buildCheckoutSessionCookie(accountId: string, email: string): string {
+  const value = encodeSession(
+    {
+      account_id: accountId,
+      owner_email: email,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    CHECKOUT_SESSION_HMAC_KEY,
+  );
+  return `wb_session=${value}`;
+}
+
+describeIfDocker('POST /api/checkout/sessions (session-cookie auth, issue #36)', () => {
+  let container = '';
+  let dbUrl = '';
+  let app: FastifyInstance;
+  let checkoutAccountId = '';
+  const checkoutEmail = 'checkout-session-test@example.com';
+
+  beforeAll(async () => {
+    const pg = await startPostgres({ containerPrefix: 'willbuy-checkout-session-test-' });
+    container = pg.container;
+    dbUrl = pg.url;
+
+    const files = readdirSync(migrationsDir).filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort();
+    const pgClient = new Client({ connectionString: dbUrl });
+    await pgClient.connect();
+    for (const f of files) {
+      await pgClient.query(readFileSync(resolve(migrationsDir, f), 'utf8'));
+    }
+    const acc = await pgClient.query<{ id: string }>(
+      `INSERT INTO accounts (owner_email) VALUES ($1) RETURNING id`,
+      [checkoutEmail],
+    );
+    checkoutAccountId = acc.rows[0]!.id;
+    await pgClient.end();
+
+    app = await buildServer({
+      env: {
+        PORT: 3097,
+        LOG_LEVEL: 'silent',
+        URL_HASH_SALT: 'x'.repeat(32),
+        DATABASE_URL: dbUrl,
+        DAILY_CAP_CENTS: 10_000,
+        STRIPE_SECRET_KEY: 'sk_test_fake_not_used_because_stub_injected',
+        STRIPE_WEBHOOK_SECRET: 'whsec_not_used',
+        STRIPE_PRICE_ID_STARTER: 'price_test_checkout_starter',
+        STRIPE_PRICE_ID_GROWTH:  'price_test_checkout_growth',
+        STRIPE_PRICE_ID_SCALE:   'price_test_checkout_scale',
+        SHARE_TOKEN_HMAC_KEY: 'dev-only-share-token-hmac-key-not-for-production-use',
+        SESSION_HMAC_KEY: CHECKOUT_SESSION_HMAC_KEY,
+        NODE_ENV: 'test',
+      },
+      stripe: buildCheckoutStripeStub(),
+    });
+  }, 90_000);
+
+  afterAll(async () => {
+    await app?.close();
+    stopPostgres(container);
+  });
+
+  it('valid session + valid pack_id → 200 with Stripe checkout url', async () => {
+    const cookie = buildCheckoutSessionCookie(checkoutAccountId, checkoutEmail);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/sessions',
+      headers: { cookie },
+      payload: { pack_id: 'growth' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { url: string };
+    expect(body.url).toBe(STUB_CHECKOUT_URL_SESSION);
+  });
+
+  it('no session cookie → 401', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/sessions',
+      payload: { pack_id: 'starter' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('valid session + invalid pack_id → 400', async () => {
+    const cookie = buildCheckoutSessionCookie(checkoutAccountId, checkoutEmail);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/sessions',
+      headers: { cookie },
+      payload: { pack_id: 'enterprise' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });
