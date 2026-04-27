@@ -88,6 +88,9 @@ export function PairedDots({ rows }: { rows: ReportT['paired_dots'] }) {
   const [active, setActive] = useState<string | null>(null);
   const data = buildData(rows);
 
+  // Single-URL studies have no paired visitors — nothing to plot.
+  if (data.length === 0) return null;
+
   const activeRow = rows.find((r) => r.backstory_id === active) ?? null;
 
   return (
