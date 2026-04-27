@@ -339,7 +339,8 @@ export async function registerStudiesRoutes(
   //   WHERE (created_at, id) < (cursor.created_at, cursor.id)
   //
   // Returns 400 on a malformed cursor (per AC6) — never silently degrades.
-  const sessionMiddleware = buildSessionMiddleware(env.SESSION_HMAC_KEY, env.NODE_ENV);
+  // Pass pool so verified_domains is loaded from DB (needed for POST /api/studies).
+  const sessionMiddleware = buildSessionMiddleware(env.SESSION_HMAC_KEY, env.NODE_ENV, pool);
 
   // ── GET /api/studies/:id (issue #209) ─────────────────────────────────────
   //
@@ -391,6 +392,110 @@ export async function registerStudiesRoutes(
         started_at: study.created_at.toISOString(),
         finalized_at: study.finalized_at?.toISOString() ?? null,
       });
+    },
+  );
+
+  // ── POST /api/studies (issue #210) ────────────────────────────────────────
+  //
+  // Session-cookie mirror of POST /studies (API-key auth). Allows dashboard
+  // users to create studies from the browser without a programmatic API key.
+  // Identical logic to POST /studies; session middleware loads verified_domains
+  // from the DB (pool passed above) so domain verification works the same way.
+  app.post(
+    '/api/studies',
+    { preHandler: [sessionMiddleware] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const account = req.account!;
+
+      const bodyResult = CreateStudyBodySchema.safeParse(req.body);
+      if (!bodyResult.success) {
+        const msg = bodyResult.error.issues.map((i) => i.message).join('; ');
+        return reply.code(422).send({ error: msg });
+      }
+      const body = bodyResult.data;
+
+      for (const url of body.urls) {
+        const etld = getEtldPlusOne(url);
+        if (!etld) return reply.code(422).send({ error: `invalid URL: ${url}` });
+        if (!account.verified_domains.includes(etld)) {
+          return reply.code(422).send({ error: `unverified domain: ${etld}` });
+        }
+      }
+
+      const n = body.n_visits;
+      const estCents = body.urls.length * n * CENTS_PER_VISIT_EST + CENTS_PER_STUDY_CLUSTER_LABEL;
+      const today = new Date().toISOString().slice(0, 10);
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        const spendRows = await client.query<{ cents: number }>(
+          `INSERT INTO llm_spend_daily (account_id, date, kind, cents)
+             VALUES ($1, $2::date, 'visit', $3)
+             ON CONFLICT (account_id, date, kind)
+             DO UPDATE SET cents = llm_spend_daily.cents + EXCLUDED.cents
+             WHERE llm_spend_daily.cents + EXCLUDED.cents <= $4
+             RETURNING cents`,
+          [String(account.id), today, estCents, env.DAILY_CAP_CENTS],
+        );
+        if (spendRows.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return reply.code(402).send({ error: 'daily spend cap exceeded' });
+        }
+
+        const kind = body.urls.length === 2 ? 'paired' : 'single';
+        const studyResult = await client.query<{ id: string }>(
+          `INSERT INTO studies (account_id, kind, status, urls)
+           VALUES ($1, $2, 'capturing', $3::text[])
+           RETURNING id`,
+          [String(account.id), kind, body.urls],
+        );
+        const studyId = studyResult.rows[0]!.id;
+
+        const icpPayload = JSON.stringify(body.icp);
+        for (let idx = 0; idx < n; idx++) {
+          await client.query(
+            `INSERT INTO backstories (study_id, idx, payload) VALUES ($1, $2, $3::jsonb)`,
+            [studyId, idx, icpPayload],
+          );
+        }
+
+        const backstoryRows = await client.query<{ id: string; idx: number }>(
+          `SELECT id, idx FROM backstories WHERE study_id = $1 ORDER BY idx`,
+          [studyId],
+        );
+        for (const bs of backstoryRows.rows) {
+          for (let variantIdx = 0; variantIdx < body.urls.length; variantIdx++) {
+            await client.query(
+              `INSERT INTO visits (study_id, backstory_id, variant_idx, status)
+               VALUES ($1, $2, $3, 'started')`,
+              [studyId, bs.id, variantIdx],
+            );
+          }
+        }
+
+        await client.query('COMMIT');
+
+        recordStudyStarted({ kind });
+        void maybeWarnCap({
+          sql,
+          account_id: account.id,
+          date: today,
+          new_cents: spendRows.rows[0]!.cents,
+          daily_cap_cents: env.DAILY_CAP_CENTS,
+          owner_email: account.owner_email,
+          study_id: studyId,
+          resend,
+        });
+
+        return reply.code(201).send({ study_id: Number(studyId), status: 'capturing' });
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+        throw err;
+      } finally {
+        client.release();
+      }
     },
   );
 

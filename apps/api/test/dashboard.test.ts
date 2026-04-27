@@ -255,10 +255,21 @@ describeIfDocker('GET /api/dashboard/summary (issue #80, real DB)', () => {
       ownerEmail: accountAEmail,
       expiresAtIso: futureIso(),
     });
-    // Flip the last byte of the MAC.
+    // Corrupt the MAC by changing a character in the middle of the HMAC portion.
+    // We avoid flipping the very last base64url character because for a 32-byte
+    // HMAC (43 base64url chars), the last char's bottom 2 bits are padding zeros —
+    // so some last-char flips don't change the decoded bytes and the MAC still
+    // verifies (intermittent false-pass). Changing a middle char guarantees all
+    // 6 bits are significant.
     const value = goodCookie.slice('wb_session='.length);
-    const tampered =
-      value.slice(0, -1) + (value.slice(-1) === 'A' ? 'B' : 'A');
+    const dot = value.lastIndexOf('.');
+    const mac = value.slice(dot + 1); // 43 chars for SHA-256
+    const midIdx = Math.floor(mac.length / 2);
+    const corruptedMac =
+      mac.slice(0, midIdx) +
+      (mac[midIdx] === 'A' ? 'B' : 'A') +
+      mac.slice(midIdx + 1);
+    const tampered = value.slice(0, dot + 1) + corruptedMac;
     const res = await app.inject({
       method: 'GET',
       url: '/api/dashboard/summary',
