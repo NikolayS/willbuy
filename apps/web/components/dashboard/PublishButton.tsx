@@ -3,7 +3,7 @@
 // PublishButton — makes a ready study's report publicly accessible.
 // Calls POST /api/studies/:id/publish (session-cookie auth).
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 
 interface PublishButtonProps {
   studyId: string | number;
