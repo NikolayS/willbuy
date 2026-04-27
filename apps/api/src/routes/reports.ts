@@ -171,6 +171,16 @@ interface ReportRow {
   urls: string[] | null;
 }
 
+// Test-only seam: exposes the crypto helpers for unit testing without
+// spinning up a Fastify server + Postgres + real HMAC tokens.
+export const __test__ = {
+  buildCookieValue,
+  verifyCookieValue,
+  parseCookie,
+  tokenMatchesHash,
+  MAX_COOKIE_SECONDS,
+};
+
 // ---------------------------------------------------------------------------
 // Route registration
 // ---------------------------------------------------------------------------
