@@ -16,6 +16,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
 
 import { buildApiKeyMiddleware } from '../auth/api-key.js';
+import { buildSessionMiddleware } from '../auth/session.js';
 import type { Env } from '../env.js';
 import { PACKS, type PackId } from '../billing/packs.js';
 
@@ -71,6 +72,47 @@ export async function registerCheckoutRoutes(
         return reply
           .code(502)
           .send({ error: 'payment provider unavailable, try again' });
+      }
+
+      return reply.code(200).send({ url: session.url });
+    },
+  );
+
+  // ── POST /api/checkout/sessions (session-cookie auth) ─────────────────────
+  //
+  // Session-cookie mirror of POST /checkout/sessions. Allows dashboard users
+  // to initiate Stripe checkout without a programmatic API key in their browser.
+  // Identical Stripe session creation logic; only auth differs.
+  const sessionMiddleware = buildSessionMiddleware(env.SESSION_HMAC_KEY, env.NODE_ENV);
+
+  app.post(
+    '/api/checkout/sessions',
+    { preHandler: [sessionMiddleware] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const account = req.account!;
+
+      const bodyResult = CreateSessionBodySchema.safeParse(req.body);
+      if (!bodyResult.success) {
+        return reply.code(400).send({ error: 'invalid pack_id' });
+      }
+
+      const packId: PackId = bodyResult.data.pack_id;
+      const pack = PACKS[packId];
+
+      let session: Awaited<ReturnType<typeof stripe.checkout.sessions.create>>;
+      try {
+        session = await stripe.checkout.sessions.create({
+          mode: 'payment',
+          payment_method_types: ['card'],
+          line_items: [{ price: pack.price_id, quantity: 1 }],
+          client_reference_id: String(account.id),
+          metadata: { pack_id: packId },
+          success_url: env.STRIPE_SUCCESS_URL ?? 'https://willbuy.dev/credits?success=1',
+          cancel_url: env.STRIPE_CANCEL_URL ?? 'https://willbuy.dev/credits?cancelled=1',
+        });
+      } catch (err) {
+        req.log.error(err, 'stripe-checkout-create-failed');
+        return reply.code(502).send({ error: 'payment provider unavailable, try again' });
       }
 
       return reply.code(200).send({ url: session.url });
