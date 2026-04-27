@@ -338,4 +338,72 @@ describe('StudyStatusPage — polling', () => {
     });
     expect(fetchSpy.mock.calls.length).toBeGreaterThan(callCount);
   }, 15_000);
+
+  it('polling stops after reaching "ready" status (issue #74 MINOR-1)', async () => {
+    // The first response returns 'ready' (terminal status). Subsequent calls
+    // return 'capturing' to distinguish them — if polling continues, the
+    // fetchSpy call count would increase beyond 1.
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 55,
+            status: 'ready',
+            visit_progress: { ok: 30, failed: 0, total: 30 },
+            started_at: new Date().toISOString(),
+            finalized_at: new Date().toISOString(),
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValue(
+        // Sentinel: if the interval fires again, this would be served.
+        new Response(
+          JSON.stringify({
+            id: 55,
+            status: 'capturing',
+            visit_progress: { ok: 0, failed: 0, total: 30 },
+            started_at: new Date().toISOString(),
+            finalized_at: null,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+    const { default: StudyStatusPage } = await import(
+      '../app/dashboard/studies/[id]/page'
+    );
+    await act(async () => {
+      render(
+        React.createElement(StudyStatusPage, {
+          params: Promise.resolve({ id: '55' }),
+        }),
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // First (and only expected) fetch has fired.
+    const callCountAtReady = fetchSpy.mock.calls.length;
+    expect(callCountAtReady).toBeGreaterThanOrEqual(1);
+
+    // Advance 3× the poll interval — if polling hadn't stopped, 3 more calls
+    // would be queued (each would return 'capturing', changing the UI).
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Call count must NOT have increased — poll was cancelled on terminal status.
+    expect(fetchSpy.mock.calls.length).toBe(callCountAtReady);
+    // UI still shows 'ready', NOT 'capturing' from the sentinel responses.
+    expect(screen.getAllByText(/ready/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/capturing/i)).toBeNull();
+  }, 15_000);
 });
