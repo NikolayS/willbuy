@@ -240,3 +240,12 @@ export async function registerApiKeyRoutes(
   // masked key implicitly via the pino formatter (logger.ts).
   void maskKey;
 }
+
+// Test-only export: key-generation helpers and constants for unit testing
+// without a Fastify server or Postgres.
+export const __test__ = {
+  generateKey,
+  maskKey,
+  PREFIX,
+  KEY_BODY_LEN,
+};
