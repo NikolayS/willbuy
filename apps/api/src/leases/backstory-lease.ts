@@ -259,3 +259,10 @@ export async function acquireLeaseWithBackoff(
 // client checkout/release themselves for simple single-statement work.
 // For transactional sequences the caller provides a PoolClient directly.
 export type { Pool, PoolClient };
+
+// Test seam — not part of the public API surface.
+export const __test__ = {
+  BACKOFF_BASE_MS,
+  BACKOFF_FACTOR,
+  BACKOFF_MAX_TRIES,
+};

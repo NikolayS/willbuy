@@ -316,3 +316,6 @@ export async function registerReportsRoutes(
     },
   );
 }
+
+// Test seam — not part of the public API surface.
+export const __test__ = { MAX_COOKIE_SECONDS };
