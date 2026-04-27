@@ -18,6 +18,14 @@ export type {
 export { CAPTURE_CEILINGS } from './types.js';
 export { pollOnce, runPollingLoop } from './poller.js';
 export { sendToBroker } from './broker-client.js';
+export {
+  RuntimeConfigError,
+  RuntimeNotImplementedError,
+  runCapture,
+  selectRuntime,
+  selectRuntimeFromEnv,
+  type CaptureRuntime,
+} from './runtime.js';
 
 // ── production entrypoint ─────────────────────────────────────────────────────
 // Only runs when this file is executed directly (not when imported).
@@ -33,8 +41,33 @@ if (isMain) {
   const { Pool } = await import('pg');
   const { runPollingLoop: startLoop } = await import('./poller.js');
   const { buildCaptureWorkerLogger } = await import('./logger.js');
+  const { selectRuntimeFromEnv, RuntimeConfigError } = await import(
+    './runtime.js'
+  );
 
   const log = buildCaptureWorkerLogger();
+
+  // Validate WILLBUY_CAPTURE_RUNTIME at process-start (issue #116). A bad
+  // value here aborts the worker BEFORE any visit row is leased — better to
+  // crash-loop the deployment than to silently fall through to 'netns' or
+  // produce one 'indeterminate' visit per misconfig before crashing.
+  let captureRuntime: 'netns' | 'firecracker';
+  try {
+    captureRuntime = selectRuntimeFromEnv(process.env);
+  } catch (e) {
+    if (e instanceof RuntimeConfigError) {
+      log.error({ event: 'startup.invalid_runtime', value: e.value }, e.message);
+      process.exit(2);
+    }
+    throw e;
+  }
+  log.info(
+    { event: 'startup.runtime', runtime: captureRuntime },
+    `WILLBUY_CAPTURE_RUNTIME=${captureRuntime}` +
+      (captureRuntime === 'firecracker'
+        ? ' (stub seam — actual VM launch lands in #117)'
+        : ''),
+  );
 
   const dbUrl = process.env['DATABASE_URL'];
   if (!dbUrl) {
