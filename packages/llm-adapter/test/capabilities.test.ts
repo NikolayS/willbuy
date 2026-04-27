@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { LocalCliProvider, LOCAL_CLI_CAPABILITIES } from '../src/index.js';
+import {
+  LocalCliProvider,
+  LOCAL_CLI_CAPABILITIES,
+  LOCAL_CLI_PROVIDER_NAME,
+  LOCAL_CLI_DEFAULT_MODEL,
+  LOCAL_CLI_DEFAULT_TIMEOUT_MS,
+  LOCAL_CLI_DEFAULT_BACKOFF_MS,
+  LOCAL_CLI_MAX_TRANSPORT_ATTEMPTS,
+} from '../src/index.js';
 
 // Spec §2 #27: pluggable LLM adapter declares capability flags
 // (idempotency, zero_retention, structured_output, prompt_caching).
@@ -53,5 +61,32 @@ describe('LocalCliProvider — capabilities()', () => {
         process.env.WILLBUY_LLM_MODEL = prev;
       }
     }
+  });
+});
+
+// ── Transport protocol constants — spec §5.15 pin ────────────────────────────
+
+describe('LocalCliProvider — transport protocol constants (spec §5.15)', () => {
+  it('LOCAL_CLI_PROVIDER_NAME is "local-cli" (generic, no vendor leak)', () => {
+    expect(LOCAL_CLI_PROVIDER_NAME).toBe('local-cli');
+  });
+
+  it('LOCAL_CLI_DEFAULT_MODEL is "local-cli/v1" (generic identifier)', () => {
+    expect(LOCAL_CLI_DEFAULT_MODEL).toBe('local-cli/v1');
+  });
+
+  it('LOCAL_CLI_DEFAULT_TIMEOUT_MS is 120_000 (2 minutes, spec §2 #6 cap)', () => {
+    expect(LOCAL_CLI_DEFAULT_TIMEOUT_MS).toBe(120_000);
+  });
+
+  it('LOCAL_CLI_DEFAULT_BACKOFF_MS is [500, 2000, 8000] (exponential per §5.15)', () => {
+    expect(LOCAL_CLI_DEFAULT_BACKOFF_MS).toEqual([500, 2000, 8000]);
+    expect(LOCAL_CLI_DEFAULT_BACKOFF_MS).toHaveLength(3);
+  });
+
+  it('LOCAL_CLI_MAX_TRANSPORT_ATTEMPTS is 3 (matching backoff array length)', () => {
+    expect(LOCAL_CLI_MAX_TRANSPORT_ATTEMPTS).toBe(3);
+    // Invariant: backoff array has exactly (max_attempts - 1) entries.
+    expect(LOCAL_CLI_DEFAULT_BACKOFF_MS).toHaveLength(LOCAL_CLI_MAX_TRANSPORT_ATTEMPTS - 1 + 1);
   });
 });
