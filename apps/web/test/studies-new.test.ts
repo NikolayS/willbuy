@@ -52,6 +52,37 @@ describe('StudyNewPage — URL inputs', () => {
     const urlInputs = screen.getAllByRole('textbox', { name: /url/i });
     expect(urlInputs.length).toBe(2);
   });
+
+  it('?urlA pre-populates the URL input via useEffect on mount', async () => {
+    // Stub window.location.search before the component mounts.
+    vi.stubGlobal('location', { ...window.location, search: '?urlA=https%3A%2F%2Fexample.com%2Fretry' });
+    const { default: StudyNewPage } = await import(
+      '../app/dashboard/studies/new/page'
+    );
+    render(React.createElement(StudyNewPage));
+    await act(async () => { await Promise.resolve(); });
+    const urlInput = screen.getByRole('textbox', { name: /^url$/i });
+    expect((urlInput as HTMLInputElement).value).toBe('https://example.com/retry');
+    vi.unstubAllGlobals();
+  });
+
+  it('?urlA=&?urlB= pre-populates both inputs and activates paired mode', async () => {
+    vi.stubGlobal('location', {
+      ...window.location,
+      search: '?urlA=https%3A%2F%2Fexample.com%2Fa&urlB=https%3A%2F%2Fexample.com%2Fb',
+    });
+    const { default: StudyNewPage } = await import(
+      '../app/dashboard/studies/new/page'
+    );
+    render(React.createElement(StudyNewPage));
+    await act(async () => { await Promise.resolve(); });
+    // Paired mode: two URL inputs.
+    const urlInputs = screen.getAllByRole('textbox', { name: /url/i });
+    expect(urlInputs.length).toBe(2);
+    expect((urlInputs[0] as HTMLInputElement).value).toBe('https://example.com/a');
+    expect((urlInputs[1] as HTMLInputElement).value).toBe('https://example.com/b');
+    vi.unstubAllGlobals();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
