@@ -57,6 +57,8 @@ const PACKS: Pack[] = [
   },
 ];
 
+export const __test__ = { PACKS };
+
 export default async function PricingPage() {
   const jar = await cookies();
   const isAuthenticated =

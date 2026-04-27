@@ -32,6 +32,8 @@ const ICP_LABELS: Record<IcpPresetId, string> = {
   fintech_ops_buyer: 'Fintech ops buyer',
 };
 
+export const __test__ = { ICP_LABELS };
+
 export default function StudyNewPage() {
   const router = useRouter();
 

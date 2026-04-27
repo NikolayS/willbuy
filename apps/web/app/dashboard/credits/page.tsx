@@ -32,6 +32,8 @@ const PACKS: Pack[] = [
   { id: 'scale', label: 'Scale', usd: 299, credits: 15_000, visitEstimate: Math.floor(29900 / 3.5) },
 ];
 
+export const __test__ = { PACKS };
+
 function apiBaseUrl(): string {
   const explicit = process.env['WILLBUY_API_URL'] ?? process.env['NEXT_PUBLIC_API_URL'];
   if (explicit) return explicit.replace(/\/$/, '');
