@@ -325,91 +325,127 @@ export async function registerDomainsRoutes(
 
   // ──────────────────────────────────────────────────────────────────────────
   // POST /api/domains/:domain/verify — probe & mark verified on first match.
+  // POST /api/domains/:domain/delete — form-submit fallback (issue #83).
+  //
+  // Both routes receive HTML form POSTs (Content-Type:
+  // application/x-www-form-urlencoded). Fastify has no default parser for
+  // that content type, so without a registered parser it returns 415 before
+  // the handler runs. Neither route reads the request body — they only use
+  // URL params and the session cookie — so we register discard parsers in an
+  // encapsulated scope to keep them from bleeding into other routes.
+  // Same pattern as the sign-out route in auth.ts (fixes #481).
   // ──────────────────────────────────────────────────────────────────────────
-  app.post<{ Params: { domain: string } }>(
-    '/api/domains/:domain/verify',
-    { preHandler: [sessionMw] },
-    async (req, reply) => {
-      const account = req.account!;
-      const rawDomain = req.params.domain;
-      const domain = normalizeEtldPlusOne(rawDomain);
-      if (!domain) {
-        return reply.code(400).send({ error: 'invalid domain' });
-      }
+  await app.register(async function domainFormScope(scope) {
+    // Accept application/x-www-form-urlencoded — discard the body.
+    scope.addContentTypeParser(
+      'application/x-www-form-urlencoded',
+      { parseAs: 'string' },
+      function formBodyParser(
+        _req: FastifyRequest,
+        _body: string,
+        done: (err: Error | null, body?: unknown) => void,
+      ) {
+        done(null, {});
+      },
+    );
 
-      // Look up the challenge row.
-      const r = await pool.query<{
-        id: string;
-        verify_token: string;
-        verified_at: Date | null;
-      }>(
-        `SELECT id, verify_token, verified_at
-           FROM domain_verifications
-          WHERE account_id = $1 AND domain = $2`,
-        [String(account.id), domain],
-      );
-      const row = r.rows[0];
-      if (!row) {
-        return reply.code(404).send({ error: 'no verification challenge for this domain' });
-      }
+    // Accept requests with no Content-Type header (empty form body).
+    scope.addContentTypeParser(
+      '*',
+      { parseAs: 'string' },
+      function wildcardBodyParser(
+        _req: FastifyRequest,
+        _body: string,
+        done: (err: Error | null, body?: unknown) => void,
+      ) {
+        done(null, {});
+      },
+    );
 
-      const token = row.verify_token;
-
-      // Probe all three methods in parallel. Return on first success.
-      // We deliberately let all three settle to update last_checked_at on
-      // failure paths consistently. The method priority is dns > well_known > meta.
-      const [dnsHit, wkHit, metaHit] = await Promise.all([
-        probeDns(domain, token).catch(() => false),
-        probeWellKnown(domain, token).catch(() => false),
-        probeMeta(domain, token).catch(() => false),
-      ]);
-
-      let method: 'dns' | 'well_known' | 'meta' | null = null;
-      if (dnsHit) method = 'dns';
-      else if (wkHit) method = 'well_known';
-      else if (metaHit) method = 'meta';
-
-      if (method !== null) {
-        // Mark verified + atomically append to accounts.verified_domains.
-        const client = await pool.connect();
-        try {
-          await client.query('BEGIN');
-          await client.query(
-            `UPDATE domain_verifications
-                SET verified_at = now(),
-                    last_checked_at = now()
-              WHERE id = $1`,
-            [row.id],
-          );
-          // array_append + dedupe: only append if not already present.
-          await client.query(
-            `UPDATE accounts
-                SET verified_domains =
-                  CASE
-                    WHEN $2 = ANY(COALESCE(verified_domains, '{}')) THEN verified_domains
-                    ELSE COALESCE(verified_domains, '{}') || ARRAY[$2]::text[]
-                  END
-              WHERE id = $1`,
-            [String(account.id), domain],
-          );
-          await client.query('COMMIT');
-        } catch (err) {
-          try { await client.query('ROLLBACK'); } catch { /* ignore */ }
-          throw err;
-        } finally {
-          client.release();
+    scope.post<{ Params: { domain: string } }>(
+      '/api/domains/:domain/verify',
+      { preHandler: [sessionMw] },
+      async (req, reply) => {
+        const account = req.account!;
+        const rawDomain = req.params.domain;
+        const domain = normalizeEtldPlusOne(rawDomain);
+        if (!domain) {
+          return reply.code(400).send({ error: 'invalid domain' });
         }
-        return reply.code(200).send({ verified: true, method });
-      }
 
-      // Failure: just bump last_checked_at.
-      await pool.query(
-        `UPDATE domain_verifications SET last_checked_at = now() WHERE id = $1`,
-        [row.id],
-      );
-      return reply.code(200).send({ verified: false });
-    },
-  );
+        // Look up the challenge row.
+        const r = await pool.query<{
+          id: string;
+          verify_token: string;
+          verified_at: Date | null;
+        }>(
+          `SELECT id, verify_token, verified_at
+             FROM domain_verifications
+            WHERE account_id = $1 AND domain = $2`,
+          [String(account.id), domain],
+        );
+        const row = r.rows[0];
+        if (!row) {
+          return reply.code(404).send({ error: 'no verification challenge for this domain' });
+        }
+
+        const token = row.verify_token;
+
+        // Probe all three methods in parallel. Return on first success.
+        // We deliberately let all three settle to update last_checked_at on
+        // failure paths consistently. The method priority is dns > well_known > meta.
+        const [dnsHit, wkHit, metaHit] = await Promise.all([
+          probeDns(domain, token).catch(() => false),
+          probeWellKnown(domain, token).catch(() => false),
+          probeMeta(domain, token).catch(() => false),
+        ]);
+
+        let method: 'dns' | 'well_known' | 'meta' | null = null;
+        if (dnsHit) method = 'dns';
+        else if (wkHit) method = 'well_known';
+        else if (metaHit) method = 'meta';
+
+        if (method !== null) {
+          // Mark verified + atomically append to accounts.verified_domains.
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
+            await client.query(
+              `UPDATE domain_verifications
+                  SET verified_at = now(),
+                      last_checked_at = now()
+                WHERE id = $1`,
+              [row.id],
+            );
+            // array_append + dedupe: only append if not already present.
+            await client.query(
+              `UPDATE accounts
+                  SET verified_domains =
+                    CASE
+                      WHEN $2 = ANY(COALESCE(verified_domains, '{}')) THEN verified_domains
+                      ELSE COALESCE(verified_domains, '{}') || ARRAY[$2]::text[]
+                    END
+                WHERE id = $1`,
+              [String(account.id), domain],
+            );
+            await client.query('COMMIT');
+          } catch (err) {
+            try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+            throw err;
+          } finally {
+            client.release();
+          }
+          return reply.code(200).send({ verified: true, method });
+        }
+
+        // Failure: just bump last_checked_at.
+        await pool.query(
+          `UPDATE domain_verifications SET last_checked_at = now() WHERE id = $1`,
+          [row.id],
+        );
+        return reply.code(200).send({ verified: false });
+      },
+    );
 
   // ──────────────────────────────────────────────────────────────────────────
   // GET /api/domains — list domains for the authenticated account (issue #83).
@@ -512,28 +548,21 @@ export async function registerDomainsRoutes(
     },
   );
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // POST /api/domains/:domain/delete — form-submit fallback (issue #83).
-  //
-  // The /dashboard/domains list runs under a strict CSP (§5.10) and uses
-  // native HTML <form> posts instead of fetch() for the action buttons.
-  // Because forms can only emit GET or POST, this sibling route does the
-  // same work as DELETE and redirects back to the list page.
-  // ──────────────────────────────────────────────────────────────────────────
-  app.post<{ Params: { domain: string } }>(
-    '/api/domains/:domain/delete',
-    { preHandler: [sessionMw] },
-    async (req, reply) => {
-      const account = req.account!;
-      const domain = normalizeEtldPlusOne(req.params.domain);
-      if (!domain) {
-        return reply.code(404).send({ error: 'not found' });
-      }
-      // Best-effort delete: even if the row didn't exist, redirect back to
-      // the list. Any leak is bounded to "is this domain in your list" —
-      // which the user already sees on the page they came from.
-      await deleteDomainForAccount(String(account.id), domain);
-      return reply.code(302).redirect('/dashboard/domains');
-    },
-  );
+    scope.post<{ Params: { domain: string } }>(
+      '/api/domains/:domain/delete',
+      { preHandler: [sessionMw] },
+      async (req, reply) => {
+        const account = req.account!;
+        const domain = normalizeEtldPlusOne(req.params.domain);
+        if (!domain) {
+          return reply.code(404).send({ error: 'not found' });
+        }
+        // Best-effort delete: even if the row didn't exist, redirect back to
+        // the list. Any leak is bounded to "is this domain in your list" —
+        // which the user already sees on the page they came from.
+        await deleteDomainForAccount(String(account.id), domain);
+        return reply.code(302).redirect('/dashboard/domains');
+      },
+    );
+  });
 }
