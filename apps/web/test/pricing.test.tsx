@@ -74,4 +74,30 @@ describe('/pricing page (issue #144)', () => {
     const html = await getHtml();
     expect(html).toMatch(/sign-in/i);
   });
+
+  // ── Credits and visit-estimate spec-pins (issue #112 — 3.5¢/visit avg) ──────
+  it('Starter shows 1,000 credits', async () => {
+    const html = await getHtml();
+    expect(html).toMatch(/1[,.]?000\s*credits/i);
+  });
+
+  it('Growth shows 4,000 credits', async () => {
+    const html = await getHtml();
+    expect(html).toMatch(/4[,.]?000\s*credits/i);
+  });
+
+  it('Scale shows 15,000 credits', async () => {
+    const html = await getHtml();
+    expect(html).toMatch(/15[,.]?000\s*credits/i);
+  });
+
+  it('Starter shows ~828 visit estimate (Math.floor(2900 / 3.5))', async () => {
+    const html = await getHtml();
+    expect(html).toMatch(/828\s*visits/i);
+  });
+
+  it('Growth shows ~2,828 visit estimate (Math.floor(9900 / 3.5))', async () => {
+    const html = await getHtml();
+    expect(html).toMatch(/2[,.]?828\s*visits/i);
+  });
 });
