@@ -122,6 +122,7 @@ interface ListStudy {
   n_visits: number;
   urls: string[];
   visit_progress: { ok: number; failed: number; total: number };
+  report_public?: boolean;
 }
 
 interface ListResponse {
@@ -406,6 +407,6 @@ describeIfDocker('GET /api/studies (issue #85, real DB)', () => {
     const body = res.json<ListResponse>();
     const target = body.studies.find((s) => s.id === Number(studyId));
     expect(target).toBeDefined();
-    expect((target as Record<string, unknown>)['report_public']).toBe(true);
+    expect(target!.report_public).toBe(true);
   });
 });
