@@ -19,7 +19,7 @@
  */
 
 import React from 'react';
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createStudy, ICP_PRESETS, type IcpPresetId } from '../../../../lib/api-client';
 
@@ -39,6 +39,15 @@ export default function StudyNewPage() {
   const [urlA, setUrlA] = useState('');
   const [urlB, setUrlB] = useState('');
   const [isPaired, setIsPaired] = useState(false);
+
+  // Pre-populate from ?urlA=&urlB= (passed by the retry link on the study status page).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const a = params.get('urlA');
+    const b = params.get('urlB');
+    if (a) setUrlA(a);
+    if (b) { setUrlB(b); setIsPaired(true); }
+  }, []);
   const [icpId, setIcpId] = useState<IcpPresetId>('saas_founder_pre_pmf');
   const [nVisits, setNVisits] = useState(30);
 

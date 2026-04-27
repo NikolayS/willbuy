@@ -183,10 +183,30 @@ function StudyStatusInner({ id }: { id: string }) {
   const isTerminal = TERMINAL.includes(status);
   const progress = s.visit_progress;
 
+  // Build retry URL pre-populated with the study's URL(s).
+  const studyUrls = s.urls ?? [];
+  const retryParams = new URLSearchParams();
+  if (studyUrls[0]) retryParams.set('urlA', studyUrls[0]);
+  if (studyUrls[1]) retryParams.set('urlB', studyUrls[1]);
+  const retryHref = studyUrls.length > 0
+    ? `/dashboard/studies/new?${retryParams.toString()}`
+    : '/dashboard/studies/new';
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       {/* Study ID header */}
       <h1 className="text-3xl font-bold tracking-tight">Study #{s.id}</h1>
+
+      {/* URL(s) under test */}
+      {studyUrls.length > 0 && (
+        <ul className="mt-2 space-y-0.5">
+          {studyUrls.map((u) => (
+            <li key={u} className="truncate font-mono text-xs text-gray-500">
+              {u}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Status badge */}
       <div className="mt-4 flex items-center gap-2">
@@ -210,11 +230,6 @@ function StudyStatusInner({ id }: { id: string }) {
           <p className="text-sm font-medium text-green-800">
             Your study is ready! View the report to see results.
           </p>
-          {/* Issue #74 MINOR-2: GET /studies/:id returns the study's slug
-              field (per PR #102 dashboard-summary endpoint pattern). Use it
-              when available; fall back to /r/${s.id} (matches the bare-id
-              shape used by /dashboard/studies/StudiesListView). The previous
-              fallback (/r/study-${s.id}) would 404. */}
           <a
             href={s.slug ? `/r/${s.slug}` : `/r/${s.id}`}
             className="mt-3 inline-block rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
@@ -232,9 +247,8 @@ function StudyStatusInner({ id }: { id: string }) {
             This study failed. This can happen if the page was unreachable or
             the domain was blocked.
           </p>
-          {/* Retry is a Sprint 3 feature; placeholder link */}
           <a
-            href="/dashboard/studies/new"
+            href={retryHref}
             className="mt-3 inline-block rounded-md bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
           >
             Try again with a new study

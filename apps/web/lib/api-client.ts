@@ -70,6 +70,8 @@ const GetStudyResponseSchema = z.object({
   slug: z.string().optional(),
   // report_public present once study has a report row; true if already published.
   report_public: z.boolean().optional(),
+  // urls is the list of URLs under test (1 for single, 2 for paired A/B).
+  urls: z.array(z.string()).optional(),
 });
 export type GetStudyResponse = z.infer<typeof GetStudyResponseSchema>;
 
