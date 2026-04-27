@@ -339,3 +339,48 @@ describe('StudyStatusPage — polling', () => {
     expect(fetchSpy.mock.calls.length).toBeGreaterThan(callCount);
   }, 15_000);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Spec-pin: ICP_PRESETS and STUDY_STATUSES constant values
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ICP_PRESETS spec-pin (api-client.ts)', () => {
+  it('contains exactly 5 ICP presets', async () => {
+    const { ICP_PRESETS } = await import('../lib/api-client.js');
+    expect(ICP_PRESETS).toHaveLength(5);
+  });
+
+  it('includes saas_founder_pre_pmf, saas_founder_post_pmf', async () => {
+    const { ICP_PRESETS } = await import('../lib/api-client.js');
+    expect(ICP_PRESETS).toContain('saas_founder_pre_pmf');
+    expect(ICP_PRESETS).toContain('saas_founder_post_pmf');
+  });
+
+  it('includes shopify_merchant, devtools_engineer, fintech_ops_buyer', async () => {
+    const { ICP_PRESETS } = await import('../lib/api-client.js');
+    expect(ICP_PRESETS).toContain('shopify_merchant');
+    expect(ICP_PRESETS).toContain('devtools_engineer');
+    expect(ICP_PRESETS).toContain('fintech_ops_buyer');
+  });
+});
+
+describe('STUDY_STATUSES spec-pin (api-client.ts)', () => {
+  it('contains exactly 6 statuses', async () => {
+    const { STUDY_STATUSES } = await import('../lib/api-client.js');
+    expect(STUDY_STATUSES).toHaveLength(6);
+  });
+
+  it('includes the 3 terminal statuses: ready, failed, and aggregating', async () => {
+    const { STUDY_STATUSES } = await import('../lib/api-client.js');
+    expect(STUDY_STATUSES).toContain('ready');
+    expect(STUDY_STATUSES).toContain('failed');
+    expect(STUDY_STATUSES).toContain('aggregating');
+  });
+
+  it('includes the 3 transient statuses: pending, capturing, visiting', async () => {
+    const { STUDY_STATUSES } = await import('../lib/api-client.js');
+    expect(STUDY_STATUSES).toContain('pending');
+    expect(STUDY_STATUSES).toContain('capturing');
+    expect(STUDY_STATUSES).toContain('visiting');
+  });
+});
