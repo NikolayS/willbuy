@@ -228,14 +228,18 @@ function StudyStatusInner({ id }: { id: string }) {
       {status === 'ready' && (
         <div className="mt-8 rounded-lg border border-green-200 bg-green-50 px-5 py-4">
           <p className="text-sm font-medium text-green-800">
-            Your study is ready! View the report to see results.
+            Your study is ready!
+            {s.report_public ? ' View or share the public report.' : ' Publish the report to view and share it.'}
           </p>
-          <a
-            href={s.slug ? `/r/${s.slug}` : `/r/${s.id}`}
-            className="mt-3 inline-block rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-          >
-            View report
-          </a>
+          {/* Only show the link once the report is public — private reports return 404 on /r/:slug */}
+          {s.report_public && (
+            <a
+              href={s.slug ? `/r/${s.slug}` : `/r/${s.id}`}
+              className="mt-3 inline-block rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+            >
+              View report
+            </a>
+          )}
           <PublishButton studyId={s.id} reportSlug={s.slug ?? String(s.id)} initialPublished={s.report_public ?? false} />
         </div>
       )}

@@ -229,6 +229,7 @@ describe('StudyStatusPage — polling', () => {
             visit_progress: { ok: 30, failed: 0, total: 30 },
             started_at: new Date().toISOString(),
             finalized_at: new Date().toISOString(),
+            report_public: true,
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
