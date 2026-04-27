@@ -33,7 +33,17 @@ function sha256hex(s: string): string {
 
 const MagicLinkBody = z.object({
   email: z.string().email('must be a valid email address'),
+  redirect: z.string().max(200).optional(),
 });
+
+function safeRedirect(raw: string | undefined): string {
+  if (!raw) return '/dashboard';
+  // Allow only relative paths — block protocol-relative and absolute URLs.
+  if (!raw.startsWith('/') || raw.startsWith('//') || raw.includes('://')) {
+    return '/dashboard';
+  }
+  return raw;
+}
 
 const SESSION_7_DAYS_SECONDS = 7 * 24 * 60 * 60; // 604800
 const MAGIC_LINK_EXPIRY_MINUTES = 30;
@@ -54,7 +64,8 @@ export async function registerAuthRoutes(
       const msg = parsed.error.issues.map((i) => i.message).join('; ');
       return reply.code(400).send({ error: msg });
     }
-    const { email } = parsed.data;
+    const { email, redirect } = parsed.data;
+    const redirectPath = safeRedirect(redirect);
 
     // 2. Upsert account.
     const upsertResult = await pool.query<{ id: string }>(
@@ -84,7 +95,10 @@ export async function registerAuthRoutes(
     // 5. Build verify URL.
     const host = req.headers.host ?? 'willbuy.dev';
     const protocol = env.NODE_ENV === 'production' ? 'https' : 'http';
-    const verifyUrl = `${protocol}://${host}/api/auth/verify?token=${rawToken}`;
+    const redirectParam = redirectPath !== '/dashboard'
+      ? `&redirect=${encodeURIComponent(redirectPath)}`
+      : '';
+    const verifyUrl = `${protocol}://${host}/api/auth/verify?token=${rawToken}${redirectParam}`;
 
     // 6. Dev fallback: return URL in body so engineers don't need live email.
     if (env.NODE_ENV !== 'production' && env.WILLBUY_DEV_SESSION) {
@@ -103,10 +117,11 @@ export async function registerAuthRoutes(
   app.get(
     '/api/auth/verify',
     async (
-      req: FastifyRequest<{ Querystring: { token?: string } }>,
+      req: FastifyRequest<{ Querystring: { token?: string; redirect?: string } }>,
       reply: FastifyReply,
     ) => {
-      const rawToken = (req.query as { token?: string }).token;
+      const { token: rawToken, redirect } = req.query as { token?: string; redirect?: string };
+      const redirectAfter = safeRedirect(redirect);
 
       // §2 #20: always 404 — never leak whether token existed or was used.
       if (!rawToken) {
@@ -169,8 +184,7 @@ export async function registerAuthRoutes(
       );
       void reply.header('Set-Cookie', setCookie);
 
-      // 302 → /dashboard.
-      return reply.code(302).redirect('/dashboard');
+      return reply.code(302).redirect(redirectAfter);
     },
   );
 

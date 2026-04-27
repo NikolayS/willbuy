@@ -8,18 +8,21 @@
  * On success: show "Check your email" confirmation state.
  * On error: show validation / server error message.
  *
- * CSP notes:
- *   - No inline event handlers (uses React synthetic events, which are
- *     compiled to static JS — safe under script-src 'self').
- *   - No inline styles beyond Tailwind classes (className-only, no style={}).
- *   - No dynamic script injection.
+ * Reads ?redirect=<path> from the URL and passes it to the API so
+ * the magic-link verify endpoint can redirect back to the original page.
  */
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 type FormState = 'idle' | 'loading' | 'success' | 'error';
 
-export default function SignInPage() {
+// Inner component reads useSearchParams — must be inside a Suspense boundary
+// (Next.js 14 App Router requirement for static page generation).
+function SignInForm() {
+  const searchParams = useSearchParams();
+  const redirectPath = searchParams.get('redirect') ?? undefined;
+
   const [email, setEmail] = useState('');
   const [state, setState] = useState<FormState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -40,7 +43,7 @@ export default function SignInPage() {
       const res = await fetch('/api/auth/magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: email.trim(), redirect: redirectPath }),
       });
 
       if (res.status === 202) {
@@ -121,5 +124,13 @@ export default function SignInPage() {
         </form>
       </div>
     </main>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense>
+      <SignInForm />
+    </Suspense>
   );
 }

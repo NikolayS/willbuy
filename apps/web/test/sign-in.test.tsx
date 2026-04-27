@@ -9,8 +9,14 @@
  *   3. Error state shows error message for invalid email client-side.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+// Mock next/navigation so useSearchParams works outside a request scope.
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 // For the static render tests (form renders), we import the page directly.
 // For interactive tests (submit, success state), we use @testing-library/react
