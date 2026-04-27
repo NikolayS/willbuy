@@ -21,24 +21,18 @@ describe('marketing landing — GET /', () => {
 
 describe('public report — GET /r/[slug]', () => {
   it('renders a "not found" body when no report exists for the slug', async () => {
-    delete process.env.WILLBUY_REPORT_FIXTURE;
     const el = await ReportPage({ params: Promise.resolve({ slug: 'no-such-slug' }) });
     const html = renderToStaticMarkup(el);
     expect(html).toMatch(/report not found/i);
   });
 
-  it('renders the report when the fixture seam is enabled and the slug matches', async () => {
-    process.env.WILLBUY_REPORT_FIXTURE = 'enabled';
-    try {
-      const el = await ReportPage({ params: Promise.resolve({ slug: 'test-fixture' }) });
-      const html = renderToStaticMarkup(el);
-      // Element 1 — headline delta — uses the verdict copy from the fixture.
-      expect(html).toMatch(/converts better/i);
-      // Slug rendered as <code> per §5.10.
-      expect(html).toMatch(/<code[^>]*>test-fixture<\/code>/);
-    } finally {
-      delete process.env.WILLBUY_REPORT_FIXTURE;
-    }
+  it('renders the report for the public demo slug (test-fixture)', async () => {
+    const el = await ReportPage({ params: Promise.resolve({ slug: 'test-fixture' }) });
+    const html = renderToStaticMarkup(el);
+    // Element 1 — headline delta — uses the verdict copy from the fixture.
+    expect(html).toMatch(/converts better/i);
+    // Slug rendered as <code> per §5.10.
+    expect(html).toMatch(/<code[^>]*>test-fixture<\/code>/);
   });
 
   it('exports metadata with noindex (per SPEC §5.10 untrusted-content boundary)', () => {
