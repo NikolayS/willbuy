@@ -69,6 +69,8 @@ const MAX_OUTPUT_TOKENS = 800;
 // that's 3 chat() calls maximum per visit (repair_generation = 0, 1, 2).
 const MAX_REPAIR_GENERATION = 2;
 
+export const __test__ = { MAX_OUTPUT_TOKENS, MAX_REPAIR_GENERATION };
+
 // Spec §5.15 line 253 + §5.1 step 7 line 131 + §2 #15:
 //   logical_request_key = sha256(
 //     visit_id || provider || model || request_kind || repair_generation
