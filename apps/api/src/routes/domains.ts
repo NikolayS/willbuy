@@ -537,3 +537,11 @@ export async function registerDomainsRoutes(
     },
   );
 }
+
+// Test seam — not part of the public API surface.
+export const __test__ = {
+  PROBE_TIMEOUT_MS,
+  TOKEN_LENGTH,
+  CreateDomainBody,
+  normalizeEtldPlusOne,
+};
