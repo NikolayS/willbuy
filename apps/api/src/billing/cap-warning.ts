@@ -81,3 +81,10 @@ export async function maybeWarnCap(input: MaybeWarnCapInput): Promise<boolean> {
 
   return true;
 }
+
+// Test seam — not part of the public API surface.
+export const __test__ = {
+  /** Pure threshold predicate — true when warning should be considered (new_cents ≥ 50% of cap). */
+  exceedsHalfCap: (newCents: number, dailyCapCents: number): boolean =>
+    newCents >= dailyCapCents * 0.5,
+};
