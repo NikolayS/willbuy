@@ -40,7 +40,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Check for required secrets
+        id: check_secrets
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [[ -z "$SSH_KEY" ]] || [[ -z "$DEPLOY_HOST" ]]; then
+            echo "::warning::DEPLOY_SSH_KEY or DEPLOY_HOST secret not configured."
+            echo "::warning::Run 'bash scripts/setup-auto-deploy.sh' from your laptop to enable auto-deploy."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Configure SSH
+        if: steps.check_secrets.outputs.configured == 'true'
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -50,7 +65,12 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p 2223 -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
+      - name: Checkout
+        if: steps.check_secrets.outputs.configured == 'true'
+        uses: actions/checkout@v4
+
       - name: Deploy
+        if: steps.check_secrets.outputs.configured == 'true'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           SKIP_BUILD: ${{ inputs.skip_build }}
@@ -60,6 +80,7 @@ jobs:
             "SKIP_BUILD='${SKIP_BUILD}' bash -s" < .github/scripts/deploy.sh
 
       - name: Smoke test
+        if: steps.check_secrets.outputs.configured == 'true'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
