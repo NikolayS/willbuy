@@ -102,3 +102,6 @@ export async function registerMetricsRoute(
       .send(body);
   });
 }
+
+// Test seam — not part of the public API surface.
+export const __test__ = { resolveRouteLabel };
