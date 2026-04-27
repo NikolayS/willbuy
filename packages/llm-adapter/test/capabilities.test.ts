@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { LocalCliProvider, LOCAL_CLI_CAPABILITIES } from '../src/index.js';
+import {
+  LocalCliProvider,
+  LOCAL_CLI_CAPABILITIES,
+  LOCAL_CLI_PROVIDER_NAME,
+  LOCAL_CLI_DEFAULT_MODEL,
+} from '../src/index.js';
 
 // Spec §2 #27: pluggable LLM adapter declares capability flags
 // (idempotency, zero_retention, structured_output, prompt_caching).
@@ -52,6 +57,36 @@ describe('LocalCliProvider — capabilities()', () => {
       } else {
         process.env.WILLBUY_LLM_MODEL = prev;
       }
+    }
+  });
+});
+
+// ── Provider name + default model spec-pin (issue #5, spec §2 #27) ──────────
+//
+// LOCAL_CLI_PROVIDER_NAME and LOCAL_CLI_DEFAULT_MODEL are the identity
+// anchors for the local-cli adapter. They must remain stable across versions
+// so the logical_request_key computed by callers stays deterministic.
+
+describe('LLM adapter name + default model spec-pins (issue #5)', () => {
+  it('LOCAL_CLI_PROVIDER_NAME is "local-cli"', () => {
+    expect(LOCAL_CLI_PROVIDER_NAME).toBe('local-cli');
+  });
+
+  it('LOCAL_CLI_DEFAULT_MODEL is "local-cli/v1"', () => {
+    expect(LOCAL_CLI_DEFAULT_MODEL).toBe('local-cli/v1');
+  });
+
+  it('provider.name() returns LOCAL_CLI_PROVIDER_NAME', () => {
+    expect(new LocalCliProvider().name()).toBe(LOCAL_CLI_PROVIDER_NAME);
+  });
+
+  it('provider.model() returns LOCAL_CLI_DEFAULT_MODEL when env var is unset', () => {
+    const prev = process.env.WILLBUY_LLM_MODEL;
+    delete process.env.WILLBUY_LLM_MODEL;
+    try {
+      expect(new LocalCliProvider().model()).toBe(LOCAL_CLI_DEFAULT_MODEL);
+    } finally {
+      if (prev !== undefined) process.env.WILLBUY_LLM_MODEL = prev;
     }
   });
 });
