@@ -86,6 +86,8 @@ export const PROGRESS_CLASSES = [
   'w-full',
 ] as const;
 
+export const __test__ = { STATUS_LABELS, TERMINAL, POLL_INTERVAL_MS };
+
 export function progressClass(pct: number): string {
   // Clamp [0, 100] then round to nearest twelfth (13 buckets: 0..12).
   const clamped = Math.max(0, Math.min(100, pct));
