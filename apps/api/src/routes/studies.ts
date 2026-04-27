@@ -246,9 +246,13 @@ export async function registerStudiesRoutes(
         status: string;
         created_at: Date;
         finalized_at: Date | null;
+        report_public: boolean | null;
       }>(
-        `SELECT id, account_id, status, created_at, finalized_at
-           FROM studies WHERE id = $1`,
+        `SELECT s.id, s.account_id, s.status, s.created_at, s.finalized_at,
+                r."public" AS report_public
+           FROM studies s
+           LEFT JOIN reports r ON r.study_id = s.id
+          WHERE s.id = $1`,
         [studyId],
       );
 
@@ -285,6 +289,7 @@ export async function registerStudiesRoutes(
         visit_progress: { ok: okCount, failed: failedCount, total },
         started_at: study.created_at.toISOString(),
         finalized_at: study.finalized_at?.toISOString() ?? null,
+        ...(study.report_public !== null ? { report_public: study.report_public } : {}),
       });
     },
   );
@@ -361,9 +366,14 @@ export async function registerStudiesRoutes(
         status: string;
         created_at: Date;
         finalized_at: Date | null;
+        slug: string | null;
+        report_public: boolean | null;
       }>(
-        `SELECT id, account_id, status, created_at, finalized_at
-           FROM studies WHERE id = $1`,
+        `SELECT s.id, s.account_id, s.status, s.created_at, s.finalized_at,
+                r.slug, r.public AS report_public
+           FROM studies s
+           LEFT JOIN reports r ON r.study_id = s.id
+          WHERE s.id = $1`,
         [studyId],
       );
 
@@ -391,6 +401,7 @@ export async function registerStudiesRoutes(
         visit_progress: { ok: okCount, failed: failedCount, total },
         started_at: study.created_at.toISOString(),
         finalized_at: study.finalized_at?.toISOString() ?? null,
+        ...(study.report_public !== null ? { report_public: study.report_public } : {}),
       });
     },
   );

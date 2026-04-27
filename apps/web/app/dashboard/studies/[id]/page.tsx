@@ -221,7 +221,7 @@ function StudyStatusInner({ id }: { id: string }) {
           >
             View report
           </a>
-          <PublishButton studyId={s.id} reportSlug={s.slug ?? String(s.id)} />
+          <PublishButton studyId={s.id} reportSlug={s.slug ?? String(s.id)} initialPublished={s.report_public ?? false} />
         </div>
       )}
 
