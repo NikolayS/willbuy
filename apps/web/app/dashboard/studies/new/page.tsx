@@ -246,7 +246,7 @@ export default function StudyNewPage() {
                 <p className="mt-1 text-sm text-red-700">{apiError.message}</p>
                 <div className="mt-2 flex gap-3">
                   <a
-                    href="/dashboard/domains/verify"
+                    href="/dashboard/domains/new"
                     className="text-sm font-medium text-indigo-600 hover:underline"
                   >
                     Verify domain
