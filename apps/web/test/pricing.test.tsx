@@ -74,4 +74,14 @@ describe('/pricing page (issue #144)', () => {
     const html = await getHtml();
     expect(html).toMatch(/sign-in/i);
   });
+
+  it('unauthenticated: sign-in URLs encode the pack param inside the redirect', async () => {
+    const html = await getHtml();
+    // The ?pack=<id> must be encoded INSIDE the redirect param, not as a
+    // sibling param on the sign-in URL — otherwise it gets dropped after
+    // sign-in because the sign-in page only reads "redirect".
+    expect(html).toMatch(/sign-in\?redirect=%2Fpricing%3Fpack%3Dstarter/);
+    expect(html).toMatch(/sign-in\?redirect=%2Fpricing%3Fpack%3Dgrowth/);
+    expect(html).toMatch(/sign-in\?redirect=%2Fpricing%3Fpack%3Dscale/);
+  });
 });

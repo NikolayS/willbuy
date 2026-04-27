@@ -16,9 +16,10 @@ export function PricingCta({ packId, label, usd, isAuthenticated }: PricingCtaPr
   if (isAuthenticated) {
     return <BuyButton packId={packId} label={label} usd={usd} />;
   }
+  const redirectPath = encodeURIComponent(`/pricing?pack=${packId}`);
   return (
     <a
-      href={`/sign-in?redirect=/pricing&pack=${packId}`}
+      href={`/sign-in?redirect=${redirectPath}`}
       aria-label={`Buy ${label} pack — $${usd}`}
       className="mt-4 inline-block w-full rounded-md bg-blue-600 px-5 py-2.5 text-center text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
     >
