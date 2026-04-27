@@ -22,6 +22,7 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import { getStudy, type GetStudyResponse, type StudyStatus } from '../../../../lib/api-client';
 import { PublishButton } from '../../../../components/dashboard/PublishButton';
+import { ShareLinkButton } from '../../../../components/dashboard/ShareLinkButton';
 
 // Poll interval in milliseconds (spec: 5 s).
 const POLL_INTERVAL_MS = 5_000;
@@ -222,6 +223,7 @@ function StudyStatusInner({ id }: { id: string }) {
             View report
           </a>
           <PublishButton studyId={s.id} reportSlug={s.slug ?? String(s.id)} initialPublished={s.report_public ?? false} />
+          <ShareLinkButton studyId={s.id} />
         </div>
       )}
 
