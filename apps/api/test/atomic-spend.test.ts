@@ -15,7 +15,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgres.js';
-import { reserveSpend } from '../src/billing/atomic-spend.js';
+import { reserveSpend, KIND_CEILING } from '../src/billing/atomic-spend.js';
 import { startAttempt, endAttempt } from '../src/billing/provider-attempts.js';
 import { maybeWarnCap } from '../src/billing/cap-warning.js';
 import type { ResendClient, CapWarningEmailOptions } from '../src/email/resend.js';
@@ -467,5 +467,31 @@ describeIfDocker('atomic spend reservation (§5.5)', () => {
       [String(attemptId)],
     );
     expect(rows2[0]!.status).toBe('ended');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spec-pin: KIND_CEILING constant values (spec §5.5, no Docker needed)
+// ---------------------------------------------------------------------------
+
+describe('KIND_CEILING spec-pin (spec §5.5)', () => {
+  it('visit ceiling is 5¢', () => {
+    expect(KIND_CEILING.visit).toBe(5);
+  });
+
+  it('cluster_label ceiling is 3¢', () => {
+    expect(KIND_CEILING.cluster_label).toBe(3);
+  });
+
+  it('embedding ceiling is 0¢ (free)', () => {
+    expect(KIND_CEILING.embedding).toBe(0);
+  });
+
+  it('probe ceiling is 0¢ (free)', () => {
+    expect(KIND_CEILING.probe).toBe(0);
+  });
+
+  it('covers exactly 4 spend kinds', () => {
+    expect(Object.keys(KIND_CEILING)).toHaveLength(4);
   });
 });
