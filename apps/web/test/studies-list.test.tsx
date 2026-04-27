@@ -111,18 +111,24 @@ describe('/dashboard/studies view (issue #85)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 4: Per-row "View report" link only when status=ready.
+  // 4: Per-row "Open →" link → /dashboard/studies/:id only when status=ready.
   // -------------------------------------------------------------------------
-  it('renders "View report" → /r/:id only for status=ready rows', () => {
+  it('renders "Open →" → /dashboard/studies/:id only for status=ready rows', () => {
     const html = renderToStaticMarkup(
       <StudiesListView studies={FIXTURE_STUDIES} nextCursor={null} />,
     );
-    // Ready row (id=101) has a /r/101 link.
-    expect(html).toMatch(/href="\/r\/101"/);
-    // Capturing row (id=102) does NOT have /r/102.
-    expect(html).not.toMatch(/href="\/r\/102"/);
-    // Failed row (id=103) does NOT have /r/103 (failed studies have no report).
-    expect(html).not.toMatch(/href="\/r\/103"/);
+    // The "Open →" label appears in the markup.
+    expect(html).toMatch(/Open →/);
+    // It is NOT the old /r/:id route (reports are private by default).
+    expect(html).not.toMatch(/href="\/r\/101"/);
+    // Only one action link: the ready row gets "Open →", others get "—".
+    const openMatches = html.match(/Open →/g);
+    expect(openMatches).toHaveLength(1);
+    // Non-ready rows do NOT get "Open →".
+    // (URL-column links to /dashboard/studies/102 still exist, but those are
+    //  in the URL cell, not the action cell — "Open →" is the discriminator.)
+    const dashCount = (html.match(/Open →/g) ?? []).length;
+    expect(dashCount).toBe(1);
   });
 
   // -------------------------------------------------------------------------
