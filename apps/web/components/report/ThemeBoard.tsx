@@ -97,3 +97,5 @@ export function ThemeBoard({ board }: { board: ReportT['theme_board'] }) {
     </section>
   );
 }
+
+export const __test__ = { CATEGORIES };

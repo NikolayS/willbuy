@@ -141,3 +141,5 @@ export function PersonaGrid({ personas }: { personas: ReportT['personas'] }) {
     </section>
   );
 }
+
+export const __test__ = { ROLE_LABEL };
