@@ -11,6 +11,7 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { BuyButton } from './BuyButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,13 +103,7 @@ export default async function CreditsPage() {
             >
               {pack.credits.toLocaleString()} credits (~{pack.visitEstimate.toLocaleString()} visits)
             </span>
-            <a
-              href={`/pricing#${pack.id}`}
-              aria-label={`Buy ${pack.label} pack — $${pack.usd}`}
-              className="mt-6 inline-block rounded-md bg-blue-600 px-5 py-2.5 text-center text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-              Buy →
-            </a>
+            <BuyButton packId={pack.id} label={pack.label} usd={pack.usd} />
           </div>
         ))}
       </div>
