@@ -20,6 +20,13 @@ import { buildLogger } from '../src/index.js';
 import { LogPayloadOversizeError, MAX_FIELD_BYTES } from '../src/errors.js';
 import { redact } from '../src/redactor.js';
 
+describe('MAX_FIELD_BYTES spec-pin (packages/log/src/errors.ts — spec §5.12)', () => {
+  it('is 8192 (8 KiB per spec §5.12)', () => {
+    expect(MAX_FIELD_BYTES).toBe(8_192);
+    expect(MAX_FIELD_BYTES).toBe(8 * 1024);
+  });
+});
+
 describe('TDD #4 — oversize string fields throw LogPayloadOversizeError', () => {
   it('redact() throws on a single string field > MAX_FIELD_BYTES', () => {
     const big = 'x'.repeat(MAX_FIELD_BYTES + 1);
