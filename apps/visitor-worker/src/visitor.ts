@@ -219,3 +219,6 @@ export async function runVisit(opts: RunVisitOptions): Promise<VisitResult> {
     }
   }
 }
+
+// Test seam — not part of the public API surface.
+export const __test__ = { MAX_OUTPUT_TOKENS, MAX_REPAIR_GENERATION };
