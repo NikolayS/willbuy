@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NEXT_ACTION_WEIGHTS, scoreVisit } from '../src/scoring.js';
+import { NEXT_ACTION_WEIGHTS, PAID_TIERS, scoreVisit } from '../src/scoring.js';
 import type { VisitorOutputT } from '../src/visitor.js';
 
 const baseVisit: VisitorOutputT = {
@@ -88,5 +88,35 @@ describe('scoreVisit (growth/ab/pricing-page-2026apr/scoring.md mirror)', () => 
       next_action: 'not_in_enum',
     } as unknown as VisitorOutputT;
     expect(scoreVisit(malformed)).toBe(0.0);
+  });
+});
+
+describe('PAID_TIERS spec-pin (packages/shared/src/scoring.ts)', () => {
+  it('has exactly 4 entries', () => {
+    expect(PAID_TIERS.size).toBe(4);
+  });
+
+  it('contains "express"', () => {
+    expect(PAID_TIERS.has('express')).toBe(true);
+  });
+
+  it('contains "starter"', () => {
+    expect(PAID_TIERS.has('starter')).toBe(true);
+  });
+
+  it('contains "scale"', () => {
+    expect(PAID_TIERS.has('scale')).toBe(true);
+  });
+
+  it('contains "enterprise"', () => {
+    expect(PAID_TIERS.has('enterprise')).toBe(true);
+  });
+
+  it('"hobby" is NOT a paid tier (free plan)', () => {
+    expect(PAID_TIERS.has('hobby')).toBe(false);
+  });
+
+  it('"none" is NOT a paid tier', () => {
+    expect(PAID_TIERS.has('none')).toBe(false);
   });
 });
