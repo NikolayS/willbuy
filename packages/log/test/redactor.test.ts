@@ -461,3 +461,43 @@ describe('strict allowlist mode', () => {
     expect(permissiveRec['secret_data']).toBe('boom');
   });
 });
+
+// ── STRICT_ALLOWLIST complete field set spec-pin (spec §5.12) ─────────────────
+//
+// All business-layer allowlisted fields must survive strict=true. Removing
+// any one would drop it from production log lines, breaking dashboards or
+// alerts that depend on it.
+
+describe('STRICT_ALLOWLIST field membership (spec §5.12)', () => {
+  const BUSINESS_FIELDS = [
+    'account_id', 'study_id', 'visit_id', 'provider_attempt_id',
+    'transport_attempt_id', 'event', 'error_class', 'service',
+  ] as const;
+
+  it('passes through all 8 business-layer allowlisted fields under strict=true', () => {
+    const obj: Record<string, string> = {};
+    for (const f of BUSINESS_FIELDS) obj[f] = `val_${f}`;
+    const r = redact(obj, salt, undefined, true) as Record<string, unknown>;
+    for (const f of BUSINESS_FIELDS) {
+      expect(r[f]).toBe(`val_${f}`);
+    }
+  });
+
+  it('duration_* prefix is always allowed under strict=true', () => {
+    const r = redact(
+      { event: 'done', duration_ms: 42, duration_capture_ms: 100 },
+      salt, undefined, true,
+    ) as Record<string, unknown>;
+    expect(r['duration_ms']).toBe(42);
+    expect(r['duration_capture_ms']).toBe(100);
+  });
+
+  it('a non-allowlisted field is dropped under strict=true but present under strict=false', () => {
+    const obj = { event: 'ok', custom_extra: 'should-be-gone' };
+    const strict = redact(obj, salt, undefined, true) as Record<string, unknown>;
+    const permissive = redact(obj, salt, undefined, false) as Record<string, unknown>;
+    expect(strict['custom_extra']).toBeUndefined();
+    expect(strict['event']).toBe('ok');
+    expect(permissive['custom_extra']).toBe('should-be-gone');
+  });
+});
