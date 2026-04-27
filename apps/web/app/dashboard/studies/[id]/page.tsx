@@ -12,7 +12,7 @@
  * (ready | failed).
  *
  * When ready → links to /r/:slug (report viz, PR #44).
- * When failed → shows error message + retry CTA (placeholder for Sprint 3).
+ * When failed → shows error message + retry CTA (pre-populates the URL in the create form).
  *
  * Note: Next.js 14 App Router passes `params` as a Promise in newer builds.
  * We unwrap it safely via useEffect on mount for client-component compat.

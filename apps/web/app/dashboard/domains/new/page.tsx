@@ -13,8 +13,7 @@
  *   2. Loading → POST /api/domains → server returns token + 3 instructions.
  *   3. Instructions → display TXT / well-known / <meta> options.
  *      "Verify now" button → POST /api/domains/<domain>/verify.
- *   4. Verified → show "✅ Verified" message + redirect to /dashboard/domains
- *      (issue #83 will build that route — for now it's a placeholder link).
+ *   4. Verified → show "✅ Verified" message + redirect to /dashboard/domains.
  *
  * Auth: requires a valid wb_session cookie (set by /sign-in flow). The API
  * returns 401 if missing — we surface that with a "Please sign in" link.
@@ -111,7 +110,7 @@ export default function DomainsNewPage() {
       const body = (await res.json()) as { verified: boolean; method?: string };
       if (body.verified) {
         setStage('verified');
-        // Redirect to dashboard list (placeholder — issue #83 will own this route).
+        // Redirect to dashboard list.
         setTimeout(() => router.push('/dashboard/domains'), 1500);
         return;
       }

@@ -10,7 +10,7 @@
  *   §3     — Mira, Kenji, Dana, dogfood user stories.
  *   §5.10  — CSP: no dangerouslySetInnerHTML; all text escaped by React.
  *
- * Auth: Sprint 3. For v0.1 the api-client reads NEXT_PUBLIC_DEV_API_KEY.
+ * Auth: session-cookie auth via POST /api/studies (no API key needed in browser).
  *
  * On success → router.push(/dashboard/studies/:id).
  * On 401     → router.push(/dashboard/sign-in) (placeholder).
