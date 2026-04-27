@@ -46,6 +46,8 @@ const BACKOFF_BASE_MS = 100;
 const BACKOFF_FACTOR = 4;
 const BACKOFF_MAX_TRIES = 3;
 
+export const __test__ = { BACKOFF_BASE_MS, BACKOFF_FACTOR, BACKOFF_MAX_TRIES };
+
 function jitter(ms: number): number {
   // ±20% uniform jitter
   return ms * (0.8 + Math.random() * 0.4);

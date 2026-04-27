@@ -40,6 +40,8 @@ const PREFIX = 'sk_live_';
 const KEY_BODY_LEN = 24; // 24 chars of entropy after the prefix → 32-char key total
 const PREFIX_DISPLAY_LEN = PREFIX.length + 1; // sk_live_ + 1 char = "sk_live_X"
 
+export const __test__ = { BASE62, PREFIX, KEY_BODY_LEN, PREFIX_DISPLAY_LEN };
+
 const nanoid = customAlphabet(BASE62, KEY_BODY_LEN);
 
 const CreateKeyBodySchema = z.object({

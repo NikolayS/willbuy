@@ -48,6 +48,8 @@ function safeRedirect(raw: string | undefined): string {
 const SESSION_7_DAYS_SECONDS = 7 * 24 * 60 * 60; // 604800
 const MAGIC_LINK_EXPIRY_MINUTES = 30;
 
+export const __test__ = { SESSION_7_DAYS_SECONDS, MAGIC_LINK_EXPIRY_MINUTES };
+
 export async function registerAuthRoutes(
   app: FastifyInstance,
   pool: Pool,
