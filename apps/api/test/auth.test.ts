@@ -447,4 +447,62 @@ describeIfDocker('auth magic-link (issue #79, real DB)', () => {
       await devApp.close();
     }
   });
+
+  // -------------------------------------------------------------------------
+  // AC10: redirect param flows through magic-link → verify → 302 to that path.
+  // -------------------------------------------------------------------------
+  it('AC10: redirect param in magic-link body → verify redirects to that path', async () => {
+    const email = 'ac10@example.com';
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/magic-link',
+      payload: { email, redirect: '/pricing' },
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const verifyUrl = resendStub.lastCall?.verifyUrl ?? '';
+    expect(verifyUrl).toMatch(/redirect=%2Fpricing/);
+
+    const match = /[?&]token=([^&]+)/.exec(verifyUrl);
+    const rawToken = match?.[1] ?? '';
+    expect(rawToken).toBeTruthy();
+
+    const verifyRes = await app.inject({
+      method: 'GET',
+      url: `/api/auth/verify?token=${rawToken}&redirect=%2Fpricing`,
+    });
+
+    expect(verifyRes.statusCode).toBe(302);
+    expect(verifyRes.headers.location).toBe('/pricing');
+  });
+
+  // -------------------------------------------------------------------------
+  // AC11: unsafe redirect values fall back to /dashboard.
+  // -------------------------------------------------------------------------
+  it('AC11: open-redirect attempt falls back to /dashboard', async () => {
+    const email = 'ac11@example.com';
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/magic-link',
+      payload: { email, redirect: 'https://evil.com' },
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const verifyUrl = resendStub.lastCall?.verifyUrl ?? '';
+    // Unsafe redirect should not appear in the verify URL.
+    expect(verifyUrl).not.toMatch(/evil\.com/);
+
+    const match = /[?&]token=([^&]+)/.exec(verifyUrl);
+    const rawToken = match?.[1] ?? '';
+
+    const verifyRes = await app.inject({
+      method: 'GET',
+      url: `/api/auth/verify?token=${rawToken}&redirect=https%3A%2F%2Fevil.com`,
+    });
+
+    expect(verifyRes.statusCode).toBe(302);
+    expect(verifyRes.headers.location).toBe('/dashboard');
+  });
 });
