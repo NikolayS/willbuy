@@ -289,6 +289,44 @@ export async function registerStudiesRoutes(
     },
   );
 
+  // ── POST /studies/:id/publish (issue #204) ────────────────────────────────
+  //
+  // Owner opt-in to public listing (spec §2 #20). Sets reports.public = true
+  // for the report linked to this study. Idempotent — safe to call repeatedly.
+  // 404 if study not owned by caller or has no report yet.
+  app.post<{ Params: { id: string } }>(
+    '/studies/:id/publish',
+    { preHandler: [apiKeyMiddleware] },
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const account = req.account!;
+      const studyId = req.params.id;
+
+      // Single atomic UPDATE joining reports → studies enforces ownership in one
+      // round-trip (no TOCTOU). Returns 0 rows when: study doesn't exist, account
+      // mismatch, or no report exists yet — all map to 404 (no existence leak,
+      // spec §2 #20).
+      const result = await pool.query<{ study_id: string }>(
+        `UPDATE reports r
+            SET public = true
+           FROM studies s
+          WHERE r.study_id = s.id
+            AND s.id = $1
+            AND s.account_id = $2
+          RETURNING r.study_id`,
+        [studyId, String(account.id)],
+      );
+
+      if (result.rowCount === 0) {
+        return reply.code(404).send({ error: 'study not found' });
+      }
+
+      return reply.code(200).send({
+        study_id: Number(studyId),
+        public: true,
+      });
+    },
+  );
+
   // ── GET /api/studies (issue #85) ───────────────────────────────────────────
   //
   // Session-cookie-authenticated paginated list of the caller's studies.
