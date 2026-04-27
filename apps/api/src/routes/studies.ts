@@ -27,7 +27,9 @@
  *     and visit_progress {ok,failed,total} for the table render.
  */
 
+import { createHash } from 'node:crypto';
 import tldts from 'tldts';
+import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
@@ -689,6 +691,86 @@ export async function registerStudiesRoutes(
       }
 
       return reply.code(200).send({ studies, next_cursor });
+    },
+  );
+
+  // ── POST /api/studies/:id/share-token (issue #487) ────────────────────────
+  //
+  // Mints a private revocable share link for the study's report.
+  // Spec refs: §2 #20 (share-token minting), user story 3 (CRO consultant
+  // mints a private share link for a client).
+  //
+  // - Owner POSTs to mint a 22-char nanoid token for their study's report.
+  // - Server stores SHA-256 hash of the token (never the raw token).
+  // - Default expiry: 90 days from now.
+  // - Returns the raw token ONCE — caller must save the link.
+  // - Link form: /r/<slug>?t=<token> where slug = study_id::text (amendment A12).
+  //
+  // Errors:
+  //   401 — no/invalid session (enforced by sessionMiddleware preHandler).
+  //   404 — study not owned by caller, or study has no report row yet.
+  //   409 — a non-revoked, non-expired share token already exists for this
+  //          report_slug; caller should revoke first (revocation deferred).
+  app.post<{ Params: { id: string } }>(
+    '/api/studies/:id/share-token',
+    { preHandler: [sessionMiddleware] },
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const account = req.account!;
+      const studyId = req.params.id;
+
+      // Verify caller owns this study AND it already has a report row.
+      // A single JOIN enforces both constraints in one round-trip (no TOCTOU).
+      const reportResult = await pool.query<{ study_id: string }>(
+        `SELECT r.study_id::text AS study_id
+           FROM reports r
+           JOIN studies s ON s.id = r.study_id
+          WHERE s.id = $1
+            AND s.account_id = $2`,
+        [studyId, String(account.id)],
+      );
+
+      if (reportResult.rowCount === 0) {
+        return reply.code(404).send({ error: 'study not found' });
+      }
+
+      // §2 #20: report slug = study_id::text (amendment A12).
+      const reportSlug = studyId;
+
+      // 409 if an active (non-revoked, non-expired) token already exists.
+      const existingResult = await pool.query<{ id: string }>(
+        `SELECT id FROM share_tokens
+          WHERE report_slug = $1
+            AND revoked_at IS NULL
+            AND expires_at > now()`,
+        [reportSlug],
+      );
+
+      if ((existingResult.rowCount ?? 0) > 0) {
+        return reply.code(409).send({
+          error: 'a share token already exists for this report; revoke it first',
+        });
+      }
+
+      // Mint a 22-char nanoid token and store only its SHA-256 hash.
+      const rawToken = nanoid(22);
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+
+      // Default expiry: 90 days from now (spec §2 #20).
+      const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+
+      await pool.query(
+        `INSERT INTO share_tokens (report_slug, token_hash, expires_at, account_id)
+         VALUES ($1, $2, $3, $4)`,
+        [reportSlug, tokenHash, expiresAt.toISOString(), String(account.id)],
+      );
+
+      const shareUrl = `https://willbuy.dev/r/${reportSlug}?t=${rawToken}`;
+
+      return reply.code(201).send({
+        token: rawToken,
+        url: shareUrl,
+        expires_at: expiresAt.toISOString(),
+      });
     },
   );
 }
