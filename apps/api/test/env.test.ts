@@ -44,4 +44,26 @@ describe('env validation (spec §4.1, CLAUDE.md zod-at-boundaries)', () => {
     const parsed = parseEnv({ ...BASE_ENV, DAILY_CAP_CENTS: '5000' });
     expect(parsed.DAILY_CAP_CENTS).toBe(5000);
   });
+
+  it('throws when SESSION_HMAC_KEY is shorter than 32 chars', () => {
+    expect(() =>
+      parseEnv({ ...BASE_ENV, SESSION_HMAC_KEY: 'too-short' }),
+    ).toThrow(/SESSION_HMAC_KEY/);
+  });
+
+  it('throws when SHARE_TOKEN_HMAC_KEY is shorter than 32 chars', () => {
+    expect(() =>
+      parseEnv({ ...BASE_ENV, SHARE_TOKEN_HMAC_KEY: 'too-short' }),
+    ).toThrow(/SHARE_TOKEN_HMAC_KEY/);
+  });
+
+  it('accepts 32-char SESSION_HMAC_KEY and SHARE_TOKEN_HMAC_KEY', () => {
+    const parsed = parseEnv({
+      ...BASE_ENV,
+      SESSION_HMAC_KEY: 'a'.repeat(32),
+      SHARE_TOKEN_HMAC_KEY: 'b'.repeat(32),
+    });
+    expect(parsed.SESSION_HMAC_KEY).toBe('a'.repeat(32));
+    expect(parsed.SHARE_TOKEN_HMAC_KEY).toBe('b'.repeat(32));
+  });
 });
