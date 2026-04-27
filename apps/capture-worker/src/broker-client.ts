@@ -70,6 +70,8 @@ export type BrokerClientOpts = {
 const DEFAULT_SOCKET_PATH = '/run/willbuy/broker.sock';
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+export const __test__ = { HEADER_BYTES, DEFAULT_SOCKET_PATH, DEFAULT_TIMEOUT_MS };
+
 /**
  * Send a single capture artifact message to the broker and await the ack.
  *
