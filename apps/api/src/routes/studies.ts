@@ -138,7 +138,8 @@ type IcpType = z.infer<typeof CreateStudyBodySchema>['icp'];
  */
 function resolveIcp(icp: IcpType, visitIdx: number): BackstoryT {
   if ('preset_id' in icp) {
-    const pool = PRESET_BACKSTORIES[icp.preset_id];
+    const presetId = (icp as { preset_id: (typeof ICP_PRESETS)[number] }).preset_id;
+    const pool = PRESET_BACKSTORIES[presetId];
     return pool[visitIdx % pool.length]!;
   }
   // Inline ICP — store verbatim; visitor worker handles it.
