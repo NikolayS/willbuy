@@ -46,6 +46,14 @@ const CreateKeyBodySchema = z.object({
   label: z.string().trim().min(1, 'label is required').max(80, 'label is too long'),
 });
 
+export const __test__ = {
+  BASE62,
+  PREFIX,
+  KEY_BODY_LEN,
+  PREFIX_DISPLAY_LEN,
+  CreateKeyBodySchema,
+};
+
 interface ApiKeyRow {
   id: string;
   label: string;
