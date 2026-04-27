@@ -49,28 +49,38 @@ export default async function CreditsPage({
 }: {
   searchParams: Promise<{ success?: string; cancelled?: string }>;
 }) {
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get('wb_session');
+  // In Next 14 cookies() is sync; in Next 15 it became async. Cast to
+  // accommodate both without pulling in version-specific types.
+  const cookieStore = (cookies() as unknown) as {
+    getAll: () => Array<{ name: string; value: string }>;
+  };
+  const all = cookieStore.getAll();
+  const cookieHeader = all.map((c) => `${c.name}=${c.value}`).join('; ');
+
+  // In production the cookie is __Host-wb_session; in dev it is wb_session.
+  const hasSession = all.some(
+    (c) => c.name === 'wb_session' || c.name === '__Host-wb_session',
+  );
+  if (!hasSession) {
+    redirect('/sign-in?redirect=%2Fdashboard%2Fcredits');
+  }
+
   const params = await searchParams;
   const didSucceed = params.success === '1';
   const didCancel = params.cancelled === '1';
 
   let balance_cents = 0;
-  if (sessionCookie) {
-    try {
-      const res = await fetch(`${apiBaseUrl()}/api/dashboard/summary`, {
-        headers: { cookie: `wb_session=${sessionCookie.value}` },
-        cache: 'no-store',
-      });
-      if (res.status === 401) redirect('/sign-in?redirect=%2Fdashboard%2Fcredits');
-      if (res.ok) {
-        const data = (await res.json()) as DashboardSummary;
-        balance_cents = data.balance_cents;
-      }
-    } catch {
-      redirect('/sign-in?redirect=%2Fdashboard%2Fcredits');
+  try {
+    const res = await fetch(`${apiBaseUrl()}/api/dashboard/summary`, {
+      headers: { cookie: cookieHeader },
+      cache: 'no-store',
+    });
+    if (res.status === 401) redirect('/sign-in?redirect=%2Fdashboard%2Fcredits');
+    if (res.ok) {
+      const data = (await res.json()) as DashboardSummary;
+      balance_cents = data.balance_cents;
     }
-  } else {
+  } catch {
     redirect('/sign-in?redirect=%2Fdashboard%2Fcredits');
   }
 
