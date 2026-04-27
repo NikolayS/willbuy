@@ -499,6 +499,36 @@ export async function registerStudiesRoutes(
     },
   );
 
+  // ── POST /api/studies/:id/publish (session-cookie auth) ───────────────────
+  //
+  // Session-cookie mirror of POST /studies/:id/publish (API-key auth).
+  // Allows dashboard users to make a report public without a programmatic key.
+  app.post<{ Params: { id: string } }>(
+    '/api/studies/:id/publish',
+    { preHandler: [sessionMiddleware] },
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const account = req.account!;
+      const studyId = req.params.id;
+
+      const result = await pool.query<{ study_id: string }>(
+        `UPDATE reports r
+            SET public = true
+           FROM studies s
+          WHERE r.study_id = s.id
+            AND s.id = $1
+            AND s.account_id = $2
+          RETURNING r.study_id`,
+        [studyId, String(account.id)],
+      );
+
+      if (result.rowCount === 0) {
+        return reply.code(404).send({ error: 'study not found' });
+      }
+
+      return reply.code(200).send({ study_id: Number(studyId), public: true });
+    },
+  );
+
   const ListQuerySchema = z.object({
     limit: z.coerce.number().int().positive().optional(),
     cursor: z.string().optional(),
