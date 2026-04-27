@@ -21,7 +21,10 @@ import {
   NetnsBringupError,
   parseHostBudgetOutput,
   runWithNetns,
+  __test__,
 } from '../src/run-with-netns.js';
+
+const { sanitizeNetnsName, classifyBringupFailure, parseStateList, parseHost } = __test__;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const INFRA = resolve(HERE, '..', '..', '..', 'infra', 'capture');
@@ -155,3 +158,67 @@ describe('parseHostBudgetOutput', () => {
 
 // Pin INFRA so editor auto-imports don't drop it.
 void INFRA;
+
+// ---------------------------------------------------------------------------
+// Private helpers (via __test__ export)
+// ---------------------------------------------------------------------------
+
+describe('sanitizeNetnsName', () => {
+  it('adds wb- prefix and keeps first 11 alnum chars', () => {
+    expect(sanitizeNetnsName('feedfacecafe1234')).toBe('wb-feedfacecaf');
+  });
+
+  it('strips non-alnum non-dash non-underscore chars', () => {
+    expect(sanitizeNetnsName('ab!@#cd$%^ef123')).toBe('wb-abcdef123');
+  });
+
+  it('handles a short id without padding', () => {
+    expect(sanitizeNetnsName('abc')).toBe('wb-abc');
+  });
+
+  it('empty string yields just the prefix', () => {
+    expect(sanitizeNetnsName('')).toBe('wb-');
+  });
+});
+
+describe('classifyBringupFailure', () => {
+  it('returns "dns_internal" when stderr contains the deny-range marker', () => {
+    expect(classifyBringupFailure('in deny range; capture refused')).toBe('dns_internal');
+  });
+
+  it('returns "host_count" when stderr contains the budget marker', () => {
+    expect(classifyBringupFailure('exceeds host budget')).toBe('host_count');
+  });
+
+  it('returns undefined for unknown stderr', () => {
+    expect(classifyBringupFailure('some other error')).toBeUndefined();
+  });
+});
+
+describe('parseStateList', () => {
+  it('extracts comma-separated values by key', () => {
+    expect(parseStateList('key=a,b,c', 'key')).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns empty array when key is absent', () => {
+    expect(parseStateList('other=x', 'key')).toEqual([]);
+  });
+
+  it('trims surrounding whitespace from each value', () => {
+    expect(parseStateList('key= a , b ', 'key')).toEqual(['a', 'b']);
+  });
+});
+
+describe('parseHost', () => {
+  it('extracts hostname from a valid URL', () => {
+    expect(parseHost('https://example.com/path')).toBe('example.com');
+  });
+
+  it('returns null for an invalid URL', () => {
+    expect(parseHost('not-a-url')).toBeNull();
+  });
+
+  it('returns null for empty string', () => {
+    expect(parseHost('')).toBeNull();
+  });
+});
