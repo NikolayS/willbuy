@@ -128,12 +128,38 @@ bun run typecheck && bun run lint && bun run build && bun run test
 # load all secrets into local env once (saves fingerprint per run)
 OP_ACCOUNT=my.1password.com op inject -i .env.op -o .env
 
-# push refreshed secrets to the server
+# push refreshed infrastructure secrets to /etc/willbuy/secrets.env (Resend, HCLOUD, Cloudflare)
 op run --env-file=.env.op -- scripts/push-secrets.sh
+
+# push Stripe config to /etc/willbuy/app.env and restart willbuy-api
+op run --env-file=.env.op -- scripts/push-stripe-config.sh
 
 # look up the VM IP without hardcoding
 HCLOUD_TOKEN=$(grep ^HCLOUD_TOKEN .env | cut -d= -f2-) hcloud server describe willbuy-v01 -o json | jq -r .public_net.ipv4.ip
 ```
+
+## Deploys
+
+Pushes to `main` auto-deploy via `.github/workflows/deploy.yml`. No manual SSH needed in normal flow.
+
+```sh
+# Manual trigger
+gh workflow run deploy.yml --repo NikolayS/willbuy
+
+# Watch a deploy
+gh run watch --repo NikolayS/willbuy
+
+# First-time setup per dev machine (Touch-ID-prompted)
+bash scripts/setup-auto-deploy.sh
+```
+
+The deploy runs `git pull → migrations → next build → service install → docker build → nginx reload → smoke test`. Workflow goes red if `scripts/smoke-test.sh` isn't 11/11.
+
+If an aggregator-side fix needs to be applied to an already-finalized study (`status='ready'`), run on the server:
+```sh
+bash /srv/willbuy/scripts/reaggregate-study.sh <study_id>
+```
+This deletes the existing reports row and resets the study to `aggregating`, which the trigger picks up within 30 s.
 
 ## When in doubt
 
