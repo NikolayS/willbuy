@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   NetnsBringupError,
+  checkRedirectAllowed,
   parseHostBudgetOutput,
   runWithNetns,
 } from '../src/run-with-netns.js';
@@ -155,3 +156,40 @@ describe('parseHostBudgetOutput', () => {
 
 // Pin INFRA so editor auto-imports don't drop it.
 void INFRA;
+
+// ── checkRedirectAllowed ──────────────────────────────────────────────────────
+
+describe('checkRedirectAllowed', () => {
+  let stateDir: string;
+
+  beforeEach(() => {
+    stateDir = mkdtempSync(join(tmpdir(), 'wb-check-redirect-'));
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  it('returns { allowed: false, reason: "no_state" } when state file is missing', async () => {
+    const result = await checkRedirectAllowed('wb-abc12345678', 'https://example.com', stateDir);
+    expect(result).toEqual({ allowed: false, reason: 'no_state' });
+  });
+
+  it('returns { allowed: false, reason: "bad_url" } for a malformed redirect URL', async () => {
+    writeFileSync(join(stateDir, 'wb-abc12345678.state'), 'allowed_ipv4=1.2.3.4\n');
+    const result = await checkRedirectAllowed('wb-abc12345678', 'not-a-url', stateDir);
+    expect(result).toEqual({ allowed: false, reason: 'bad_url' });
+  });
+
+  it('returns { allowed: false, reason: "dns_fail" } when host does not resolve', async () => {
+    // Using a guaranteed-unresolvable hostname (RFC 2606 .invalid TLD) so DNS
+    // lookup throws ENOTFOUND and the function returns dns_fail without mocking.
+    writeFileSync(join(stateDir, 'wb-abc12345678.state'), 'allowed_ipv4=1.2.3.4\n');
+    const result = await checkRedirectAllowed(
+      'wb-abc12345678',
+      'https://this-hostname-definitely-does-not.exist.invalid',
+      stateDir,
+    );
+    expect(result).toEqual({ allowed: false, reason: 'dns_fail' });
+  });
+});
