@@ -17,6 +17,7 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { Pool } from 'pg';
 import type { AccountInfo } from './api-key.js';
 
 export const COOKIE_NAME_PROD = '__Host-wb_session';
@@ -84,9 +85,13 @@ export function decodeSession(
  * Build a Fastify preHandler that reads the wb_session cookie and populates
  * req.account. Sends 401 if cookie is missing, invalid, or expired.
  *
+ * When pool is provided, verified_domains is loaded from the DB so session
+ * users get the same req.account shape as API-key-authenticated callers.
+ * Without pool, verified_domains is [] (sufficient for read-only routes).
+ *
  * Usage: mount on /dashboard/* and /api/dashboard/* routes.
  */
-export function buildSessionMiddleware(hmacKey: string, nodeEnv: string) {
+export function buildSessionMiddleware(hmacKey: string, nodeEnv: string, pool?: Pool) {
   const name = cookieName(nodeEnv);
 
   return async function sessionMiddleware(
@@ -108,10 +113,19 @@ export function buildSessionMiddleware(hmacKey: string, nodeEnv: string) {
       return;
     }
 
+    let verified_domains: string[] = [];
+    if (pool) {
+      const result = await pool.query<{ verified_domains: string[] | null }>(
+        `SELECT verified_domains FROM accounts WHERE id = $1`,
+        [payload.account_id],
+      );
+      verified_domains = result.rows[0]?.verified_domains ?? [];
+    }
+
     req.account = {
       id: BigInt(payload.account_id),
       owner_email: payload.owner_email,
-      verified_domains: [],
+      verified_domains,
     } satisfies AccountInfo;
   };
 }

@@ -158,7 +158,10 @@ async function apiFetch<T>(
 export async function createStudy(
   body: CreateStudyBody,
 ): Promise<ApiResult<CreateStudyResponse>> {
-  return apiFetch('/studies', { method: 'POST', body: JSON.stringify(body) }, CreateStudyResponseSchema);
+  // Use /api/studies (session-cookie auth) so dashboard users can create
+  // studies without a browser API key. The API-key path POST /studies
+  // remains for programmatic callers.
+  return apiFetch('/api/studies', { method: 'POST', body: JSON.stringify(body) }, CreateStudyResponseSchema);
 }
 
 /**
