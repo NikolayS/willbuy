@@ -1,0 +1,75 @@
+name: deploy
+
+# Auto-deploys merged main to willbuy-v01.
+#
+# Setup (one-time, by repo admin):
+#   1. Generate a dedicated deploy keypair on your laptop:
+#        ssh-keygen -t ed25519 -f /tmp/willbuy-deploy -N "" -C "github-actions-deploy"
+#   2. Append the public key to the server's authorized_keys (requires 1Password agent):
+#        ssh -p 2223 root@willbuy-v01 "cat >> /root/.ssh/authorized_keys" < /tmp/willbuy-deploy.pub
+#   3. Store the private key as a GitHub Actions secret named `DEPLOY_SSH_KEY`:
+#        gh secret set DEPLOY_SSH_KEY --repo NikolayS/willbuy < /tmp/willbuy-deploy
+#   4. Store the host as `DEPLOY_HOST` (default: 87.99.135.213):
+#        gh secret set DEPLOY_HOST --repo NikolayS/willbuy --body "87.99.135.213"
+#   5. Delete the local copies:
+#        rm /tmp/willbuy-deploy /tmp/willbuy-deploy.pub
+#
+# After that, every merge to main auto-deploys. Manual trigger via:
+#   gh workflow run deploy.yml --repo NikolayS/willbuy
+#
+# Idempotent: re-runs are safe (git pull no-ops, migrations are guarded,
+# systemctl restart works on running services, env-var append is conditional).
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: "Skip Next.js build (faster API-only deploy)"
+        required: false
+        default: "false"
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p 2223 -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          SKIP_BUILD: ${{ inputs.skip_build }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p 2223 -o StrictHostKeyChecking=accept-new \
+            "root@${DEPLOY_HOST}" \
+            "SKIP_BUILD='${SKIP_BUILD}' bash -s" < .github/scripts/deploy.sh
+
+      - name: Smoke test
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          # Run the smoke test from the deployed code on the server
+          # (it tests the public URL, not localhost).
+          ssh -i ~/.ssh/deploy_key -p 2223 \
+            "root@${DEPLOY_HOST}" \
+            "cd /srv/willbuy && bash scripts/smoke-test.sh"
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
