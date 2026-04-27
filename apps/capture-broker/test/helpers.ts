@@ -114,8 +114,16 @@ function roundTrip(socketPath: string, raw: Buffer): Promise<BrokerAck> {
       }
     });
     socket.on('connect', () => {
-      socket.write(raw);
-      socket.end();
+      // For large payloads, socket.write() may return false (backpressure).
+      // Only send FIN after the write is flushed to avoid a race where the
+      // FIN arrives at the server before all data chunks, causing readOneFrame
+      // to resolve 'closed' instead of 'ok' and drop the connection silently.
+      const flushed = socket.write(raw);
+      if (flushed) {
+        socket.end();
+      } else {
+        socket.once('drain', () => socket.end());
+      }
     });
   });
 }
