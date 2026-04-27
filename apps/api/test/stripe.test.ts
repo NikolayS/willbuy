@@ -23,6 +23,7 @@ import Stripe from 'stripe';
 import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgres.js';
 import { buildServer } from '../src/server.js';
 import { PACKS } from '../src/billing/packs.js';
+import { encodeSession } from '../src/auth/session.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -249,6 +250,38 @@ describeIfDocker('Stripe Checkout + webhook (issue #36, real DB)', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/checkout/sessions',
+      payload: { pack_id: 'starter' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  // ── POST /api/checkout/sessions (session-cookie auth mirror) ──────────────
+
+  it('POST /api/checkout/sessions with valid session cookie returns 200 + url', async () => {
+    const DEFAULT_SESSION_HMAC_KEY = 'dev_hmac_key_not_configured_replace_in_production_abc123';
+    const sessionValue = encodeSession(
+      {
+        account_id: String(accountId),
+        owner_email: 'stripe-test@example.com',
+        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      },
+      DEFAULT_SESSION_HMAC_KEY,
+    );
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/sessions',
+      headers: { cookie: `wb_session=${sessionValue}` },
+      payload: { pack_id: 'growth' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { url: string };
+    expect(body.url).toBe(STUB_CHECKOUT_URL);
+  });
+
+  it('POST /api/checkout/sessions without session cookie returns 401', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/sessions',
       payload: { pack_id: 'starter' },
     });
     expect(res.statusCode).toBe(401);
