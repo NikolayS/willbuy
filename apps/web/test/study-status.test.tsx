@@ -68,6 +68,33 @@ describe('progressClass helper (issue #111)', () => {
   });
 });
 
+// ── PROGRESS_CLASSES spec-pin (issue #111, spec §5.10) ───────────────────────
+//
+// The 13 Tailwind width classes are a compile-time safelist for JIT purging.
+// Removing any class would cause a width variant to render as nothing at
+// runtime; adding a new class without a matching Tailwind variant would
+// produce the same bug.
+
+describe('PROGRESS_CLASSES spec-pin (issue #111)', () => {
+  it('has exactly 13 entries (w-0 through w-full = 12 twelfth-fractions + w-full)', () => {
+    expect(PROGRESS_CLASSES).toHaveLength(13);
+  });
+
+  it('starts with w-0 and ends with w-full', () => {
+    expect(PROGRESS_CLASSES[0]).toBe('w-0');
+    expect(PROGRESS_CLASSES[PROGRESS_CLASSES.length - 1]).toBe('w-full');
+  });
+
+  it('contains the complete set of twelfth-fraction Tailwind classes', () => {
+    const expected = [
+      'w-0', 'w-1/12', 'w-1/6', 'w-1/4', 'w-1/3',
+      'w-5/12', 'w-1/2', 'w-7/12', 'w-2/3', 'w-3/4',
+      'w-5/6', 'w-11/12', 'w-full',
+    ];
+    expect([...PROGRESS_CLASSES]).toEqual(expected);
+  });
+});
+
 describe('<ProgressBar/> rendered HTML (issue #111)', () => {
   it('renders the right Tailwind width class for a 70%/10% split', () => {
     const html = renderToStaticMarkup(
