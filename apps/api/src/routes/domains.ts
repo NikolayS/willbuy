@@ -537,3 +537,11 @@ export async function registerDomainsRoutes(
     },
   );
 }
+
+// Test-only export: spec-critical constants for unit testing without a
+// Fastify server or Postgres.
+export const __test__ = {
+  TOKEN_LENGTH,
+  PROBE_TIMEOUT_MS,
+  normalizeEtldPlusOne,
+};
