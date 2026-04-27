@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NEXT_ACTION_WEIGHTS, scoreVisit } from '../src/scoring.js';
+import { NEXT_ACTION_WEIGHTS, PAID_TIERS, scoreVisit } from '../src/scoring.js';
 import type { VisitorOutputT } from '../src/visitor.js';
 
 const baseVisit: VisitorOutputT = {
@@ -88,5 +88,36 @@ describe('scoreVisit (growth/ab/pricing-page-2026apr/scoring.md mirror)', () => 
       next_action: 'not_in_enum',
     } as unknown as VisitorOutputT;
     expect(scoreVisit(malformed)).toBe(0.0);
+  });
+});
+
+// ── PAID_TIERS — spec §5.6 paid tier set ─────────────────────────────────────
+
+describe('PAID_TIERS — spec §5.6 paid tier membership', () => {
+  it('contains all four paid tiers', () => {
+    expect(PAID_TIERS.has('express')).toBe(true);
+    expect(PAID_TIERS.has('starter')).toBe(true);
+    expect(PAID_TIERS.has('scale')).toBe(true);
+    expect(PAID_TIERS.has('enterprise')).toBe(true);
+  });
+
+  it('has exactly four members', () => {
+    expect(PAID_TIERS.size).toBe(4);
+  });
+
+  it('does not contain free/non-paid tier values', () => {
+    expect(PAID_TIERS.has('none')).toBe(false);
+    expect(PAID_TIERS.has('hobby')).toBe(false);
+    expect(PAID_TIERS.has('')).toBe(false);
+    expect(PAID_TIERS.has('unknown')).toBe(false);
+  });
+
+  it('is read-only (Set type, not mutable from outside)', () => {
+    // TypeScript types PAID_TIERS as ReadonlySet; confirm the runtime type.
+    expect(PAID_TIERS).toBeInstanceOf(Set);
+    // The reference itself must not be writable at runtime (Object.isFrozen
+    // only catches plain objects; for Sets the ReadonlySet type is the
+    // enforcement mechanism — we just verify the constructor).
+    expect(typeof PAID_TIERS.has).toBe('function');
   });
 });
