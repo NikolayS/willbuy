@@ -228,6 +228,11 @@ export default function StudyNewPage() {
             <span>5</span>
             <span>100</span>
           </div>
+          {/* Live cost estimate: avg 3.5¢/visit (ceiling 5¢ reserved by API §5.5) */}
+          <p className="mt-2 text-xs text-gray-500">
+            Estimated cost: ~${((isPaired ? 2 : 1) * nVisits * 3.5 / 100).toFixed(2)}
+            {' '}({(isPaired ? 2 : 1) * nVisits} visitor{(isPaired ? 2 : 1) * nVisits !== 1 ? 's' : ''} × avg 3.5¢)
+          </p>
         </section>
 
         {/* ── API error banners ── */}
