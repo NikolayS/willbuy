@@ -370,6 +370,49 @@ describeIfDocker('auth magic-link (issue #79, real DB)', () => {
   });
 
   // -------------------------------------------------------------------------
+  // AC8b: POST /api/auth/sign-out with no Content-Type (browser form, empty
+  //        body) → 302 to /sign-in and cookie cleared (fixes #476).
+  // -------------------------------------------------------------------------
+  it('AC8b: POST /api/auth/sign-out with no Content-Type → 302 to /sign-in, clears cookie', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/sign-out',
+      // No headers, no payload — mimics a browser submitting an empty form
+      // without a Content-Type header.
+    });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('/sign-in');
+
+    const setCookie = res.headers['set-cookie'];
+    const cookieStr = Array.isArray(setCookie) ? setCookie[0] : setCookie ?? '';
+    expect(cookieStr).toMatch(/wb_session=/);
+    expect(cookieStr).toMatch(/Max-Age=0/i);
+  });
+
+  // -------------------------------------------------------------------------
+  // AC8c: POST /api/auth/sign-out with Content-Type: application/x-www-form-
+  //        urlencoded (standard browser HTML form submit) → 302 + cookie cleared
+  //        (fixes #476).
+  // -------------------------------------------------------------------------
+  it('AC8c: POST /api/auth/sign-out with application/x-www-form-urlencoded → 302, clears cookie', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/sign-out',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      payload: '',
+    });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('/sign-in');
+
+    const setCookie = res.headers['set-cookie'];
+    const cookieStr = Array.isArray(setCookie) ? setCookie[0] : setCookie ?? '';
+    expect(cookieStr).toMatch(/wb_session=/);
+    expect(cookieStr).toMatch(/Max-Age=0/i);
+  });
+
+  // -------------------------------------------------------------------------
   // AC2-regression (issue #99 N3): idempotent re-request of magic-link keeps
   // the FIRST token usable. Two POSTs for the same email within 30 min must
   // not invalidate the earlier token; the first token still verifies → 302.
