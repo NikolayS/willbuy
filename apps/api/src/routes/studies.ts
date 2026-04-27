@@ -341,6 +341,59 @@ export async function registerStudiesRoutes(
   // Returns 400 on a malformed cursor (per AC6) — never silently degrades.
   const sessionMiddleware = buildSessionMiddleware(env.SESSION_HMAC_KEY, env.NODE_ENV);
 
+  // ── GET /api/studies/:id (issue #209) ─────────────────────────────────────
+  //
+  // Session-cookie mirror of GET /studies/:id (which uses API-key auth).
+  // Used by the dashboard's client component — browsers send session cookies
+  // but no API key, so the apiKey-authenticated route always returns 401
+  // in production. Same ownership guard and response shape.
+  app.get<{ Params: { id: string } }>(
+    '/api/studies/:id',
+    { preHandler: [sessionMiddleware] },
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const account = req.account!;
+      const studyId = req.params.id;
+
+      const studyResult = await pool.query<{
+        id: string;
+        account_id: string;
+        status: string;
+        created_at: Date;
+        finalized_at: Date | null;
+      }>(
+        `SELECT id, account_id, status, created_at, finalized_at
+           FROM studies WHERE id = $1`,
+        [studyId],
+      );
+
+      const study = studyResult.rows[0];
+      if (!study || study.account_id !== String(account.id)) {
+        return reply.code(404).send({ error: 'study not found' });
+      }
+
+      const progressResult = await pool.query<{ status: string; cnt: string }>(
+        `SELECT status, count(*) AS cnt FROM visits WHERE study_id = $1 GROUP BY status`,
+        [studyId],
+      );
+
+      let okCount = 0, failedCount = 0, total = 0;
+      for (const row of progressResult.rows) {
+        const cnt = Number(row.cnt);
+        total += cnt;
+        if (row.status === 'ok') okCount += cnt;
+        else if (row.status === 'failed' || row.status === 'indeterminate') failedCount += cnt;
+      }
+
+      return reply.code(200).send({
+        id: Number(study.id),
+        status: study.status,
+        visit_progress: { ok: okCount, failed: failedCount, total },
+        started_at: study.created_at.toISOString(),
+        finalized_at: study.finalized_at?.toISOString() ?? null,
+      });
+    },
+  );
+
   const ListQuerySchema = z.object({
     limit: z.coerce.number().int().positive().optional(),
     cursor: z.string().optional(),
