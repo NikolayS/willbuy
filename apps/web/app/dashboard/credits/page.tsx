@@ -67,7 +67,7 @@ export default async function CreditsPage() {
     redirect('/sign-in');
   }
 
-  const balanceVisits = Math.floor(balance_cents / 3.5);
+  const balanceVisits = Math.max(0, Math.floor(balance_cents / 3.5));
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
