@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 /**
- * sign-in.test.tsx — vitest + react-dom/server tests for /sign-in page (issue #79).
+ * sign-in.test.tsx — vitest + jsdom tests for /sign-in page (issue #79).
  *
  * Spec refs: §5.10 (CSP — no inline scripts), §4.1 (stack).
  *
@@ -7,9 +8,13 @@
  *   1. Form renders with email input and submit button.
  *   2. Success state shows "Check your email" message.
  *   3. Error state shows error message for invalid email client-side.
+ *   4. CSP compliance.
+ *   5. Network error → "Network error" message.
+ *   6. Server error (non-202) → shows body.error message.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 // Mock next/navigation so useSearchParams works outside a request scope.
@@ -85,5 +90,52 @@ describe('/sign-in page', () => {
     expect(html).not.toMatch(/<script[^>]*>/i);
     // No inline style= attributes.
     expect(html).not.toMatch(/style="/i);
+  });
+});
+
+// ── Interactive behavior (jsdom) ──────────────────────────────────────────────
+
+describe('/sign-in page — interactive submit behavior', () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it('network error → shows "Network error" message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Failed to fetch')));
+    const { default: SignInPage } = await import('../app/sign-in/page.js');
+    render(<SignInPage />);
+
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'user@example.com' } });
+
+    const button = screen.getByRole('button', { name: /send sign-in link/i });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeTruthy();
+    });
+    expect(screen.getByRole('alert').textContent).toMatch(/network error/i);
+  });
+
+  it('server error (non-202) → shows body.error message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        status: 429,
+        json: async () => ({ error: 'Too many requests' }),
+      }),
+    );
+    const { default: SignInPage } = await import('../app/sign-in/page.js');
+    render(<SignInPage />);
+
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'user@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /send sign-in link/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeTruthy();
+    });
+    expect(screen.getByRole('alert').textContent).toMatch(/too many requests/i);
   });
 });
