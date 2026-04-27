@@ -26,8 +26,11 @@ as_willbuy() {
 cd "$REPO"
 
 echo "::group::pull"
-# Run as willbuy so working-tree files keep willbuy ownership.
-as_willbuy "cd $REPO && git fetch origin main && git reset --hard origin/main"
+# Git fetch may need credentials that only root has (deploy key). Run as
+# root, then chown back so the willbuy user retains ownership of the tree.
+git fetch origin main
+git reset --hard origin/main
+chown -R willbuy:willbuy "$REPO"
 echo "::endgroup::"
 
 echo "::group::migrate"
