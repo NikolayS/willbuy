@@ -119,3 +119,6 @@ export async function registerCheckoutRoutes(
     },
   );
 }
+
+// Test seam — not part of the public API surface.
+export const __test__ = { CreateSessionBodySchema };
