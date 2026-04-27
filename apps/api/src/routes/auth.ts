@@ -197,3 +197,10 @@ export async function registerAuthRoutes(
     return reply.code(302).redirect('/sign-in');
   });
 }
+
+// Test-only export: session lifetime constants for spec-pin tests.
+export const __test__ = {
+  SESSION_7_DAYS_SECONDS,
+  MAGIC_LINK_EXPIRY_MINUTES,
+  safeRedirect,
+};
