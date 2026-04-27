@@ -41,6 +41,7 @@ import type { Env } from '../env.js';
 import type { ResendClient } from '../email/resend.js';
 import { maybeWarnCap } from '../billing/cap-warning.js';
 import { recordStudyStarted } from '../metrics/registry.js';
+import type { BackstoryT } from '@willbuy/shared/backstory';
 
 // Per-visit estimated cost ceiling = 5¢ per spec §5.5 (cost-model ceiling).
 // §5.7 (Algorithms) describes the broader cost-model overview.
@@ -76,6 +77,73 @@ const CreateStudyBodySchema = z.object({
   icp: z.union([IcpPresetSchema, IcpInlineSchema]),
   n_visits: z.number().int().min(1).max(100),
 });
+
+// ── Preset ICP expansion (issue #499) ─────────────────────────────────────
+//
+// When the caller supplies `{preset_id: "saas_founder_pre_pmf"}`, the visitor
+// worker's Backstory.safeParse() rejects it (strict schema, no required fields
+// present). We expand presets to concrete BackstoryT objects here at
+// study-creation time so the DB always holds full backstory payloads.
+//
+// Five presets × five backstories each. Cycling by visitIdx gives diversity
+// for N>5 without runtime sampling.
+const PRESET_BACKSTORIES: Record<(typeof ICP_PRESETS)[number], BackstoryT[]> = {
+  saas_founder_pre_pmf: [
+    { name: 'Maya',   role_archetype: 'founder_or_eng_lead', stage: 'seed',  team_size: 6,  managed_postgres: 'supabase',  current_pain: 'upcoming_scale_event', entry_point: 'newsletter',             regulated: 'no', postgres_depth: 'light',  budget_authority: 'self' },
+    { name: 'David',  role_archetype: 'founder_or_eng_lead', stage: 'seed+', team_size: 2,  managed_postgres: 'neon',      current_pain: 'slow_queries',          entry_point: 'hacker_news',            regulated: 'no', postgres_depth: 'medium', budget_authority: 'needs_founder_signoff' },
+    { name: 'Priya',  role_archetype: 'founder_or_eng_lead', stage: 'seed',  team_size: 2,  managed_postgres: 'rds',       current_pain: 'bad_migration_fear',    entry_point: 'google_search',          regulated: 'no', postgres_depth: 'light',  budget_authority: 'self' },
+    { name: 'Tomasz', role_archetype: 'founder_or_eng_lead', stage: 'seed+', team_size: 6,  managed_postgres: 'cloud_sql', current_pain: 'cost_creep',            entry_point: 'vc_referral',            regulated: 'no', postgres_depth: 'medium', budget_authority: 'needs_founder_signoff' },
+    { name: 'Kenji',  role_archetype: 'founder_or_eng_lead', stage: 'seed',  team_size: 2,  managed_postgres: 'aurora',    current_pain: 'recent_outage',         entry_point: 'postgres_blog_footer',   regulated: 'no', postgres_depth: 'light',  budget_authority: 'self' },
+  ],
+  saas_founder_post_pmf: [
+    { name: 'Dana',   role_archetype: 'founder_or_eng_lead', stage: 'series_a', team_size: 12, managed_postgres: 'rds',      current_pain: 'upcoming_scale_event', entry_point: 'vc_referral',            regulated: 'no',      postgres_depth: 'medium', budget_authority: 'self' },
+    { name: 'Mira',   role_archetype: 'founder_or_eng_lead', stage: 'series_b', team_size: 20, managed_postgres: 'aurora',   current_pain: 'cost_creep',           entry_point: 'hacker_news',            regulated: 'lightly', postgres_depth: 'deep',   budget_authority: 'needs_founder_signoff' },
+    { name: 'Asel',   role_archetype: 'founder_or_eng_lead', stage: 'series_a', team_size: 6,  managed_postgres: 'supabase', current_pain: 'slow_queries',         entry_point: 'newsletter',             regulated: 'no',      postgres_depth: 'medium', budget_authority: 'self' },
+    { name: 'Joon',   role_archetype: 'founder_or_eng_lead', stage: 'series_b', team_size: 20, managed_postgres: 'neon',     current_pain: 'post_mortem_in_hand',  entry_point: 'conference_booth_followup', regulated: 'no', postgres_depth: 'deep',   budget_authority: 'needs_founder_signoff' },
+    { name: 'Lena',   role_archetype: 'founder_or_eng_lead', stage: 'series_a', team_size: 12, managed_postgres: 'cloud_sql', current_pain: 'bad_migration_fear',  entry_point: 'google_search',          regulated: 'lightly', postgres_depth: 'medium', budget_authority: 'self' },
+  ],
+  shopify_merchant: [
+    { name: 'Maya',   role_archetype: 'founder_or_eng_lead', stage: 'seed',  team_size: 2,  managed_postgres: 'rds',    current_pain: 'cost_creep',            entry_point: 'hacker_news',          regulated: 'no', postgres_depth: 'light',  budget_authority: 'self' },
+    { name: 'David',  role_archetype: 'founder_or_eng_lead', stage: 'seed+', team_size: 6,  managed_postgres: 'aurora', current_pain: 'upcoming_scale_event',  entry_point: 'google_search',        regulated: 'no', postgres_depth: 'medium', budget_authority: 'self' },
+    { name: 'Priya',  role_archetype: 'founder_or_eng_lead', stage: 'seed',  team_size: 2,  managed_postgres: 'rds',    current_pain: 'slow_queries',          entry_point: 'newsletter',           regulated: 'no', postgres_depth: 'light',  budget_authority: 'self' },
+    { name: 'Tomasz', role_archetype: 'founder_or_eng_lead', stage: 'seed+', team_size: 6,  managed_postgres: 'aurora', current_pain: 'cost_creep',            entry_point: 'vc_referral',          regulated: 'no', postgres_depth: 'medium', budget_authority: 'self' },
+    { name: 'Kenji',  role_archetype: 'founder_or_eng_lead', stage: 'seed',  team_size: 2,  managed_postgres: 'rds',    current_pain: 'upcoming_scale_event',  entry_point: 'postgres_blog_footer', regulated: 'no', postgres_depth: 'light',  budget_authority: 'self' },
+  ],
+  devtools_engineer: [
+    { name: 'Dana',   role_archetype: 'ic_engineer', stage: 'series_a', team_size: 12, managed_postgres: 'rds',      current_pain: 'slow_queries',         entry_point: 'hacker_news',            regulated: 'no',      postgres_depth: 'medium', budget_authority: 'needs_manager_signoff' },
+    { name: 'Mira',   role_archetype: 'ic_engineer', stage: 'series_b', team_size: 20, managed_postgres: 'aurora',   current_pain: 'bad_migration_fear',   entry_point: 'newsletter',             regulated: 'no',      postgres_depth: 'deep',   budget_authority: 'needs_board_visibility' },
+    { name: 'Asel',   role_archetype: 'ic_engineer', stage: 'series_a', team_size: 12, managed_postgres: 'neon',     current_pain: 'post_mortem_in_hand',  entry_point: 'postgres_blog_footer',   regulated: 'no',      postgres_depth: 'medium', budget_authority: 'needs_manager_signoff' },
+    { name: 'Joon',   role_archetype: 'ic_engineer', stage: 'series_b', team_size: 20, managed_postgres: 'supabase', current_pain: 'upcoming_scale_event', entry_point: 'google_search',          regulated: 'lightly', postgres_depth: 'deep',   budget_authority: 'needs_board_visibility' },
+    { name: 'Lena',   role_archetype: 'ic_engineer', stage: 'series_a', team_size: 12, managed_postgres: 'cloud_sql', current_pain: 'cost_creep',           entry_point: 'conference_booth_followup', regulated: 'no', postgres_depth: 'medium', budget_authority: 'needs_manager_signoff' },
+  ],
+  fintech_ops_buyer: [
+    { name: 'Maya',   role_archetype: 'ic_engineer', stage: 'series_a', team_size: 12, managed_postgres: 'rds',      current_pain: 'post_mortem_in_hand',  entry_point: 'vc_referral',            regulated: 'yes',     postgres_depth: 'deep',   budget_authority: 'needs_manager_signoff' },
+    { name: 'David',  role_archetype: 'ic_engineer', stage: 'series_b', team_size: 20, managed_postgres: 'aurora',   current_pain: 'recent_outage',        entry_point: 'hacker_news',            regulated: 'lightly', postgres_depth: 'medium', budget_authority: 'needs_board_visibility' },
+    { name: 'Priya',  role_archetype: 'ic_engineer', stage: 'series_a', team_size: 12, managed_postgres: 'cloud_sql', current_pain: 'slow_queries',        entry_point: 'google_search',          regulated: 'yes',     postgres_depth: 'deep',   budget_authority: 'needs_manager_signoff' },
+    { name: 'Tomasz', role_archetype: 'ic_engineer', stage: 'series_b', team_size: 20, managed_postgres: 'rds',      current_pain: 'cost_creep',           entry_point: 'newsletter',             regulated: 'lightly', postgres_depth: 'medium', budget_authority: 'needs_board_visibility' },
+    { name: 'Kenji',  role_archetype: 'ic_engineer', stage: 'series_a', team_size: 12, managed_postgres: 'aurora',   current_pain: 'bad_migration_fear',   entry_point: 'conference_booth_followup', regulated: 'yes', postgres_depth: 'deep',   budget_authority: 'needs_manager_signoff' },
+  ],
+};
+
+type IcpType = z.infer<typeof CreateStudyBodySchema>['icp'];
+
+/**
+ * Resolve an ICP to a concrete BackstoryT for a given visit index.
+ * - Preset ICP: cycle through the preset's backstory pool by visitIdx.
+ * - Inline ICP: pass through as-is (caller already provides full fields).
+ *
+ * Fix for issue #499: storing {preset_id: "..."} verbatim caused the visitor
+ * worker's Backstory.safeParse() to fail (strict schema), marking every visit
+ * terminal_reason='backstory_invalid' and producing empty reports.
+ */
+function resolveIcp(icp: IcpType, visitIdx: number): BackstoryT {
+  if ('preset_id' in icp) {
+    const pool = PRESET_BACKSTORIES[icp.preset_id];
+    return pool[visitIdx % pool.length]!;
+  }
+  // Inline ICP — store verbatim; visitor worker handles it.
+  return icp as unknown as BackstoryT;
+}
 
 /**
  * Extract eTLD+1 from a URL string. Returns null if unparseable.
@@ -177,12 +245,13 @@ export async function registerStudiesRoutes(
         const studyId = studyResult.rows[0]!.id;
 
         // Insert N backstory rows with the ICP payload.
-        const icpPayload = JSON.stringify(body.icp);
+        // resolveIcp expands preset_id → concrete BackstoryT (fix #499).
         for (let idx = 0; idx < n; idx++) {
+          const backstoryPayload = JSON.stringify(resolveIcp(body.icp, idx));
           await client.query(
             `INSERT INTO backstories (study_id, idx, payload)
              VALUES ($1, $2, $3::jsonb)`,
-            [studyId, idx, icpPayload],
+            [studyId, idx, backstoryPayload],
           );
         }
 
@@ -467,11 +536,12 @@ export async function registerStudiesRoutes(
         );
         const studyId = studyResult.rows[0]!.id;
 
-        const icpPayload = JSON.stringify(body.icp);
+        // resolveIcp expands preset_id → concrete BackstoryT (fix #499).
         for (let idx = 0; idx < n; idx++) {
+          const backstoryPayload = JSON.stringify(resolveIcp(body.icp, idx));
           await client.query(
             `INSERT INTO backstories (study_id, idx, payload) VALUES ($1, $2, $3::jsonb)`,
-            [studyId, idx, icpPayload],
+            [studyId, idx, backstoryPayload],
           );
         }
 

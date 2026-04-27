@@ -543,4 +543,97 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
       expect(res.statusCode).toBe(404);
     });
   });
+
+  // --- issue #499: preset_id ICP expansion ---
+  describe('preset_id ICP expansion (issue #499)', () => {
+    // Test: preset ICP is expanded to a concrete BackstoryT, not stored verbatim.
+    it('preset icp is expanded to concrete backstory rows (role_archetype not preset_id)', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/studies',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        payload: {
+          urls: ['https://example.com/pricing'],
+          icp: { preset_id: 'saas_founder_pre_pmf' },
+          n_visits: 3,
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const { study_id } = res.json() as { study_id: number };
+
+      const client = new Client({ connectionString: dbUrl });
+      await client.connect();
+      try {
+        const rows = await client.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM backstories WHERE study_id = $1 ORDER BY idx`,
+          [String(study_id)],
+        );
+        expect(rows.rows).toHaveLength(3);
+
+        for (const row of rows.rows) {
+          // Each payload must NOT contain preset_id (bug: it stored the preset verbatim).
+          expect(row.payload).not.toHaveProperty('preset_id');
+          // Each payload MUST have role_archetype = founder_or_eng_lead.
+          expect(row.payload.role_archetype).toBe('founder_or_eng_lead');
+        }
+
+        // Diversity check: not all 3 rows have identical payloads.
+        const payloads = rows.rows.map((r) => JSON.stringify(r.payload));
+        const unique = new Set(payloads);
+        // With a pool of ≥5, cycling gives unique values for indices 0,1,2.
+        expect(unique.size).toBeGreaterThan(1);
+      } finally {
+        await client.end();
+      }
+    });
+
+    // Test: inline ICP (not a preset) is stored verbatim — no regression.
+    // Note: IcpInlineSchema is loose (passthrough) with no required fields,
+    // so any object without `preset_id` is accepted as inline.
+    it('inline icp is stored verbatim in backstory rows', async () => {
+      const inlineIcp = {
+        stage: 'series_a',
+        managed_postgres: 'rds',
+        current_pain: 'slow_queries',
+        regulated: 'no',
+        postgres_depth: 'medium',
+        budget_authority: 'needs_manager_signoff',
+        role_archetype: 'ic_engineer',
+        name: 'TestUser',
+      };
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/studies',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        payload: {
+          urls: ['https://example.com/pricing'],
+          icp: inlineIcp,
+          n_visits: 2,
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const { study_id } = res.json() as { study_id: number };
+
+      const client = new Client({ connectionString: dbUrl });
+      await client.connect();
+      try {
+        const rows = await client.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM backstories WHERE study_id = $1 ORDER BY idx`,
+          [String(study_id)],
+        );
+        expect(rows.rows).toHaveLength(2);
+        for (const row of rows.rows) {
+          // Inline ICP fields must be stored verbatim (no preset expansion).
+          expect(row.payload.stage).toBe('series_a');
+          expect(row.payload.role_archetype).toBe('ic_engineer');
+          expect(row.payload.name).toBe('TestUser');
+          // Must NOT have been treated as a preset.
+          expect(row.payload).not.toHaveProperty('preset_id');
+        }
+      } finally {
+        await client.end();
+      }
+    });
+  });
 });
