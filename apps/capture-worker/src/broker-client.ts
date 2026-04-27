@@ -191,3 +191,5 @@ export async function sendToBroker(
     });
   });
 }
+
+export const __test__ = { DEFAULT_SOCKET_PATH, DEFAULT_TIMEOUT_MS, HEADER_BYTES };
