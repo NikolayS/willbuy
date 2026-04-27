@@ -1,6 +1,7 @@
 // Server-only seam — fetches the §5.18 report_json blob for a given slug.
-// Fixture path (WILLBUY_REPORT_FIXTURE=enabled + slug=test-fixture) stays
-// active for dev/preview; all other slugs hit the real API.
+// Fixture path (slug=test-fixture) always serves the static demo report.
+// WILLBUY_REPORT_FIXTURE env var is no longer required — the fixture slug
+// is treated as a public demo, not guarded by env.
 //
 // Return value is a discriminated union:
 //   - 'not_found'  API returned 404 (study_id invalid, report expired, or fetch error)
@@ -22,10 +23,7 @@ function apiBaseUrl(): string {
 }
 
 export async function fetchReport(slug: string): Promise<FetchReportResult> {
-  if (
-    process.env.WILLBUY_REPORT_FIXTURE === 'enabled' &&
-    slug === FIXTURE_SLUG
-  ) {
+  if (slug === FIXTURE_SLUG) {
     return { reportJson: fixture, urls: null };
   }
 
