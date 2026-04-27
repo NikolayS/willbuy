@@ -28,7 +28,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 
 import { buildServer } from '../src/server.js';
-import { recordStudyStarted, resetMetricsForTesting } from '../src/metrics/registry.js';
+import {
+  recordStudyStarted,
+  resetMetricsForTesting,
+  PROMETHEUS_CONTENT_TYPE,
+} from '../src/metrics/registry.js';
 
 const METRICS_TOKEN = 'test-metrics-bearer-token-1234567890';
 
@@ -226,5 +230,12 @@ describe('willbuy_http_request_duration_seconds histogram (issue #119 acceptance
     for (const r of routeLabels) {
       expect(r).not.toMatch(/no-such-path-\d/);
     }
+  });
+});
+
+// Spec-pin: PROMETHEUS_CONTENT_TYPE
+describe('PROMETHEUS_CONTENT_TYPE spec-pin', () => {
+  it('is "text/plain; version=0.0.4; charset=utf-8"', () => {
+    expect(PROMETHEUS_CONTENT_TYPE).toBe('text/plain; version=0.0.4; charset=utf-8');
   });
 });
