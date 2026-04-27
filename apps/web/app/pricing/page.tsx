@@ -10,9 +10,15 @@
  * ceiling used in BuyCredits (which shows conservative estimates for
  * existing customers). The public pricing page shows the more compelling
  * avg-cost figure to optimise for conversion.
+ *
+ * Auth-aware CTA: server reads session cookie; authenticated users see the
+ * BuyButton (direct Stripe checkout); unauthenticated get sign-in redirect.
  */
 
 // React Server Component — no 'use client' directive.
+
+import { cookies } from 'next/headers';
+import { PricingCta } from './PricingCta';
 
 interface Pack {
   id: 'starter' | 'growth' | 'scale';
@@ -51,7 +57,11 @@ const PACKS: Pack[] = [
   },
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const jar = await cookies();
+  const isAuthenticated =
+    jar.has('__Host-wb_session') || jar.has('wb_session');
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
       <h1 className="text-3xl font-bold tracking-tight text-center">
@@ -88,19 +98,12 @@ export default function PricingPage() {
               See a sample report →
             </a>
 
-            {/*
-             * TODO (#144): unauthenticated checkout wiring deferred; see #144.
-             * /checkout/sessions requires API key auth. For now we send the
-             * visitor to sign-in with a redirect back to /pricing so they can
-             * complete purchase after authenticating.
-             */}
-            <a
-              href={`/sign-in?redirect=/pricing&pack=${pack.id}`}
-              aria-label={`Buy ${pack.label} pack — $${pack.usd}`}
-              className="mt-4 inline-block rounded-md bg-blue-600 px-5 py-2.5 text-center text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-              Buy →
-            </a>
+            <PricingCta
+              packId={pack.id}
+              label={pack.label}
+              usd={pack.usd}
+              isAuthenticated={isAuthenticated}
+            />
           </div>
         ))}
       </div>
