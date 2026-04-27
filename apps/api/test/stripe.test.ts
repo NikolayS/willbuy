@@ -22,7 +22,7 @@ import Stripe from 'stripe';
 
 import { startPostgres, stopPostgres } from '../../../tests/helpers/start-postgres.js';
 import { buildServer } from '../src/server.js';
-import { PACKS } from '../src/billing/packs.js';
+import { PACKS, initPacks } from '../src/billing/packs.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -489,4 +489,18 @@ describe('Stripe checkout error-handling (issue #73)', () => {
       }
     },
   );
+});
+
+// Spec-pin: PACKS credits (no Docker needed)
+describe('PACKS credits spec-pin (spec §5.6)', () => {
+  it('starter=1000, growth=4000, scale=15000 credits', () => {
+    initPacks({
+      starterPriceId: 'price_test_starter',
+      growthPriceId: 'price_test_growth',
+      scalePriceId: 'price_test_scale',
+    });
+    expect(PACKS.starter.credits).toBe(1000);
+    expect(PACKS.growth.credits).toBe(4000);
+    expect(PACKS.scale.credits).toBe(15_000);
+  });
 });
