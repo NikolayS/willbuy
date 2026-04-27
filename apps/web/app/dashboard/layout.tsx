@@ -34,6 +34,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }): 
             <a href="/dashboard/studies/new" className="hover:text-gray-900">
               New study
             </a>
+            <a href="/dashboard/domains" className="hover:text-gray-900">
+              Domains
+            </a>
             <a href="/dashboard/credits" className="hover:text-gray-900">
               Credits
             </a>
