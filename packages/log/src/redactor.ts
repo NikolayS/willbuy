@@ -67,6 +67,13 @@ const REMOVE_FIELDS = new Set([
   'error_detail',
 ]);
 const API_KEY_FIELD = 'api_key';
+
+export const __test__ = {
+  STRICT_ALLOWLIST,
+  REMOVE_FIELDS,
+  STRICT_DURATION_PREFIX,
+  API_KEY_FIELD,
+};
 const EMAIL_FIELD = 'email';
 
 // Fields that look like a URL by name; if their value is a string we hash it
