@@ -113,3 +113,59 @@ describe('/dashboard view (issue #80)', () => {
     expect(html).not.toMatch(/\sstyle="/i);
   });
 });
+
+// ── formatCreatedAt + formatBalance — observable via DashboardView rendered output ──
+
+describe('DashboardView — formatCreatedAt and formatBalance helpers', () => {
+  const base = {
+    email: 'x@example.com',
+    recent_studies: [],
+  };
+
+  it('formatCreatedAt: valid ISO renders in YYYY-MM-DD HH:MM UTC format', () => {
+    const summary = {
+      ...base,
+      balance_cents: 0,
+      recent_studies: [
+        {
+          id: 1,
+          status: 'ready' as const,
+          created_at: '2026-04-20T12:00:00.000Z',
+          n_visits: 1,
+          urls: ['https://example.com'],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(<DashboardView summary={summary} />);
+    expect(html).toContain('2026-04-20 12:00 UTC');
+  });
+
+  it('formatCreatedAt: invalid date string is returned unchanged (no NaN)', () => {
+    const summary = {
+      ...base,
+      balance_cents: 0,
+      recent_studies: [
+        {
+          id: 2,
+          status: 'capturing' as const,
+          created_at: 'not-a-date',
+          n_visits: 1,
+          urls: ['https://example.com'],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(<DashboardView summary={summary} />);
+    expect(html).toContain('not-a-date');
+    expect(html).not.toContain('NaN');
+  });
+
+  it('formatBalance: zero cents → $0.00', () => {
+    const html = renderToStaticMarkup(<DashboardView summary={{ ...base, balance_cents: 0 }} />);
+    expect(html).toContain('$0.00');
+  });
+
+  it('formatBalance: 1 cent → $0.01', () => {
+    const html = renderToStaticMarkup(<DashboardView summary={{ ...base, balance_cents: 1 }} />);
+    expect(html).toContain('$0.01');
+  });
+});
