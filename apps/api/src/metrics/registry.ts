@@ -241,6 +241,8 @@ const HTTP_DURATION_BUCKETS = [
   0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30,
 ] as const;
 
+export const __test__ = { HTTP_DURATION_BUCKETS };
+
 const studiesStartedTotal = makeCounter(
   'willbuy_studies_started_total',
   'Total number of studies created (POST /studies). `kind` ∈ {single,paired} per §2 #12.',
