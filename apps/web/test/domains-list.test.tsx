@@ -105,3 +105,36 @@ describe('/dashboard/domains list view (issue #83)', () => {
     expect(html).toMatch(/<a[^>]*href="\/dashboard\/domains\/new"[^>]*>[\s\S]*?Add domain/i);
   });
 });
+
+// ── formatTs — observable via DomainsListView rendered output ─────────────
+
+describe('DomainsListView — formatTs timestamp display', () => {
+  it('null verified_at renders an em-dash placeholder', () => {
+    // PENDING has verified_at: null → formatTs(null) → '—'.
+    const html = renderToStaticMarkup(
+      <DomainsListView domains={[PENDING]} />,
+    );
+    // The em-dash '—' must appear for the null verified_at cell.
+    expect(html).toContain('—'); // U+2014 em dash
+  });
+
+  it('valid ISO verified_at renders in YYYY-MM-DD HH:MM UTC format', () => {
+    // VERIFIED.verified_at = '2026-04-20T12:00:00.000Z' → '2026-04-20 12:00 UTC'
+    const html = renderToStaticMarkup(
+      <DomainsListView domains={[VERIFIED]} />,
+    );
+    expect(html).toContain('2026-04-20 12:00 UTC');
+  });
+
+  it('invalid date string is returned unchanged (no NaN)', () => {
+    const withBadDate = {
+      ...VERIFIED,
+      last_checked_at: 'not-a-date',
+    };
+    const html = renderToStaticMarkup(
+      <DomainsListView domains={[withBadDate]} />,
+    );
+    expect(html).toContain('not-a-date');
+    expect(html).not.toContain('NaN');
+  });
+});
