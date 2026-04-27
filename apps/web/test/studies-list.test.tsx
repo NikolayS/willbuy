@@ -32,6 +32,7 @@ const FIXTURE_STUDIES = [
     n_visits: 30,
     urls: ['https://example.com/pricing'],
     visit_progress: { ok: 30, failed: 0, total: 30 },
+    report_public: true,
   },
   {
     id: 102,
@@ -111,18 +112,40 @@ describe('/dashboard/studies view (issue #85)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 4: Per-row "View report" link only when status=ready.
+  // 4: "View report" → /r/:id only when ready AND report_public=true.
+  //    "Publish" link → /dashboard/studies/:id when ready but not yet public.
   // -------------------------------------------------------------------------
-  it('renders "View report" → /r/:id only for status=ready rows', () => {
+  it('renders "View report" → /r/:id only when ready AND report_public=true', () => {
     const html = renderToStaticMarkup(
       <StudiesListView studies={FIXTURE_STUDIES} nextCursor={null} />,
     );
-    // Ready row (id=101) has a /r/101 link.
+    // Ready + public row (id=101) has a /r/101 link.
     expect(html).toMatch(/href="\/r\/101"/);
     // Capturing row (id=102) does NOT have /r/102.
     expect(html).not.toMatch(/href="\/r\/102"/);
     // Failed row (id=103) does NOT have /r/103 (failed studies have no report).
     expect(html).not.toMatch(/href="\/r\/103"/);
+  });
+
+  it('renders "Publish →" link for ready studies with report_public=false', () => {
+    const privateReadyStudy = {
+      id: 104,
+      status: 'ready' as const,
+      created_at: '2026-04-21T08:00:00.000Z',
+      finalized_at: '2026-04-21T08:30:00.000Z',
+      n_visits: 10,
+      urls: ['https://example.com/new'],
+      visit_progress: { ok: 10, failed: 0, total: 10 },
+      report_public: false,
+    };
+    const html = renderToStaticMarkup(
+      <StudiesListView studies={[privateReadyStudy]} nextCursor={null} />,
+    );
+    // No direct /r/ link (would 404).
+    expect(html).not.toMatch(/href="\/r\/104"/);
+    // Shows a "Publish" CTA pointing to the study status page.
+    expect(html).toMatch(/href="\/dashboard\/studies\/104"/);
+    expect(html).toMatch(/publish/i);
   });
 
   // -------------------------------------------------------------------------

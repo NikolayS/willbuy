@@ -35,6 +35,7 @@ export interface StudyListRow {
   n_visits: number;
   urls: string[];
   visit_progress: { ok: number; failed: number; total: number };
+  report_public?: boolean;
 }
 
 export interface StudiesListResponse {
@@ -223,12 +224,19 @@ export function StudiesListView({
                       {s.n_visits}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm">
-                      {s.status === 'ready' ? (
+                      {s.status === 'ready' && s.report_public ? (
                         <a
                           href={`/r/${s.id}`}
                           className="font-medium text-indigo-600 hover:underline"
                         >
                           View report
+                        </a>
+                      ) : s.status === 'ready' ? (
+                        <a
+                          href={`/dashboard/studies/${s.id}`}
+                          className="text-xs text-indigo-500 hover:underline"
+                        >
+                          Publish →
                         </a>
                       ) : (
                         <span className="text-xs text-gray-400">—</span>

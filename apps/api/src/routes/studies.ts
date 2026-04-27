@@ -561,6 +561,7 @@ export async function registerStudiesRoutes(
     ok: string;
     failed: string;
     total: string;
+    report_public: boolean | null;
   }
 
   app.get<{ Querystring: Record<string, string | undefined> }>(
@@ -635,6 +636,7 @@ export async function registerStudiesRoutes(
 
       // LEFT JOIN backstories for n_visits (count of backstory rows).
       // LEFT JOIN visits for visit_progress aggregates.
+      // LEFT JOIN reports for report_public (to avoid showing links to private reports).
       // We aggregate per study via subqueries — clearer SQL than two LEFT JOINs
       // with a GROUP BY (which would multiply rows × visit_count × backstory_count).
       const sql = `
@@ -646,7 +648,8 @@ export async function registerStudiesRoutes(
                COALESCE(bs.n_visits, 0)::text AS n_visits,
                COALESCE(v.ok, 0)::text AS ok,
                COALESCE(v.failed, 0)::text AS failed,
-               COALESCE(v.total, 0)::text AS total
+               COALESCE(v.total, 0)::text AS total,
+               r."public" AS report_public
           FROM studies s
           LEFT JOIN (
             SELECT study_id, COUNT(*) AS n_visits
@@ -659,6 +662,7 @@ export async function registerStudiesRoutes(
                    COUNT(*)                                                           AS total
               FROM visits GROUP BY study_id
           ) v ON v.study_id = s.id
+          LEFT JOIN reports r ON r.study_id = s.id
          WHERE ${where}
          ORDER BY s.created_at DESC, s.id DESC
          LIMIT $${limitParamIdx}
@@ -682,6 +686,7 @@ export async function registerStudiesRoutes(
           failed: Number(r.failed),
           total: Number(r.total),
         },
+        ...(r.report_public !== null ? { report_public: r.report_public } : {}),
       }));
 
       let next_cursor: string | null = null;
