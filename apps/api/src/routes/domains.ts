@@ -122,6 +122,8 @@ export function __test_resetProbes(): void {
 const PROBE_TIMEOUT_MS = 5000;
 const TOKEN_LENGTH = 22;
 
+export const __test__ = { PROBE_TIMEOUT_MS, TOKEN_LENGTH };
+
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
 const CreateDomainBody = z.object({

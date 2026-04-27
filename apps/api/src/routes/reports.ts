@@ -45,6 +45,8 @@ import type { Pool } from 'pg';
 // "Two-tier TTL" note above. Sprint 3 retro audit finding F2.
 const MAX_COOKIE_SECONDS = 2 * 60 * 60; // 2 hours per spec §2 #20
 
+export const __test__ = { MAX_COOKIE_SECONDS };
+
 // ---------------------------------------------------------------------------
 // Crypto helpers
 // ---------------------------------------------------------------------------

@@ -46,6 +46,8 @@ const CENTS_PER_VISIT_EST = 5;
 // Once-per-study cost for the cluster_label LLM call per spec §5.5.
 const CENTS_PER_STUDY_CLUSTER_LABEL = 3;
 
+export const __test__ = { CENTS_PER_VISIT_EST, CENTS_PER_STUDY_CLUSTER_LABEL };
+
 // Preset ICP ids from spec §2 #9.
 const ICP_PRESETS = [
   'saas_founder_pre_pmf',
