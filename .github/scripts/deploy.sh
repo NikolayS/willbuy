@@ -1,20 +1,42 @@
 #!/usr/bin/env bash
-# Run on willbuy-v01 by .github/workflows/deploy.yml.
+# Run on willbuy-v01 by .github/workflows/deploy.yml as root via SSH.
+#
+# Critical paths:
+#   - bun lives at /home/willbuy/.bun/bin/bun (the willbuy user installed it)
+#   - /srv/willbuy is owned by willbuy:willbuy; build artifacts must be readable
+#     by the willbuy user at runtime
+#   - Operations needing root: env file edits, systemctl, docker, nginx, usermod
+#   - Operations as willbuy: git pull (so file ownership stays right),
+#     bun run next build (so artifacts are owned by willbuy)
 #
 # Idempotent. Each step uses guards so re-runs are safe.
 
 set -euo pipefail
 
-cd /srv/willbuy
+readonly BUN=/home/willbuy/.bun/bin/bun
+readonly REPO=/srv/willbuy
+
+# Run a command as the willbuy user with bun on PATH.
+as_willbuy() {
+  sudo -u willbuy --preserve-env=PATH \
+    env "PATH=/home/willbuy/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    bash -c "$1"
+}
+
+cd "$REPO"
 
 echo "::group::pull"
+# Git fetch may need credentials that only root has (deploy key). Run as
+# root, then chown back so the willbuy user retains ownership of the tree.
 git fetch origin main
 git reset --hard origin/main
+chown -R willbuy:willbuy "$REPO"
 echo "::endgroup::"
 
 echo "::group::migrate"
-DATABASE_URL=$(grep ^DATABASE_URL /etc/willbuy/app.env | cut -d= -f2-) \
-  bash scripts/migrate.sh
+# scripts/migrate.sh shells to bunx → bun. Run as willbuy so PATH includes bun.
+DB_URL=$(grep ^DATABASE_URL /etc/willbuy/app.env | cut -d= -f2-)
+as_willbuy "cd $REPO && DATABASE_URL='$DB_URL' bash scripts/migrate.sh"
 echo "::endgroup::"
 
 echo "::group::env-vars"
@@ -32,8 +54,10 @@ echo "::endgroup::"
 
 if [[ "${SKIP_BUILD:-false}" != "true" ]]; then
   echo "::group::next-build"
-  cd apps/web && bun run next build
-  cd /srv/willbuy
+  # Build as willbuy so .next/ artifacts are owned by willbuy (the user that
+  # runs willbuy-web.service). Building as root would create root-owned
+  # artifacts that the service can't read.
+  as_willbuy "cd $REPO/apps/web && $BUN run next build"
   echo "::endgroup::"
 else
   echo "Skipping next build (SKIP_BUILD=true)"
@@ -67,14 +91,14 @@ echo "::endgroup::"
 echo "::group::aggregator-image"
 # Rebuild aggregator image if it doesn't exist OR aggregator sources changed
 # since the last build. Use a marker file to track build SHA.
-src_sha=$(git rev-parse HEAD:apps/aggregator)
+src_sha=$(cd "$REPO" && git rev-parse HEAD:apps/aggregator)
 marker=/var/lib/willbuy/aggregator-image.sha
 mkdir -p "$(dirname "$marker")"
 prev_sha=$(cat "$marker" 2>/dev/null || echo "")
 if [[ "$src_sha" != "$prev_sha" ]] || ! docker image inspect willbuy-aggregator >/dev/null 2>&1; then
-  cd apps/aggregator
+  cd "$REPO/apps/aggregator"
   docker build -t willbuy-aggregator .
-  cd /srv/willbuy
+  cd "$REPO"
   echo "$src_sha" > "$marker"
 else
   echo "Aggregator sources unchanged; skipping rebuild"
