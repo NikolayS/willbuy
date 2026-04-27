@@ -7,7 +7,7 @@ adapter contract (spec §27): a callable `(prompt: str, *, kind: str) -> str`.
 
 from __future__ import annotations
 
-from aggregator.labeler import label_cluster
+from aggregator.labeler import label_cluster, _truncate_to_eight_words
 
 
 class FakeLedger:
@@ -62,3 +62,41 @@ def test_label_cluster_records_failed_attempt_on_exception() -> None:
         pass
     assert len(ledger.rows) == 1
     assert ledger.rows[0]["status"] == "failed"
+
+
+# ── _truncate_to_eight_words spec-pin ─────────────────────────────────────────
+
+
+def test_truncate_exactly_8_words_unchanged() -> None:
+    """8-word string is returned verbatim (cap is inclusive)."""
+    s = "one two three four five six seven eight"
+    assert _truncate_to_eight_words(s) == s
+
+
+def test_truncate_9_words_drops_last() -> None:
+    """9-word string is truncated to first 8."""
+    s = "one two three four five six seven eight nine"
+    assert _truncate_to_eight_words(s) == "one two three four five six seven eight"
+
+
+def test_truncate_fewer_than_8_words_unchanged() -> None:
+    """3-word string passes through unchanged."""
+    assert _truncate_to_eight_words("foo bar baz") == "foo bar baz"
+
+
+def test_truncate_single_word() -> None:
+    assert _truncate_to_eight_words("hello") == "hello"
+
+
+def test_truncate_empty_string() -> None:
+    assert _truncate_to_eight_words("") == ""
+
+
+def test_truncate_strips_leading_trailing_whitespace() -> None:
+    """Leading/trailing whitespace is stripped before splitting."""
+    assert _truncate_to_eight_words("  one two  ") == "one two"
+
+
+def test_truncate_collapses_internal_whitespace() -> None:
+    """Multiple spaces between words are collapsed (split() default)."""
+    assert _truncate_to_eight_words("one  two   three") == "one two three"
