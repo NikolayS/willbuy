@@ -30,6 +30,8 @@ const CATEGORIES: { key: ThemeCategory; label: string }[] = [
   { key: 'questions', label: 'Questions' },
 ];
 
+export const __test__ = { CATEGORIES };
+
 function CategoryChart({
   category,
   clusters,

@@ -16,6 +16,8 @@ const ROLE_LABEL: Record<Persona['role'], string> = {
   ic_engineer: 'IC engineer',
 };
 
+export const __test__ = { ROLE_LABEL };
+
 function PersonaCard({
   persona,
   onClick,

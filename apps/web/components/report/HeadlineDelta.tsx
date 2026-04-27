@@ -28,6 +28,8 @@ const VERDICT_COPY: Record<ReportT['headline']['verdict'], string> = {
   inconclusive: 'Inconclusive — no clear winner.',
 };
 
+export const __test__ = { VERDICT_COPY };
+
 export function HeadlineDelta({ headline }: { headline: ReportT['headline'] }) {
   const { mean_delta, ci95_low, ci95_high, n_paired, paired_t_p, wilcoxon_p, mcnemar_p, verdict } =
     headline;
