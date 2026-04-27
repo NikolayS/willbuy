@@ -160,3 +160,34 @@ describe('/dashboard/api-keys/create result view (issue #81)', () => {
     expect(html).not.toMatch(/\sstyle="/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// formatTimestamp — observable via ApiKeysView rendered output.
+// ---------------------------------------------------------------------------
+
+describe('ApiKeysView — formatTimestamp display', () => {
+  it('null last_used_at renders "never"', () => {
+    // REVOKED_KEY has last_used_at: null → formatTimestamp(null) → 'never'.
+    const html = renderToStaticMarkup(<ApiKeysView keys={[REVOKED_KEY]} />);
+    expect(html).toContain('never');
+  });
+
+  it('valid ISO timestamp renders in YYYY-MM-DD HH:MM UTC format', () => {
+    // FIXTURE_KEY.last_used_at = '2026-04-24T10:30:00.000Z'
+    // → formatTimestamp → '2026-04-24 10:30 UTC'
+    const html = renderToStaticMarkup(<ApiKeysView keys={[FIXTURE_KEY]} />);
+    expect(html).toContain('2026-04-24 10:30 UTC');
+  });
+
+  it('invalid date string is returned unchanged (no throw, no NaN)', () => {
+    const keyWithBadDate: ApiKeyRow = {
+      ...FIXTURE_KEY,
+      id: 99,
+      last_used_at: 'not-a-date',
+    };
+    const html = renderToStaticMarkup(<ApiKeysView keys={[keyWithBadDate]} />);
+    // formatTimestamp returns the original string when the Date is Invalid.
+    expect(html).toContain('not-a-date');
+    expect(html).not.toContain('NaN');
+  });
+});
