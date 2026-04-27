@@ -101,6 +101,20 @@ const BARE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // to avoid matching innocuous strings like "<3" or "5 > 4".
 const HTML_SHAPE_RE = /<[a-zA-Z!/][^>]{0,200}>/;
 
+export const __test__ = {
+  MAX_STRING_LEN,
+  TOKEN_LIKE_RE,
+  JWT_RE,
+  BARE_URL_RE,
+  BARE_EMAIL_RE,
+  HTML_SHAPE_RE,
+  API_KEY_FIELD,
+  EMAIL_FIELD,
+  URL_FIELD_SUFFIX,
+  URL_FIELD_NAME,
+  STRICT_DURATION_PREFIX,
+};
+
 export function hashUrl(salt: string, url: string): string {
   return createHash('sha256')
     .update(salt + url)
