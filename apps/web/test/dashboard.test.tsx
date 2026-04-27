@@ -67,8 +67,15 @@ describe('/dashboard view (issue #80)', () => {
   // -------------------------------------------------------------------------
   // 2: Empty state.
   // -------------------------------------------------------------------------
-  it('shows empty state when there are no studies', () => {
+  it('shows buy-credits prompt when balance is 0 and no studies', () => {
     const empty = { email: 'a@b.co', balance_cents: 0, recent_studies: [] };
+    const html = renderToStaticMarkup(<DashboardView summary={empty} />);
+    expect(html).toMatch(/buy credits/i);
+    expect(html).toMatch(/need credits to run a study/i);
+  });
+
+  it('shows empty state with "start one" link when balance > 0 and no studies', () => {
+    const empty = { email: 'a@b.co', balance_cents: 500, recent_studies: [] };
     const html = renderToStaticMarkup(<DashboardView summary={empty} />);
     expect(html).toMatch(/no studies yet/i);
   });

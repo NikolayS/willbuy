@@ -104,9 +104,15 @@ export function DashboardView({ summary }: { summary: DashboardSummary }): React
             {formatBalance(balance_cents)}
           </p>
           <p className="mt-1 text-sm text-gray-500">
-            Each visit costs up to 5¢. You can run up to{' '}
-            <span className="font-medium text-gray-700">{Math.floor(balance_cents / 5)}</span>{' '}
-            visits with this balance.
+            {balance_cents === 0 ? (
+              <>Buy credits to run your first study. Starts at $29 for ~828 visits.</>
+            ) : (
+              <>
+                Each visit costs up to 5¢. You can run up to{' '}
+                <span className="font-medium text-gray-700">{Math.floor(balance_cents / 5)}</span>{' '}
+                visits with this balance.
+              </>
+            )}
           </p>
         </div>
         <div className="flex flex-col gap-3">
@@ -136,13 +142,30 @@ export function DashboardView({ summary }: { summary: DashboardSummary }): React
 
         {recent_studies.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
-            <p className="text-sm text-gray-700">No studies yet — start one.</p>
-            <a
-              href="/dashboard/studies/new"
-              className="mt-3 inline-block text-sm font-medium text-indigo-600 hover:underline"
-            >
-              Create your first study
-            </a>
+            {balance_cents === 0 ? (
+              <>
+                <p className="text-sm font-medium text-gray-700">You need credits to run a study.</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Each study runs N synthetic visitors at avg 3.5¢ each.
+                </p>
+                <a
+                  href="/dashboard/credits"
+                  className="mt-3 inline-block rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700"
+                >
+                  Buy credits →
+                </a>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-700">No studies yet — start one.</p>
+                <a
+                  href="/dashboard/studies/new"
+                  className="mt-3 inline-block text-sm font-medium text-indigo-600 hover:underline"
+                >
+                  Create your first study
+                </a>
+              </>
+            )}
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
