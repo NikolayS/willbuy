@@ -691,3 +691,12 @@ export async function registerStudiesRoutes(
     },
   );
 }
+
+// Test-only export: spec-critical cost constants and ICP preset list for
+// unit tests without a Fastify server or Postgres.
+export const __test__ = {
+  CENTS_PER_VISIT_EST,
+  CENTS_PER_STUDY_CLUSTER_LABEL,
+  ICP_PRESETS,
+  getEtldPlusOne,
+};
