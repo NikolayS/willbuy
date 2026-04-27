@@ -152,3 +152,35 @@ def test_paired_delta_disagreement_rule_xor_contract() -> None:
     assert out_a.disagreement is False
     # conservative_p is still computed; it equals max(t, w) even when no disagreement.
     assert math.isclose(out_a.conservative_p, max(out_a.paired_t_p, out_a.wilcoxon_p))
+
+
+# ---------------------------------------------------------------------------
+# Spec-pin: CONVERTED_ACTIONS (amendment A1, McNemar binarization)
+# ---------------------------------------------------------------------------
+
+from aggregator.stats import CONVERTED_ACTIONS  # noqa: E402
+
+
+def test_converted_actions_contains_high_intent_actions() -> None:
+    """Amendment A1: converted=1 iff next_action is in this set."""
+    assert "purchase_paid_today" in CONVERTED_ACTIONS
+    assert "contact_sales" in CONVERTED_ACTIONS
+    assert "book_demo" in CONVERTED_ACTIONS
+    assert "start_paid_trial" in CONVERTED_ACTIONS
+
+
+def test_converted_actions_excludes_lower_intent_actions() -> None:
+    """Low-intent actions must not be treated as conversions."""
+    assert "bookmark_compare_later" not in CONVERTED_ACTIONS
+    assert "start_free_hobby" not in CONVERTED_ACTIONS
+    assert "ask_teammate" not in CONVERTED_ACTIONS
+    assert "leave" not in CONVERTED_ACTIONS
+
+
+def test_converted_actions_exactly_four_members() -> None:
+    """Amendment A1 names exactly 4 converted actions."""
+    assert len(CONVERTED_ACTIONS) == 4
+
+
+def test_converted_actions_is_frozenset() -> None:
+    assert isinstance(CONVERTED_ACTIONS, frozenset)
