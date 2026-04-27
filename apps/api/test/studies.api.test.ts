@@ -354,6 +354,87 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
     expect(otherRes.statusCode).toBe(404);
   });
 
+  // --- GET /studies/:id report_public field (PR #227) ---
+  it('GET /studies/:id includes report_public=false when report exists and is private', async () => {
+    const client = new Client({ connectionString: dbUrl });
+    await client.connect();
+    let studyId: bigint;
+    try {
+      const s = await client.query<{ id: bigint }>(
+        `INSERT INTO studies (account_id, kind, status) VALUES ($1, 'single', 'ready') RETURNING id`,
+        [String(accountId)],
+      );
+      studyId = s.rows[0]!.id;
+      await client.query(
+        `INSERT INTO reports (study_id, share_token_hash, conv_score, paired_delta_json, public)
+         VALUES ($1, $2, 0.7, '{}', false)`,
+        [String(studyId), sha256hex(`rp-test-${uid()}`)],
+      );
+    } finally {
+      await client.end();
+    }
+    const res = await app.inject({
+      method: 'GET',
+      url: `/studies/${String(studyId)}`,
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { id: number; report_public: boolean };
+    expect(body.id).toBe(Number(studyId));
+    expect(body.report_public).toBe(false);
+  });
+
+  it('GET /studies/:id includes report_public=true after publishing', async () => {
+    const client = new Client({ connectionString: dbUrl });
+    await client.connect();
+    let studyId: bigint;
+    try {
+      const s = await client.query<{ id: bigint }>(
+        `INSERT INTO studies (account_id, kind, status) VALUES ($1, 'single', 'ready') RETURNING id`,
+        [String(accountId)],
+      );
+      studyId = s.rows[0]!.id;
+      await client.query(
+        `INSERT INTO reports (study_id, share_token_hash, conv_score, paired_delta_json, public)
+         VALUES ($1, $2, 0.7, '{}', true)`,
+        [String(studyId), sha256hex(`rp-pub-test-${uid()}`)],
+      );
+    } finally {
+      await client.end();
+    }
+    const res = await app.inject({
+      method: 'GET',
+      url: `/studies/${String(studyId)}`,
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { id: number; report_public: boolean };
+    expect(body.report_public).toBe(true);
+  });
+
+  it('GET /studies/:id omits report_public when no report row exists', async () => {
+    const client = new Client({ connectionString: dbUrl });
+    await client.connect();
+    let studyId: bigint;
+    try {
+      const s = await client.query<{ id: bigint }>(
+        `INSERT INTO studies (account_id, kind, status) VALUES ($1, 'single', 'capturing') RETURNING id`,
+        [String(accountId)],
+      );
+      studyId = s.rows[0]!.id;
+    } finally {
+      await client.end();
+    }
+    const res = await app.inject({
+      method: 'GET',
+      url: `/studies/${String(studyId)}`,
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Record<string, unknown>;
+    expect(body['report_public']).toBeUndefined();
+  });
+
   // --- Acceptance #7: GET /reports/:slug — §5.12 cookie-redirect flow ---
   it('GET /reports/:slug: valid token → 302 + Set-Cookie; no-token private → 404', async () => {
     // Insert a report + share_tokens row (§5.12 requires share_tokens table, issue #76).
