@@ -25,6 +25,28 @@ import {
   PROGRESS_CLASSES,
 } from '../app/dashboard/studies/[id]/page';
 
+describe('PROGRESS_CLASSES spec-pin (issue #111 — 13 Tailwind width buckets)', () => {
+  it('has exactly 13 entries (0% + 12 twelfths + 100%)', () => {
+    expect(PROGRESS_CLASSES).toHaveLength(13);
+  });
+
+  it('first entry is "w-0"', () => {
+    expect(PROGRESS_CLASSES[0]).toBe('w-0');
+  });
+
+  it('last entry is "w-full"', () => {
+    expect(PROGRESS_CLASSES[PROGRESS_CLASSES.length - 1]).toBe('w-full');
+  });
+
+  it('contains "w-1/2" (50% progress bucket)', () => {
+    expect(PROGRESS_CLASSES).toContain('w-1/2');
+  });
+
+  it('contains "w-1/12" (first non-zero bucket)', () => {
+    expect(PROGRESS_CLASSES).toContain('w-1/12');
+  });
+});
+
 describe('progressClass helper (issue #111)', () => {
   it('maps 0% to w-0', () => {
     expect(progressClass(0)).toBe('w-0');
