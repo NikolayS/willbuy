@@ -56,6 +56,8 @@ const ACTION_LABEL: Record<NextActionT, string> = {
 // Color palette for Sankey variant nodes (source nodes).
 const VARIANT_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6'];
 
+export const __test__ = { ORDERED_ACTIONS, ACTION_COLOR, ACTION_LABEL, VARIANT_COLORS };
+
 type ChartMode = 'bar' | 'sankey';
 
 function buildSankeyData(rows: ReportT['next_actions']) {
