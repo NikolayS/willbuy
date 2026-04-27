@@ -56,4 +56,28 @@ describe('VisitorOutput (spec §2 #15)', () => {
     const bad = { ...validFixture, reasoning: 'r'.repeat(1201) };
     expect(() => VisitorOutput.parse(bad)).toThrow();
   });
+
+  it('tier fields default to "none" when absent (issue #173 passthrough compat)', () => {
+    const withoutTiers: Record<string, unknown> = { ...validFixture };
+    delete withoutTiers['tier_picked_if_buying_today'];
+    delete withoutTiers['highest_tier_willing_to_consider'];
+    const parsed = VisitorOutput.parse(withoutTiers);
+    expect(parsed.tier_picked_if_buying_today).toBe('none');
+    expect(parsed.highest_tier_willing_to_consider).toBe('none');
+  });
+
+  it('rejects an invalid tier_picked_if_buying_today value', () => {
+    const bad = { ...validFixture, tier_picked_if_buying_today: 'premium' };
+    expect(VisitorOutput.safeParse(bad).success).toBe(false);
+  });
+
+  it('.passthrough() allows extra unknown fields (old rows stay valid)', () => {
+    const withExtra = { ...validFixture, legacy_field: 'some_old_value', v0_flag: true };
+    const result = VisitorOutput.safeParse(withExtra);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // passthrough preserves unknown fields in the output
+      expect((result.data as Record<string, unknown>)['legacy_field']).toBe('some_old_value');
+    }
+  });
 });
