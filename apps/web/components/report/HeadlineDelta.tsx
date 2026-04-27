@@ -31,6 +31,21 @@ const VERDICT_COPY: Record<ReportT['headline']['verdict'], string> = {
 export function HeadlineDelta({ headline }: { headline: ReportT['headline'] }) {
   const { mean_delta, ci95_low, ci95_high, n_paired, paired_t_p, wilcoxon_p, mcnemar_p, verdict } =
     headline;
+
+  // Single-URL studies have no paired comparison — show a minimal summary instead.
+  if (n_paired === 0) {
+    return (
+      <section
+        data-testid="headline-delta"
+        className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+      >
+        <p className="text-sm text-gray-500">
+          Single-URL study — see visitor responses and theme analysis below.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section
       data-testid="headline-delta"
