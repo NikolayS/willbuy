@@ -265,14 +265,16 @@ export default function StudyNewPage() {
             {apiError.kind === 'cap_exceeded' && (
               <>
                 <p className="text-sm font-medium text-red-800">
-                  {"You're out of credits."}
+                  {"You don't have enough credits for this study."}
                 </p>
-                <p className="mt-1 text-sm text-red-700">Daily spend cap exceeded.</p>
+                <p className="mt-1 text-sm text-red-700">
+                  Buy a credit pack to run synthetic visitor studies.
+                </p>
                 <a
                   href="/dashboard/credits"
                   className="mt-2 inline-block text-sm font-medium text-indigo-600 hover:underline"
                 >
-                  Buy credits
+                  Buy credits →
                 </a>
               </>
             )}
