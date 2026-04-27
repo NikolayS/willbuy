@@ -407,3 +407,31 @@ This fallback fires only for small datasets; large studies with sufficient densi
 **Regression test.** `test_cluster_findings_small_dataset_fallback` in `apps/aggregator/tests/test_cluster.py` monkeypatches `_embed` with random-spread vectors that HDBSCAN cannot cluster and asserts one catch-all cluster is returned.
 
 **Tracking.** PR #181 (issue #180). Future spec rev folds fallback behavior into §17 / §5.7.
+
+---
+
+## 2026-04-27 — A11: visitor-worker production service uses dogfood script pending issue #86
+
+**Affects:** §5.11 (study status pipeline: visiting → aggregating), §5.3 (worker entrypoints).
+
+**Driver:** PR #490 (issue #489). The canonical visitor-worker entrypoint is `apps/visitor-worker/src/bin.ts`. That binary requires the capture artifact storage path to be wired, which depends on issue #86 (broker storage integration) completing. To unblock the MVP deploy, `infra/systemd/willbuy-visitor-worker.service` uses the dogfood shim `scripts/run-visitor-worker-dogfood.ts` instead. The shim is functionally equivalent for single-server deployments (it imports and calls the same `runVisitorPollingLoop`), but reads capture artifacts from the local filesystem rather than going through the broker client.
+
+**Amendment.** The production systemd service for the visitor-worker MAY use the dogfood script until issue #86 ships. Once #86 is merged and the canonical `apps/visitor-worker/src/bin.ts` binary is validated, the service `ExecStart` line MUST be updated to use the canonical entrypoint and this amendment is superseded.
+
+**What is NOT changed.** The `runVisitorPollingLoop` polling logic, LLM scoring, `visiting → aggregating` transition SQL, and idempotency guarantees — all unchanged. The dogfood shim is a thin adapter around the same core function.
+
+**Tracking.** PR #490 (issue #489). Removal condition: issue #86 ships + service updated. Amendment superseded when dogfood script is removed.
+
+---
+
+## 2026-04-27 — A12: report slug is `study_id::text` (integer string), not a nanoid
+
+**Affects:** §5.12 (report access at `/r/<slug>`), §5.18 (report URL shape), §2 #20 (share-token flow references slug).
+
+**Driver:** PR #479 (issue #478). The `reports` table (migration `0009_reports.sql`) has no `slug` column — the spec describes a slug as an opaque identifier but the migration was written without one. The `GET /studies/:id` API route selected `r.slug` → PostgreSQL 500. The fix uses `r.study_id::text AS slug`, making the slug the integer study ID cast to string (e.g. `"1"` for study #1). The `/reports/:slug` route already looks up by `WHERE r.study_id = $1`, so integer-string slugs work correctly.
+
+**Amendment.** Until a dedicated `slug` column (nanoid or similar) is added to the `reports` table and a migration backfills existing rows, the report slug is defined as `study_id::text`. URLs of the form `/r/1`, `/r/2`, etc. are valid. The share-token flow in §2 #20 that mints `wb_rt_<slug>` cookies continues to work because `share_tokens.report_slug` stores whatever string the API uses as the slug.
+
+**What is NOT changed.** The `/reports/:slug` lookup logic (`WHERE r.study_id = $1`), the share-token minting spec (§2 #20, issue #487 — post-MVP), the `wb_rt_<slug>` cookie name format, or any report rendering logic — all unchanged.
+
+**Tracking.** PR #479 (issue #478). Future work: add `reports.slug` nanoid column + migration + update `GET /studies/:id` to return it. Until then this amendment governs.
