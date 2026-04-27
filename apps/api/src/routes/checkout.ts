@@ -61,8 +61,8 @@ export async function registerCheckoutRoutes(
           metadata: { pack_id: packId },
           // success_url and cancel_url are required by Stripe; use env if set,
           // otherwise use fallback placeholders (adequate for test mode).
-          success_url: env.STRIPE_SUCCESS_URL ?? 'https://willbuy.dev/credits?success=1',
-          cancel_url: env.STRIPE_CANCEL_URL ?? 'https://willbuy.dev/credits?cancelled=1',
+          success_url: env.STRIPE_SUCCESS_URL ?? 'https://willbuy.dev/dashboard/credits?success=1',
+          cancel_url: env.STRIPE_CANCEL_URL ?? 'https://willbuy.dev/dashboard/credits?cancelled=1',
         });
       } catch (err) {
         // Log with Fastify's logger (Fastify logger pattern: req.log.error).
@@ -107,8 +107,8 @@ export async function registerCheckoutRoutes(
           line_items: [{ price: pack.price_id, quantity: 1 }],
           client_reference_id: String(account.id),
           metadata: { pack_id: packId },
-          success_url: env.STRIPE_SUCCESS_URL ?? 'https://willbuy.dev/credits?success=1',
-          cancel_url: env.STRIPE_CANCEL_URL ?? 'https://willbuy.dev/credits?cancelled=1',
+          success_url: env.STRIPE_SUCCESS_URL ?? 'https://willbuy.dev/dashboard/credits?success=1',
+          cancel_url: env.STRIPE_CANCEL_URL ?? 'https://willbuy.dev/dashboard/credits?cancelled=1',
         });
       } catch (err) {
         req.log.error(err, 'stripe-checkout-create-failed');
