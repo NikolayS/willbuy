@@ -21,7 +21,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { __test__ } from '../src/metrics/registry.js';
+import { __test__, PROMETHEUS_CONTENT_TYPE } from '../src/metrics/registry.js';
 
 const { HTTP_DURATION_BUCKETS } = __test__;
 
@@ -56,5 +56,19 @@ describe('HTTP_DURATION_BUCKETS spec-pin (metrics/registry.ts)', () => {
     for (const b of HTTP_DURATION_BUCKETS) {
       expect(b).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('PROMETHEUS_CONTENT_TYPE spec-pin (metrics/registry.ts)', () => {
+  it('is the exact Prometheus 0.0.4 content-type string', () => {
+    expect(PROMETHEUS_CONTENT_TYPE).toBe('text/plain; version=0.0.4; charset=utf-8');
+  });
+
+  it('includes version=0.0.4 (Prometheus exposition format)', () => {
+    expect(PROMETHEUS_CONTENT_TYPE).toContain('version=0.0.4');
+  });
+
+  it('includes charset=utf-8', () => {
+    expect(PROMETHEUS_CONTENT_TYPE).toContain('charset=utf-8');
   });
 });
