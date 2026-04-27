@@ -1,0 +1,19 @@
+[Unit]
+# willbuy aggregator trigger — polls for studies in `aggregating` status
+# every 30 s and runs the aggregator Docker container per study,
+# transitioning studies aggregating→ready.
+
+Description=willbuy aggregator trigger
+After=network.target willbuy-api.service
+
+[Service]
+Type=simple
+User=willbuy
+WorkingDirectory=/srv/willbuy
+EnvironmentFile=/etc/willbuy/app.env
+ExecStart=/usr/local/bin/willbuy-aggregator-trigger.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

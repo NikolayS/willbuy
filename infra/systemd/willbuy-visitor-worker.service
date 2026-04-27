@@ -1,0 +1,22 @@
+[Unit]
+# willbuy visitor worker — polls DB for studies in `visiting` status,
+# calls LLM, and transitions studies visiting→aggregating.
+#
+# Depends on the API being up (shares app.env and the same DB).
+# The entry point is scripts/run-visitor-worker-dogfood.ts; this will be
+# replaced by a proper apps/visitor-worker entrypoint once #86 ships.
+
+Description=willbuy visitor worker
+After=network.target willbuy-api.service
+
+[Service]
+Type=simple
+User=willbuy
+WorkingDirectory=/srv/willbuy
+EnvironmentFile=/etc/willbuy/app.env
+ExecStart=/home/willbuy/.bun/bin/bun run scripts/run-visitor-worker-dogfood.ts
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
