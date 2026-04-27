@@ -178,3 +178,100 @@ describe('DomainsNewPage — verify-now action', () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Error paths
+// ─────────────────────────────────────────────────────────────────────────────
+describe('DomainsNewPage — error paths', () => {
+  async function renderPage() {
+    const { default: DomainsNewPage } = await import('../app/dashboard/domains/new/page');
+    render(React.createElement(DomainsNewPage));
+  }
+
+  it('401 on POST /api/domains shows "Please sign in" error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    await renderPage();
+    fireEvent.change(screen.getByRole('textbox', { name: /domain/i }), {
+      target: { value: 'example.com' },
+    });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /continue/i })); });
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toMatch(/please sign in/i),
+    );
+  });
+
+  it('non-401 API error shows error message from response body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'invalid domain format' }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    await renderPage();
+    fireEvent.change(screen.getByRole('textbox', { name: /domain/i }), {
+      target: { value: 'not-a-domain' },
+    });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /continue/i })); });
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toMatch(/invalid domain format/i),
+    );
+  });
+
+  it('Cancel button resets form back to idle state', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          domain: 'example.com',
+          verify_token: 'abc123',
+          methods: { dns: 'txt', well_known: 'wk', meta: 'meta' },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    await renderPage();
+    fireEvent.change(screen.getByRole('textbox', { name: /domain/i }), {
+      target: { value: 'example.com' },
+    });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /continue/i })); });
+    // Instructions should be visible.
+    await waitFor(() => expect(screen.getByRole('button', { name: /verify now/i })).toBeTruthy());
+    // Click Cancel.
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    // Should be back to idle: domain input visible, instructions gone.
+    await waitFor(() => expect(screen.getByRole('textbox', { name: /domain/i })).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /verify now/i })).toBeNull();
+  });
+
+  it('verify-not-found shows retry message without leaving instructions view', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ domain: 'example.com', verify_token: 'tok', methods: { dns: '', well_known: '', meta: '' } }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ verified: false }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    await renderPage();
+    fireEvent.change(screen.getByRole('textbox', { name: /domain/i }), {
+      target: { value: 'example.com' },
+    });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /continue/i })); });
+    await waitFor(() => expect(screen.getByRole('button', { name: /verify now/i })).toBeTruthy());
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /verify now/i })); });
+    // Should stay on instructions with a "couldn't find" message.
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toMatch(/couldn.t find/i),
+    );
+    expect(screen.getByRole('button', { name: /verify now/i })).toBeTruthy();
+  });
+});
