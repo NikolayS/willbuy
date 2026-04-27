@@ -531,7 +531,16 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       expect(res.statusCode).toBe(404);
-      expect((res.json() as { error: string }).error).toMatch(/not ready/i);
+      expect((res.json() as { error: string }).error).toMatch(/not found/i);
+    });
+
+    it('404 for completely unknown study id', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/studies/999999999/publish`,
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      expect(res.statusCode).toBe(404);
     });
   });
 });

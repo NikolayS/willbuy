@@ -301,25 +301,23 @@ export async function registerStudiesRoutes(
       const account = req.account!;
       const studyId = req.params.id;
 
-      // Verify ownership first — return 404 for non-owned studies (no existence leak).
-      const studyResult = await pool.query<{ id: string; account_id: string }>(
-        `SELECT id, account_id FROM studies WHERE id = $1`,
-        [studyId],
+      // Single atomic UPDATE joining reports → studies enforces ownership in one
+      // round-trip (no TOCTOU). Returns 0 rows when: study doesn't exist, account
+      // mismatch, or no report exists yet — all map to 404 (no existence leak,
+      // spec §2 #20).
+      const result = await pool.query<{ study_id: string }>(
+        `UPDATE reports r
+            SET public = true
+           FROM studies s
+          WHERE r.study_id = s.id
+            AND s.id = $1
+            AND s.account_id = $2
+          RETURNING r.study_id`,
+        [studyId, String(account.id)],
       );
-      const study = studyResult.rows[0];
-      if (!study || study.account_id !== String(account.id)) {
-        return reply.code(404).send({ error: 'study not found' });
-      }
 
-      // Set public = true on the linked report. Returns 404 if no report yet.
-      const reportResult = await pool.query<{ study_id: string }>(
-        `UPDATE reports SET public = true
-            WHERE study_id = $1
-            RETURNING study_id`,
-        [studyId],
-      );
-      if (reportResult.rowCount === 0) {
-        return reply.code(404).send({ error: 'report not ready yet' });
+      if (result.rowCount === 0) {
+        return reply.code(404).send({ error: 'study not found' });
       }
 
       return reply.code(200).send({
