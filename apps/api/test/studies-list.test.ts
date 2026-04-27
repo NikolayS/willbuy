@@ -368,3 +368,93 @@ describeIfDocker('GET /api/studies (issue #85, real DB)', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/studies/:id (issue #209) — session-cookie auth single-study endpoint
+// ─────────────────────────────────────────────────────────────────────────────
+describeIfDocker('GET /api/studies/:id (session-cookie auth, issue #209)', () => {
+  let container = '';
+  let dbUrl = '';
+  let app: FastifyInstance;
+  let studyAccount = '';
+  let studyAccountEmail = '';
+  let otherAccount = '';
+  let otherAccountEmail = '';
+  let studyId = '';
+
+  beforeAll(async () => {
+    const pg = await startPostgres({ containerPrefix: 'willbuy-studies-id-test-' });
+    container = pg.container;
+    dbUrl = pg.url;
+
+    await applyMigrations(dbUrl);
+    app = await buildServer({
+      // Use port 0 to avoid conflicting with the list test (PORT 3098).
+      env: { ...BASE_ENV, PORT: 0, DATABASE_URL: dbUrl },
+      resend: buildStubResend(),
+    });
+
+    studyAccountEmail = 'studies-id-owner@example.com';
+    otherAccountEmail = 'studies-id-other@example.com';
+    const db = new Client({ connectionString: dbUrl });
+    await db.connect();
+    try {
+      const a = await db.query<{ id: string }>(
+        `INSERT INTO accounts (owner_email) VALUES ($1) RETURNING id`,
+        [studyAccountEmail],
+      );
+      const b = await db.query<{ id: string }>(
+        `INSERT INTO accounts (owner_email) VALUES ($1) RETURNING id`,
+        [otherAccountEmail],
+      );
+      studyAccount = a.rows[0]!.id;
+      otherAccount = b.rows[0]!.id;
+
+      const s = await db.query<{ id: string }>(
+        `INSERT INTO studies (account_id, kind, status, urls)
+           VALUES ($1, 'single', 'ready', ARRAY['https://example.com/p']::text[]) RETURNING id`,
+        [studyAccount],
+      );
+      studyId = s.rows[0]!.id;
+    } finally {
+      await db.end();
+    }
+  }, 90_000);
+
+  afterAll(async () => {
+    await app?.close();
+    stopPostgres(container);
+  });
+
+  function cookieFor(accountId: string, email: string): string {
+    return buildSessionCookie({ accountId, ownerEmail: email, expiresAtIso: futureIso() });
+  }
+
+  it('200 with study data when owner requests their own study', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/studies/${studyId}`,
+      headers: { cookie: cookieFor(studyAccount, studyAccountEmail) },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ id: number; status: string; visit_progress: object }>();
+    expect(body.id).toBe(Number(studyId));
+    expect(body.status).toBe('ready');
+    expect(body.visit_progress).toBeDefined();
+  });
+
+  it('401 without session cookie', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/studies/${studyId}` });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('404 when requesting another account\'s study (no existence leak)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/studies/${studyId}`,
+      headers: { cookie: cookieFor(otherAccount, otherAccountEmail) },
+    });
+    // Must be 404, not 403 — spec §2 #20 (no existence leak).
+    expect(res.statusCode).toBe(404);
+  });
+});

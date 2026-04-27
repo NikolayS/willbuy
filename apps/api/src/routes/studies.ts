@@ -366,11 +366,10 @@ export async function registerStudiesRoutes(
         status: string;
         created_at: Date;
         finalized_at: Date | null;
-        slug: string | null;
         report_public: boolean | null;
       }>(
         `SELECT s.id, s.account_id, s.status, s.created_at, s.finalized_at,
-                r.slug, r.public AS report_public
+                r."public" AS report_public
            FROM studies s
            LEFT JOIN reports r ON r.study_id = s.id
           WHERE s.id = $1`,
