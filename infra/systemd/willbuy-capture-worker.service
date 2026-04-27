@@ -1,10 +1,19 @@
 [Unit]
-Description=willbuy capture worker — polls DB for studies in capturing state, runs Playwright, transitions to visiting
+# willbuy capture worker — polls DB for studies in `capturing` state, runs
+# Playwright inside a hardened netns container, transitions study to `visiting`.
+#
+# Must run as root: netns-bringup.sh calls iptables/nsenter which require
+# CAP_NET_ADMIN. Same pattern as willbuy-capture-broker.service.
+#
+# Depends on the capture broker (broker.sock must exist before workers connect).
+Description=willbuy capture worker (spec §5.13)
 After=network.target willbuy-api.service willbuy-capture-broker.service
 
 [Service]
 Type=simple
-User=willbuy
+User=root
+Group=willbuy
+UMask=0007
 WorkingDirectory=/srv/willbuy
 EnvironmentFile=/etc/willbuy/app.env
 ExecStart=/home/willbuy/.bun/bin/bun run apps/capture-worker/src/index.ts
