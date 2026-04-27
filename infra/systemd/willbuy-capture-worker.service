@@ -1,0 +1,15 @@
+[Unit]
+Description=willbuy capture worker — polls DB for studies in capturing state, runs Playwright, transitions to visiting
+After=network.target willbuy-api.service willbuy-capture-broker.service
+
+[Service]
+Type=simple
+User=willbuy
+WorkingDirectory=/srv/willbuy
+EnvironmentFile=/etc/willbuy/app.env
+ExecStart=/home/willbuy/.bun/bin/bun run apps/capture-worker/src/index.ts
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
