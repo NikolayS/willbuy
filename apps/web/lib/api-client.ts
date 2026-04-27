@@ -68,6 +68,8 @@ const GetStudyResponseSchema = z.object({
   finalized_at: z.string().nullable(),
   // slug is present once study is ready (populated by the report row).
   slug: z.string().optional(),
+  // report_public present once study has a report row; true if already published.
+  report_public: z.boolean().optional(),
 });
 export type GetStudyResponse = z.infer<typeof GetStudyResponseSchema>;
 

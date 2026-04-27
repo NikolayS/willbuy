@@ -8,10 +8,12 @@ import React, { useState } from 'react';
 interface PublishButtonProps {
   studyId: string | number;
   reportSlug: string;
+  /** Pre-populate published state from the API so the button reflects reality on load. */
+  initialPublished?: boolean;
 }
 
-export function PublishButton({ studyId, reportSlug }: PublishButtonProps) {
-  const [published, setPublished] = useState(false);
+export function PublishButton({ studyId, reportSlug, initialPublished = false }: PublishButtonProps) {
+  const [published, setPublished] = useState(initialPublished);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
