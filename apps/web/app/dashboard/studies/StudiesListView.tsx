@@ -225,10 +225,10 @@ export function StudiesListView({
                     <td className="whitespace-nowrap px-4 py-3 text-sm">
                       {s.status === 'ready' ? (
                         <a
-                          href={`/r/${s.id}`}
-                          className="font-medium text-indigo-600 hover:underline"
+                          href={`/dashboard/studies/${s.id}`}
+                          className="font-medium text-indigo-600 hover:underline text-xs"
                         >
-                          View report
+                          Open →
                         </a>
                       ) : (
                         <span className="text-xs text-gray-400">—</span>
