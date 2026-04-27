@@ -401,6 +401,7 @@ export async function registerStudiesRoutes(
         visit_progress: { ok: okCount, failed: failedCount, total },
         started_at: study.created_at.toISOString(),
         finalized_at: study.finalized_at?.toISOString() ?? null,
+        slug: study.slug ?? undefined,
         ...(study.report_public !== null ? { report_public: study.report_public } : {}),
       });
     },
