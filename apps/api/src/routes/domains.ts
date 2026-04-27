@@ -537,3 +537,8 @@ export async function registerDomainsRoutes(
     },
   );
 }
+
+// Test-only export: normalizeEtldPlusOne is the domain validation boundary
+// used by every write route. Exposing it here lets unit tests verify the
+// tldts-backed allow/deny logic without spinning up Fastify + Postgres.
+export const __test__ = { normalizeEtldPlusOne };
