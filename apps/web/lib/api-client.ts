@@ -169,5 +169,8 @@ export async function createStudy(
 export async function getStudy(
   id: string | number,
 ): Promise<ApiResult<GetStudyResponse>> {
-  return apiFetch(`/studies/${id}`, { method: 'GET' }, GetStudyResponseSchema);
+  // Use /api/studies/:id (session-cookie auth) so authenticated dashboard users
+  // can poll study status without needing an API key. The API-key path
+  // /studies/:id remains for programmatic callers.
+  return apiFetch(`/api/studies/${id}`, { method: 'GET' }, GetStudyResponseSchema);
 }
