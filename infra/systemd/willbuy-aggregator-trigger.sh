@@ -25,6 +25,7 @@ while true; do
   if [[ -n "$study_id" ]]; then
     echo "[aggregator-trigger] running aggregator for study $study_id"
     docker run --rm \
+      --network=host \
       --env DATABASE_URL="$DATABASE_URL" \
       willbuy-aggregator \
       --study-id "$study_id"
