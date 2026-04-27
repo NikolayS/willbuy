@@ -45,6 +45,10 @@ function safeRedirect(raw: string | undefined): string {
   return raw;
 }
 
+// Test-only export so open-redirect prevention can be unit-tested without
+// spinning up a Fastify server + Postgres.
+export const __test__ = { safeRedirect };
+
 const SESSION_7_DAYS_SECONDS = 7 * 24 * 60 * 60; // 604800
 const MAGIC_LINK_EXPIRY_MINUTES = 30;
 
