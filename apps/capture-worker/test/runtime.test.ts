@@ -23,7 +23,10 @@ import {
   RuntimeNotImplementedError,
   runCapture,
   selectRuntime,
+  __test__,
 } from '../src/runtime.js';
+
+const { SUPPORTED_RUNTIMES } = __test__;
 
 let tmpRoot = '';
 let shimDir = '';
@@ -182,5 +185,22 @@ describe('runCapture dispatcher', () => {
     });
 
     expect(result.status).toBe('ok');
+  });
+});
+
+// ── SUPPORTED_RUNTIMES spec-pin (spec §5.13) ─────────────────────────────────
+
+describe('SUPPORTED_RUNTIMES spec-pin (spec §5.13)', () => {
+  it('contains exactly 2 runtimes: netns and firecracker', () => {
+    expect(new Set(SUPPORTED_RUNTIMES)).toEqual(new Set(['netns', 'firecracker']));
+    expect(SUPPORTED_RUNTIMES).toHaveLength(2);
+  });
+
+  it('netns is in SUPPORTED_RUNTIMES (current production runtime)', () => {
+    expect(SUPPORTED_RUNTIMES).toContain('netns');
+  });
+
+  it('firecracker is in SUPPORTED_RUNTIMES (v0.2 seam, issue #116)', () => {
+    expect(SUPPORTED_RUNTIMES).toContain('firecracker');
   });
 });

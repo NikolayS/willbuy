@@ -168,3 +168,5 @@ export async function runCapture(
 // type RunWithNetnsOpts } from './runtime.js'` without reaching into
 // run-with-netns.ts directly.
 export type { RunWithNetnsOpts, RunWithNetnsResult };
+
+export const __test__ = { SUPPORTED_RUNTIMES };
