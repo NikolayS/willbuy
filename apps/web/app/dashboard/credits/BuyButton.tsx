@@ -25,9 +25,12 @@ export function BuyButton({ packId, label, usd }: BuyButtonProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pack_id: packId }),
       });
+      const isJson = res.headers.get('content-type')?.includes('application/json');
       if (!res.ok) {
-        const body = (await res.json()) as { error?: string };
-        setError(body.error ?? 'checkout failed');
+        const msg = isJson
+          ? ((await res.json()) as { error?: string }).error ?? 'checkout failed'
+          : 'payment provider unavailable — please try again';
+        setError(msg);
         return;
       }
       const { url } = (await res.json()) as { url: string };
