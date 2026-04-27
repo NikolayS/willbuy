@@ -152,3 +152,39 @@ def test_paired_delta_disagreement_rule_xor_contract() -> None:
     assert out_a.disagreement is False
     # conservative_p is still computed; it equals max(t, w) even when no disagreement.
     assert math.isclose(out_a.conservative_p, max(out_a.paired_t_p, out_a.wilcoxon_p))
+
+
+def test_paired_delta_empty_input_returns_zero_n() -> None:
+    """paired_delta({}) must return a neutral PairedStats with n=0 and all p=1.0.
+
+    This path fires for single-variant studies (no paired backstories) and for
+    studies where _build_visits_by_backstory drops all incomplete pairs.
+    """
+    out = paired_delta({})
+    assert out.n == 0
+    assert out.mean_delta == 0.0
+    assert out.paired_t_p == 1.0
+    assert out.wilcoxon_p == 1.0
+    assert out.mcnemar_p == 1.0
+    assert out.disagreement is False
+    assert out.conservative_p == 1.0
+
+
+def test_paired_delta_skips_backstories_with_missing_score() -> None:
+    """Backstories where either score is None are silently dropped (n stays 0)."""
+    visits = {
+        "bs1": {0: {"score": None, "next_action": "leave"}, 1: {"score": 5, "next_action": "leave"}},
+        "bs2": {0: {"score": 4, "next_action": "leave"}, 1: {"score": None, "next_action": "leave"}},
+    }
+    out = paired_delta(visits)
+    assert out.n == 0
+
+
+def test_paired_delta_conservative_p_is_max_of_t_and_wilcoxon() -> None:
+    """conservative_p == max(paired_t_p, wilcoxon_p) regardless of disagreement."""
+    visits = {
+        f"v{i}": {0: {"score": i % 5, "next_action": "leave"}, 1: {"score": (i + 1) % 5, "next_action": "leave"}}
+        for i in range(10)
+    }
+    out = paired_delta(visits)
+    assert math.isclose(out.conservative_p, max(out.paired_t_p, out.wilcoxon_p))
