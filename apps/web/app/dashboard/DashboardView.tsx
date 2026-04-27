@@ -187,6 +187,9 @@ export function DashboardView({ summary }: { summary: DashboardSummary }): React
                   <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
                     Created
                   </th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -221,6 +224,15 @@ export function DashboardView({ summary }: { summary: DashboardSummary }): React
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">
                       {formatCreatedAt(s.created_at)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm">
+                      {s.status === 'ready' ? (
+                        <a href={`/dashboard/studies/${s.id}`} className="font-medium text-indigo-600 hover:underline text-xs">
+                          Open →
+                        </a>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

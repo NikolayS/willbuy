@@ -113,7 +113,7 @@ async function apiFetch<T>(
 
   let res: Response;
   try {
-    res = await fetch(`${getApiBase()}${path}`, { ...opts, headers });
+    res = await fetch(`${getApiBase()}${path}`, { credentials: 'include', ...opts, headers });
   } catch (err) {
     return { ok: false, status: 0, error: String(err) };
   }
