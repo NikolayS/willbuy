@@ -49,6 +49,8 @@ export interface BuildLoggerOptions {
 
 const DEFAULT_LOG_DIR = '/var/log/willbuy';
 
+export const __test__ = { DEFAULT_LOG_DIR };
+
 function shouldWriteToFile(): boolean {
   if (process.env['WILLBUY_LOG_TO_FILE'] === '1') return true;
   if (process.env['WILLBUY_LOG_TO_FILE'] === '0') return false;

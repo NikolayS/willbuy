@@ -55,6 +55,8 @@ const ICP_PRESETS = [
   'fintech_ops_buyer',
 ] as const;
 
+export const __test__ = { ICP_PRESETS };
+
 const IcpPresetSchema = z.object({
   preset_id: z.enum(ICP_PRESETS),
 });
