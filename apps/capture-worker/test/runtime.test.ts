@@ -23,6 +23,7 @@ import {
   RuntimeNotImplementedError,
   runCapture,
   selectRuntime,
+  selectRuntimeFromEnv,
 } from '../src/runtime.js';
 
 let tmpRoot = '';
@@ -182,5 +183,20 @@ describe('runCapture dispatcher', () => {
     });
 
     expect(result.status).toBe('ok');
+  });
+});
+
+describe('selectRuntimeFromEnv()', () => {
+  it('reads WILLBUY_CAPTURE_RUNTIME from the provided env object', () => {
+    expect(selectRuntimeFromEnv({ WILLBUY_CAPTURE_RUNTIME: 'netns' })).toBe('netns');
+    expect(selectRuntimeFromEnv({ WILLBUY_CAPTURE_RUNTIME: 'firecracker' })).toBe('firecracker');
+  });
+
+  it('defaults to "netns" when WILLBUY_CAPTURE_RUNTIME is unset', () => {
+    expect(selectRuntimeFromEnv({})).toBe('netns');
+  });
+
+  it('throws RuntimeConfigError for an unknown WILLBUY_CAPTURE_RUNTIME value', () => {
+    expect(() => selectRuntimeFromEnv({ WILLBUY_CAPTURE_RUNTIME: 'docker' })).toThrow(RuntimeConfigError);
   });
 });
