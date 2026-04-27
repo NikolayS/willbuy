@@ -65,11 +65,17 @@ fi
 echo "::endgroup::"
 
 echo "::group::aggregator-image"
-# Rebuild aggregator image only if its sources changed
-if [[ -n "$(git diff HEAD@{1} HEAD -- apps/aggregator 2>/dev/null)" ]] || ! docker image inspect willbuy-aggregator >/dev/null 2>&1; then
+# Rebuild aggregator image if it doesn't exist OR aggregator sources changed
+# since the last build. Use a marker file to track build SHA.
+src_sha=$(git rev-parse HEAD:apps/aggregator)
+marker=/var/lib/willbuy/aggregator-image.sha
+mkdir -p "$(dirname "$marker")"
+prev_sha=$(cat "$marker" 2>/dev/null || echo "")
+if [[ "$src_sha" != "$prev_sha" ]] || ! docker image inspect willbuy-aggregator >/dev/null 2>&1; then
   cd apps/aggregator
   docker build -t willbuy-aggregator .
   cd /srv/willbuy
+  echo "$src_sha" > "$marker"
 else
   echo "Aggregator sources unchanged; skipping rebuild"
 fi

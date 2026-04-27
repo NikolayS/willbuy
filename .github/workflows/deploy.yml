@@ -39,7 +39,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: production
     steps:
       - name: Configure SSH
         env:
