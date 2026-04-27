@@ -232,6 +232,7 @@ def _seed_with_unknown_role(conn: sqlite3.Connection, study_id: str) -> None:
 def test_unknown_role_archetype_coerced_to_ic_engineer(tmp_path: Path) -> None:
     """Backstory with role_archetype='unknown_role' must produce 'ic_engineer' in report."""
     # Unit-level sanity check on the coercion helper itself.
+    assert _coerce_role("founder_or_eng_lead") == "founder_or_eng_lead"
     assert _coerce_role("unknown_role") == "ic_engineer"
     assert _coerce_role(None) == "ic_engineer"
     assert _coerce_role("ic_engineer") == "ic_engineer"

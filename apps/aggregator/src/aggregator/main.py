@@ -63,6 +63,7 @@ VALID_ROLES: frozenset[str] = frozenset({
     "dba",
     "devops_sre",
     "founder",
+    "founder_or_eng_lead",
     "product_manager",
 })
 
