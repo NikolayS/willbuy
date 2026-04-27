@@ -87,7 +87,7 @@ export default async function StudiesListPage(props: PageProps): Promise<JSX.Ele
     (c) => c.name === 'wb_session' || c.name === '__Host-wb_session',
   );
   if (!hasSession) {
-    redirect('/sign-in');
+    redirect('/sign-in?redirect=%2Fdashboard%2Fstudies');
   }
 
   // Resolve the cursor query param — handle both Promise- and plain-object
@@ -105,7 +105,7 @@ export default async function StudiesListPage(props: PageProps): Promise<JSX.Ele
 
   if (!result.ok) {
     if (result.status === 401) {
-      redirect('/sign-in');
+      redirect('/sign-in?redirect=%2Fdashboard%2Fstudies');
     }
     return (
       <main className="mx-auto max-w-2xl px-6 py-16">
