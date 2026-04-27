@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import LandingPage from '../app/page';
 import ReportPage, { metadata as reportMetadata } from '../app/r/[slug]/page';
@@ -33,6 +33,25 @@ describe('public report — GET /r/[slug]', () => {
     expect(html).toMatch(/converts better/i);
     // Slug rendered as <code> per §5.10.
     expect(html).toMatch(/<code[^>]*>test-fixture<\/code>/);
+  });
+
+  it('renders a "pending" body with a study status link when report_json is null', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ study_id: 42, report_json: null, urls: null }),
+      }),
+    );
+    try {
+      const el = await ReportPage({ params: Promise.resolve({ slug: 'still-running' }) });
+      const html = renderToStaticMarkup(el);
+      expect(html).toMatch(/being prepared/i);
+      expect(html).toMatch(/dashboard\/studies\/42/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('exports metadata with noindex (per SPEC §5.10 untrusted-content boundary)', () => {

@@ -14,7 +14,8 @@ import fixture from '../../../test/fixtures/report.fixture.json';
 const FIXTURE_SLUG = 'test-fixture';
 
 export type ReportPayload = { reportJson: unknown; urls: string[] | null };
-export type FetchReportResult = 'not_found' | 'pending' | ReportPayload;
+export type PendingReport = { status: 'pending'; studyId: number | null };
+export type FetchReportResult = 'not_found' | PendingReport | ReportPayload;
 
 function apiBaseUrl(): string {
   const explicit = process.env['WILLBUY_API_URL'] ?? process.env['NEXT_PUBLIC_API_URL'];
@@ -54,7 +55,10 @@ export async function fetchReport(slug: string): Promise<FetchReportResult> {
 
   const body = (await res.json()) as Record<string, unknown>;
   const reportJson = body['report_json'];
-  if (reportJson === null || reportJson === undefined) return 'pending';
+  if (reportJson === null || reportJson === undefined) {
+    const studyId = typeof body['study_id'] === 'number' ? body['study_id'] : null;
+    return { status: 'pending', studyId };
+  }
   const urls = Array.isArray(body['urls']) ? (body['urls'] as string[]) : null;
   return { reportJson, urls };
 }

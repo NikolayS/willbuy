@@ -35,14 +35,25 @@ export default async function ReportPage({
     );
   }
 
-  if (result === 'pending') {
+  if ('status' in result) {
+    // result is PendingReport — report_json not yet populated by aggregator
     return (
       <>
         <main className="mx-auto max-w-3xl px-6 py-16">
           <h1 className="text-3xl font-bold tracking-tight">Report is being prepared</h1>
           <p className="mt-6 text-gray-700">
-            The analysis for <code>{slug}</code> is still running. Refresh in a moment.
+            The analysis for <code>{slug}</code> is still running.
           </p>
+          {result.studyId !== null ? (
+            <a
+              href={`/dashboard/studies/${result.studyId}`}
+              className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500"
+            >
+              Track progress on the study status page →
+            </a>
+          ) : (
+            <p className="mt-2 text-sm text-gray-500">Refresh in a moment.</p>
+          )}
         </main>
         <ReportCtaBar />
       </>
