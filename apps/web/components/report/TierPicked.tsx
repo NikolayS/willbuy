@@ -44,6 +44,8 @@ const TIER_LABEL: Record<Tier, string> = {
   enterprise: 'Enterprise',
 };
 
+export const __test__ = { ORDERED_TIERS, TIER_LABEL };
+
 export function TierPicked({ rows }: { rows: ReportT['tier_picked'] }) {
   const data = rows.map((r) => {
     const obj: Record<string, number | string> = { variant: r.variant };
