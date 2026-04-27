@@ -76,3 +76,26 @@ describe('runVisit — acceptance #2: invalid then valid JSON', () => {
     expect(secondCall.logicalRequestKey).not.toBe(firstCall.logicalRequestKey);
   });
 });
+
+// ── PRIOR_BAD_OUTPUT_MARKER spec-pin (spec §2 #14) ───────────────────────────
+//
+// The exact sentinel strings are the cross-cutting contract between:
+//   - prompt.ts  (embeds them in the repair tail)
+//   - visitor.ts (looks for them to detect the repair section)
+//   - tests      (grep on them to assert user-role placement)
+// Changing either value silently breaks the repair-tail assembly without
+// any other test failing.
+
+describe('PRIOR_BAD_OUTPUT_MARKER spec-pin (spec §2 #14)', () => {
+  it('PRIOR_BAD_OUTPUT_MARKER is "PRIOR_BAD_OUTPUT_BEGIN"', () => {
+    expect(PRIOR_BAD_OUTPUT_MARKER).toBe('PRIOR_BAD_OUTPUT_BEGIN');
+  });
+
+  it('PRIOR_BAD_OUTPUT_END_MARKER is "PRIOR_BAD_OUTPUT_END"', () => {
+    expect(PRIOR_BAD_OUTPUT_END_MARKER).toBe('PRIOR_BAD_OUTPUT_END');
+  });
+
+  it('the two markers are distinct', () => {
+    expect(PRIOR_BAD_OUTPUT_MARKER).not.toBe(PRIOR_BAD_OUTPUT_END_MARKER);
+  });
+});
