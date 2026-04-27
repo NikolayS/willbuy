@@ -75,3 +75,29 @@ describe('/pricing page (issue #144)', () => {
     expect(html).toMatch(/sign-in/i);
   });
 });
+
+// ── Visit estimate spec-pins (issue #112 — 3.5¢/visit average) ───────────────
+//
+// Math.floor(usd_cents / 3.5):
+//   Starter: floor(2900 / 3.5) = 828
+//   Growth:  floor(9900 / 3.5) = 2828
+//   Scale:   floor(29900 / 3.5) = 8542
+
+describe('/pricing visit estimate spec-pins (issue #112)', () => {
+  async function getHtml(): Promise<string> {
+    const el = await PricingPage();
+    return renderToStaticMarkup(el);
+  }
+
+  it('Starter shows ~828 visit estimate (Math.floor(2900 / 3.5))', async () => {
+    expect(await getHtml()).toMatch(/828\s*visits/i);
+  });
+
+  it('Growth shows ~2,828 visit estimate (Math.floor(9900 / 3.5))', async () => {
+    expect(await getHtml()).toMatch(/2[,.]?828\s*visits/i);
+  });
+
+  it('Scale shows ~8,542 visit estimate (Math.floor(29900 / 3.5))', async () => {
+    expect(await getHtml()).toMatch(/8[,.]?542\s*visits/i);
+  });
+});
