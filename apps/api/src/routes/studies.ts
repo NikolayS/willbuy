@@ -184,14 +184,18 @@ export async function registerStudiesRoutes(
       }
       const body = bodyResult.data;
 
-      // §2 #1: Verify each URL's eTLD+1 is in account.verified_domains.
+      // Validate URLs parse to an eTLD+1. Domain ownership verification was
+      // dropped in amendment A14 (2026-04-28): the v0.1 verified-domain gate
+      // was an abuse-prevention guardrail per spec §2 #1, but in practice it
+      // blocked the paying owner from running studies on competitor / vendor
+      // pages they're evaluating — which is the entire point of a synthetic
+      // visitor panel. Re-introduce a check (e.g. rate limit per target eTLD,
+      // or an "acknowledge_third_party_submission" checkbox) when abuse signals
+      // appear; until then trust the paying account.
       for (const url of body.urls) {
         const etld = getEtldPlusOne(url);
         if (!etld) {
           return reply.code(422).send({ error: `invalid URL: ${url}` });
-        }
-        if (!account.verified_domains.includes(etld)) {
-          return reply.code(422).send({ error: `unverified domain: ${etld}` });
         }
       }
 
@@ -498,12 +502,11 @@ export async function registerStudiesRoutes(
       }
       const body = bodyResult.data;
 
+      // Verified-domain gate dropped in amendment A14 (2026-04-28); see
+      // sibling /studies handler for the rationale.
       for (const url of body.urls) {
         const etld = getEtldPlusOne(url);
         if (!etld) return reply.code(422).send({ error: `invalid URL: ${url}` });
-        if (!account.verified_domains.includes(etld)) {
-          return reply.code(422).send({ error: `unverified domain: ${etld}` });
-        }
       }
 
       const n = body.n_visits;
