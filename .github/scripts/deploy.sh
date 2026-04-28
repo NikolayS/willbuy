@@ -66,7 +66,7 @@ fi
 echo "::group::install-services"
 # Copy service files; only restart daemon if anything actually changed.
 changed=0
-for svc in willbuy-capture-worker willbuy-visitor-worker willbuy-aggregator-trigger; do
+for svc in willbuy-capture-broker willbuy-capture-worker willbuy-visitor-worker willbuy-aggregator-trigger; do
   src="infra/systemd/${svc}.service"
   dst="/etc/systemd/system/${svc}.service"
   if [[ ! -f "$dst" ]] || ! cmp -s "$src" "$dst"; then
@@ -107,7 +107,7 @@ echo "::endgroup::"
 
 echo "::group::restart"
 systemctl restart willbuy-api willbuy-web
-systemctl enable --now willbuy-capture-worker willbuy-visitor-worker willbuy-aggregator-trigger
+systemctl enable --now willbuy-capture-broker willbuy-capture-worker willbuy-visitor-worker willbuy-aggregator-trigger
 echo "::endgroup::"
 
 echo "::group::nginx"
