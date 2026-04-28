@@ -62,7 +62,10 @@ export async function registerStripeWebhookRoute(
 
       let event: Stripe.Event;
       try {
-        event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+        // constructEventAsync — Bun uses Web Crypto API (async); sync
+        // constructEvent throws "SubtleCryptoProvider cannot be used in a
+        // synchronous context" on Bun. Stripe Node SDK ≥12 supports both.
+        event = await stripe.webhooks.constructEventAsync(rawBody, sig, webhookSecret);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'signature verification failed';
         return reply.code(400).send({ error: msg });

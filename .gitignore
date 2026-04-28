@@ -37,3 +37,4 @@ venv/
 
 # logs
 *.log
+.env.local

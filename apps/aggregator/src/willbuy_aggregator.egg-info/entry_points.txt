@@ -1,0 +1,2 @@
+[console_scripts]
+aggregator = aggregator.main:cli

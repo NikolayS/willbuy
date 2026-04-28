@@ -121,7 +121,7 @@ function renderSankeyNode(props: {
 }
 
 export function NextActions({ rows }: { rows: ReportT['next_actions'] }) {
-  const [mode, setMode] = useState<ChartMode>('bar');
+  const [mode, setMode] = useState<ChartMode>('sankey');
 
   // Recharts wants one row per x-axis tick; we want one tick per variant.
   const data = rows.map((r) => {
