@@ -96,9 +96,9 @@ marker=/var/lib/willbuy/aggregator-image.sha
 mkdir -p "$(dirname "$marker")"
 prev_sha=$(cat "$marker" 2>/dev/null || echo "")
 if [[ "$src_sha" != "$prev_sha" ]] || ! docker image inspect willbuy-aggregator >/dev/null 2>&1; then
-  cd "$REPO/apps/aggregator"
-  docker build -t willbuy-aggregator .
+  # Build context MUST be repo root — Dockerfile uses "COPY apps/aggregator/src" paths
   cd "$REPO"
+  docker build -t willbuy-aggregator -f apps/aggregator/Dockerfile .
   echo "$src_sha" > "$marker"
 else
   echo "Aggregator sources unchanged; skipping rebuild"
@@ -111,6 +111,16 @@ systemctl enable --now willbuy-capture-worker willbuy-visitor-worker willbuy-agg
 echo "::endgroup::"
 
 echo "::group::nginx"
+# Sync nginx config from repo to /etc/nginx/sites-available/.
+# Without this step, infra/nginx changes (e.g. PR #492's /stripe/ block) are
+# never applied even though nginx is "reloaded".
+if [[ -f infra/nginx/willbuy.conf ]]; then
+  if [[ ! -f /etc/nginx/sites-available/willbuy ]] || \
+     ! cmp -s infra/nginx/willbuy.conf /etc/nginx/sites-available/willbuy; then
+    cp infra/nginx/willbuy.conf /etc/nginx/sites-available/willbuy
+    echo "Updated /etc/nginx/sites-available/willbuy"
+  fi
+fi
 nginx -t && nginx -s reload
 echo "::endgroup::"
 
