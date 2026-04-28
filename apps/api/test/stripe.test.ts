@@ -108,6 +108,25 @@ function buildCheckoutEvent(opts: {
 
 const STUB_CHECKOUT_URL = 'https://checkout.stripe.com/pay/cs_test_stub_session_url';
 
+// Shared HMAC verification logic used by both constructEvent and constructEventAsync stubs.
+function verifyAndParseEvent(payload: string, sig: string, secret: string): Stripe.Event {
+  const parts = Object.fromEntries(
+    sig.split(',').map((p) => p.split('=')),
+  ) as Record<string, string>;
+  const ts = parts['t'];
+  const v1 = parts['v1'];
+  if (!ts || !v1) throw new Error('invalid stripe-signature format');
+  const expected = createHmac('sha256', secret)
+    .update(`${ts}.${payload}`)
+    .digest('hex');
+  if (expected !== v1) {
+    const err = new Error('No signatures found matching the expected signature for payload');
+    (err as Error & { type: string }).type = 'StripeSignatureVerificationError';
+    throw err;
+  }
+  return JSON.parse(payload) as Stripe.Event;
+}
+
 function buildStripeStub(): Stripe {
   return {
     checkout: {
@@ -120,26 +139,15 @@ function buildStripeStub(): Stripe {
       },
     },
     webhooks: {
-      // Re-implement constructEvent so real HMAC verification runs but no
-      // network call is made.
+      // Re-implement constructEvent / constructEventAsync so real HMAC
+      // verification runs but no network call is made.
+      // Both variants share verifyAndParse — the route uses constructEventAsync
+      // because Bun's Web Crypto is async (see stripe-webhook.ts).
       constructEvent: (payload: string, sig: string, secret: string): Stripe.Event => {
-        // Parse t= and v1= from header.
-        const parts = Object.fromEntries(
-          sig.split(',').map((p) => p.split('=')),
-        ) as Record<string, string>;
-        const ts = parts['t'];
-        const v1 = parts['v1'];
-        if (!ts || !v1) throw new Error('invalid stripe-signature format');
-        const expected = createHmac('sha256', secret)
-          .update(`${ts}.${payload}`)
-          .digest('hex');
-        if (expected !== v1) {
-          const err = new Error('No signatures found matching the expected signature for payload');
-          (err as Error & { type: string }).type = 'StripeSignatureVerificationError';
-          throw err;
-        }
-        // Parse and return the event — safe for our test payloads.
-        return JSON.parse(payload) as Stripe.Event;
+        return verifyAndParseEvent(payload, sig, secret);
+      },
+      constructEventAsync: async (payload: string, sig: string, secret: string): Promise<Stripe.Event> => {
+        return verifyAndParseEvent(payload, sig, secret);
       },
     },
   } as unknown as Stripe;
@@ -422,6 +430,9 @@ describe('Stripe checkout error-handling (issue #73)', () => {
         },
         webhooks: {
           constructEvent: () => {
+            throw new Error('not used in this test');
+          },
+          constructEventAsync: async () => {
             throw new Error('not used in this test');
           },
         },
