@@ -184,8 +184,12 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
     expect(res.statusCode).toBe(422);
   });
 
-  // --- Acceptance #2: unverified domain → 422 with clear message ---
-  it('422 with message when URL domain is not in verified_domains', async () => {
+  // --- Amendment A14 (2026-04-28) — verified-domain gate dropped ---
+  // The previous behaviour ('unverified domain' → 422) was an abuse-prevention
+  // guardrail that blocked paying owners from running studies on third-party
+  // pages they wanted to evaluate. Any URL that parses to an eTLD+1 is now
+  // accepted; unparseable URLs still 422.
+  it('201 even when URL domain is not in verified_domains (A14)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/studies',
@@ -196,10 +200,10 @@ describeIfDocker('studies + reports API (issue #30, real DB)', () => {
         n_visits: 5,
       },
     });
-    expect(res.statusCode).toBe(422);
-    const body = res.json() as { error: string };
-    expect(body.error).toMatch(/unverified domain/i);
-    expect(body.error).toContain('notverified.io');
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as { study_id: number; status: string };
+    expect(body.study_id).toBeGreaterThan(0);
+    expect(body.status).toBe('capturing');
   });
 
   // --- Acceptance #1: happy path → 201 with study_id ---
