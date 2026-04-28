@@ -16,6 +16,13 @@ Group=willbuy
 UMask=0007
 WorkingDirectory=/srv/willbuy
 EnvironmentFile=/etc/willbuy/app.env
+# Playwright Chromium is installed under willbuy user via
+# 'sudo -u willbuy bunx playwright install chromium', cache at
+# /home/willbuy/.cache/ms-playwright. Without this env, the worker
+# (running as root) looks in /root/.cache/ms-playwright, fails with
+# "Executable doesn't exist", and silently marks every visit as failed
+# (captureResult.status='blocked' → mapped to visit status='failed').
+Environment="PLAYWRIGHT_BROWSERS_PATH=/home/willbuy/.cache/ms-playwright"
 ExecStart=/home/willbuy/.bun/bin/bun run apps/capture-worker/src/index.ts
 Restart=on-failure
 RestartSec=3

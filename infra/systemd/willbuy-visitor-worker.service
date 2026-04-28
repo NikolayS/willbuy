@@ -3,18 +3,19 @@
 # calls LLM, and transitions studies visiting→aggregating.
 #
 # Depends on the API being up (shares app.env and the same DB).
-# The entry point is scripts/run-visitor-worker-dogfood.ts; this will be
-# replaced by a proper apps/visitor-worker entrypoint once #86 ships.
+# Entry point: apps/visitor-worker/src/bin.ts (the canonical binary;
+# the old scripts/run-visitor-worker-dogfood.ts referenced from a working
+# copy was untracked in 517 — referencing it would crash-loop the unit).
 
 Description=willbuy visitor worker
-After=network.target willbuy-api.service
+After=network.target willbuy-api.service willbuy-capture-broker.service
 
 [Service]
 Type=simple
 User=willbuy
 WorkingDirectory=/srv/willbuy
 EnvironmentFile=/etc/willbuy/app.env
-ExecStart=/home/willbuy/.bun/bin/bun run scripts/run-visitor-worker-dogfood.ts
+ExecStart=/home/willbuy/.bun/bin/bun run apps/visitor-worker/src/bin.ts
 Restart=on-failure
 RestartSec=3
 

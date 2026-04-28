@@ -39,6 +39,19 @@ DB_URL=$(grep ^DATABASE_URL /etc/willbuy/app.env | cut -d= -f2-)
 as_willbuy "cd $REPO && DATABASE_URL='$DB_URL' bash scripts/migrate.sh"
 echo "::endgroup::"
 
+echo "::group::playwright-chromium"
+# Capture worker spawns a Playwright Chromium for each visit. Browsers
+# install lives at /home/willbuy/.cache/ms-playwright. Idempotent — bunx
+# playwright install is a no-op if Chromium is already at the pinned
+# version. Without this, every capture fails with
+# "Executable doesn't exist" and visits silently mark as failed.
+if [[ ! -d /home/willbuy/.cache/ms-playwright/chromium-1124 ]]; then
+  as_willbuy "cd $REPO/apps/capture-worker && /home/willbuy/.bun/bin/bunx playwright install chromium"
+else
+  echo "Playwright Chromium already installed; skipping"
+fi
+echo "::endgroup::"
+
 echo "::group::env-vars"
 # Generate SHARE_TOKEN_HMAC_KEY if missing (PR #496 dependency)
 if ! grep -q SHARE_TOKEN_HMAC_KEY /etc/willbuy/app.env; then
