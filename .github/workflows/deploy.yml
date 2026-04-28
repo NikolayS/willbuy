@@ -75,19 +75,22 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           SKIP_BUILD: ${{ inputs.skip_build }}
         run: |
+          # SSH as `willbuy` user (root SSH login is blocked by sshd hardening
+          # configs at /etc/ssh/sshd_config.d/00-willbuy-lockdown.conf).
+          # The willbuy user has NOPASSWD sudo via /etc/sudoers.d/99-willbuy-nopasswd
+          # so 'sudo -n bash' picks up the script as root without a password prompt.
           ssh -i ~/.ssh/deploy_key -p 2223 -o StrictHostKeyChecking=accept-new \
-            "root@${DEPLOY_HOST}" \
-            "SKIP_BUILD='${SKIP_BUILD}' bash -s" < .github/scripts/deploy.sh
+            "willbuy@${DEPLOY_HOST}" \
+            "sudo -n env SKIP_BUILD='${SKIP_BUILD}' bash -s" < .github/scripts/deploy.sh
 
       - name: Smoke test
         if: steps.check_secrets.outputs.configured == 'true'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
-          # Run the smoke test from the deployed code on the server
-          # (it tests the public URL, not localhost).
+          # Smoke test only hits public URLs — no sudo needed.
           ssh -i ~/.ssh/deploy_key -p 2223 \
-            "root@${DEPLOY_HOST}" \
+            "willbuy@${DEPLOY_HOST}" \
             "cd /srv/willbuy && bash scripts/smoke-test.sh"
 
       - name: Cleanup
