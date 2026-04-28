@@ -105,7 +105,17 @@ export async function captureUrl(url: string, opts?: CaptureOpts): Promise<Captu
     // use Playwright's per-call timeout because we want a SINGLE budget
     // covering nav + idle wait + tree dump.
     const captureTask = (async (): Promise<CaptureResult> => {
-      await page.goto(url, { waitUntil: 'networkidle', timeout: wallClockMs });
+      // 'load' fires when DOM + initial subresources finish (typically 2-5s
+      // on modern sites). Previously 'networkidle' — which waits for 500ms
+      // of ZERO network activity. Modern sites with continuous analytics /
+      // tracker pings / websockets never reach networkidle, so every capture
+      // burned the full wallClockMs budget waiting in vain (then threw
+      // TimeoutError on the goto), leaving the lease tx idle for ~45s and
+      // exceeding Postgres' idle_in_transaction_session_timeout (90s with
+      // overhead). 'load' shrinks the typical capture from ~50s → ~5s and
+      // keeps the a11y tree just as accurate (the tree we read is post-load,
+      // and the explicit tail wait below covers React/Vue hydration).
+      await page.goto(url, { waitUntil: 'load', timeout: wallClockMs });
       // §2 #2: "+ 2 seconds for late-loading content". If the wall-clock
       // budget is below that, skip the tail wait entirely.
       const tail = Math.min(2_000, Math.max(0, wallClockMs - 1_000));

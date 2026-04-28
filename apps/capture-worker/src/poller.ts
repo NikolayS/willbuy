@@ -106,10 +106,12 @@ export async function pollOnce(opts: PollOpts): Promise<PollResult> {
     // SKIP LOCKED means concurrent workers never block each other.
     await client.query('BEGIN');
     leaseHeld = true;
-    // Bound a wedged transaction at 2× the wall-clock ceiling so an
-    // orphaned lease eventually releases the row lock for sweeper recovery.
-    // CAPTURE_CEILINGS.WALL_CLOCK_MS = 45 000 → 90 000 ms here.
-    await client.query(`SET LOCAL idle_in_transaction_session_timeout = '90s'`);
+    // Bound a wedged transaction so orphaned leases release the row lock
+    // for sweeper recovery. Tight ceiling (30s) is intentional: it forces
+    // the capture path to actually be fast. If this fires, the failure is
+    // a real signal — investigate the capture (Playwright wait strategy,
+    // network-pinning overhead, broker latency) rather than bumping this.
+    await client.query(`SET LOCAL idle_in_transaction_session_timeout = '30s'`);
 
     const leaseResult = await client.query<{
       id: string;
