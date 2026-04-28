@@ -1,40 +1,39 @@
-# secrets — NEVER commit (repo is public)
-.env
-.env.*
-*.env
-# allow-list: template with op:// references only, no values
+
+__pycache__/
 !.env.example
 !.env.op
-*.pem
+!scripts/push-secrets.sh
+.DS_Store
+.env
+.env.*
+.env.local
+.hcloud*
+.idea/
+.next/
+.resend*
+.venv/
+.vscode/
+*.env
 *.key
+*.log
+*.pem
+*.pyc
+*.swp
+*.tsbuildinfo
+*credentials*
 *secrets*
 # allow-list: script consumes secrets via `op run`, no values baked in
-!scripts/push-secrets.sh
-*credentials*
-.hcloud*
-.resend*
-
-# os / editor
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-*.swp
-
-# node / build
-node_modules/
-dist/
-build/
-.next/
-coverage/
-*.tsbuildinfo
-
-# python
-__pycache__/
-*.pyc
-.venv/
-venv/
-
+# allow-list: template with op:// references only, no values
 # logs
-*.log
-.env.local
+# node / build
+# os / editor
+# python
+# secrets — NEVER commit (repo is public)
+apps/aggregator/src/willbuy_aggregator.egg-info/
+apps/visitor-worker/run-dogfood.ts
+build/
+coverage/
+dist/
+node_modules/
+Thumbs.db
+venv/
