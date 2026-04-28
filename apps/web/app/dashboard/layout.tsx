@@ -16,6 +16,24 @@
 
 import type { ReactNode } from 'react';
 
+// Force dynamic rendering for the entire /dashboard/* tree.
+//
+// Without this, Next.js 14 statically pre-renders client-component pages
+// (e.g. /dashboard/studies/new — `'use client'`) and caches the HTML.
+// The cached HTML's inline-script `nonce=` attributes are baked at
+// build/cache time, but the per-request CSP `nonce-...` directive is
+// generated fresh in middleware.ts on every request. The result is a
+// nonce mismatch — the browser's CSP enforcer blocks all inline scripts,
+// React never hydrates, and forms submit as plain HTML GET (the user
+// reported on 2026-04-28: slider doesn't update, "Add second URL" link
+// doesn't work, "Start study" button does nothing).
+//
+// `force-dynamic` tells Next.js to render this segment per-request, so
+// the inline scripts are stamped with the live nonce that matches the
+// CSP header. Safe for client-component pages — they have no server
+// data fetching to revalidate.
+export const dynamic = 'force-dynamic';
+
 export default function DashboardLayout({ children }: { children: ReactNode }): JSX.Element {
   return (
     <div className="min-h-screen bg-gray-50">
