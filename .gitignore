@@ -35,5 +35,6 @@ build/
 coverage/
 dist/
 node_modules/
+scripts/run-visitor-worker-dogfood.ts
 Thumbs.db
 venv/
