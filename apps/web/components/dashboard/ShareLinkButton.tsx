@@ -56,12 +56,36 @@ export function ShareLinkButton({ studyId }: ShareLinkButtonProps) {
   }
 
   async function handleCopy(url: string) {
+    // Try modern Clipboard API first.
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        return;
+      } catch {
+        // fall through to legacy fallback
+      }
+    }
+    // Legacy fallback: hidden textarea + execCommand('copy'). Works in more
+    // contexts (no Permissions-Policy, no Clipboard-API gating).
     try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     } catch {
-      // Silently ignore clipboard failures (e.g. insecure context).
+      // last-ditch: nothing more we can do
     }
   }
 

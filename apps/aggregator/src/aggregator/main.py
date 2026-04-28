@@ -493,8 +493,33 @@ def _connect_from_env() -> Any:
 
 
 def _stub_llm_caller(prompt: str, *, kind: str) -> str:  # pragma: no cover
-    """Fallback when no LLM provider is wired (offline smoke runs)."""
-    return "unlabeled cluster"
+    """Fallback when no LLM provider is wired.
+
+    Instead of the previous "unlabeled cluster" (embarrassing in the report),
+    we extract the shortest member from the prompt phrases — short members
+    tend to be the most general/canonical descriptions of the cluster — and
+    truncate to 8 words to match the LLM contract.
+
+    Prompt format (see labeler.py):
+        ...
+        Phrases:
+        - phrase 1
+        - phrase 2
+        ...
+
+        Label:
+    """
+    lines = prompt.splitlines()
+    # Lines starting with "- " are the member phrases.
+    members = [line[2:].strip() for line in lines if line.startswith("- ")]
+    if not members:
+        return "unlabeled cluster"
+    # Shortest non-empty member = most general phrasing.
+    members = [m for m in members if m]
+    if not members:
+        return "unlabeled cluster"
+    chosen = min(members, key=len)
+    return " ".join(chosen.split()[:8])
 
 
 def _make_cli_llm_caller(llm_bin: str) -> LLMCaller:

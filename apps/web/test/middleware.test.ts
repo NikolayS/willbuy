@@ -38,9 +38,11 @@ describe('SPEC §5.10 — CSP middleware', () => {
     expect(getCspDirective(csp!, 'base-uri')).toBe("base-uri 'self'");
     expect(getCspDirective(csp!, 'frame-ancestors')).toBe("frame-ancestors 'none'");
     expect(getCspDirective(csp!, 'form-action')).toBe("form-action 'self'");
-    // Trusted Types directive must be preserved verbatim — explicitly
-    // out-of-scope for amendment A9 (issue #135).
-    expect(csp).toContain("require-trusted-types-for 'script'");
+    // Trusted Types directive removed in amendment A13 (2026-04-27):
+    // it blocked Next.js 14 client-side hydration via innerHTML in the
+    // RSC flight-payload deserialization. XSS protection remains strong
+    // via the nonce + 'strict-dynamic' + object-src + base-uri set above.
+    expect(csp).not.toContain("require-trusted-types-for");
   });
 
   it('GET /dashboard/* carries the additional security headers', () => {

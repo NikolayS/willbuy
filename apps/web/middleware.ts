@@ -31,8 +31,15 @@ import { NextResponse, type NextRequest } from 'next/server';
 // the `react/no-danger` lint rule independent of CSP, so this
 // loosening does not regress §5.10's XSS posture.
 //
-// `require-trusted-types-for 'script'` is preserved verbatim
-// (out-of-scope for both A8 and A9).
+// `require-trusted-types-for 'script'` REMOVED (2026-04-27, amendment A13).
+// Trusted Types enforcement blocked Next.js 14 App Router client hydration:
+// React's flight-payload deserialization passes plain strings to innerHTML,
+// which throws under Trusted Types. Symptoms reported by user on
+// /dashboard/studies/new: range slider doesn't update displayed N, "Add
+// second URL" link doesn't expand the form, "Start study" button does
+// nothing — because React never hydrates the form. XSS posture remains
+// strong via nonce + 'strict-dynamic' + object-src 'none' + base-uri 'self'
+// and the application-level `react/no-danger` lint rule.
 
 const PERMISSIONS_POLICY =
   'camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=()';
@@ -60,7 +67,6 @@ function buildCsp(nonce: string): string {
     "base-uri 'self'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "require-trusted-types-for 'script'",
   ].join('; ');
 }
 
