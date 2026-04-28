@@ -293,15 +293,16 @@ describe('§5.18 — report visualization', () => {
   });
 
 
-  it('§5.18 #4 v0.1.1 — next-actions Sankey toggle renders and switches view (#175)', () => {
+  it('§5.18 #4 v0.1.1 — next-actions chart toggle renders and switches view (#175)', () => {
     // data-testid="next-actions-mode-toggle" must be present by default.
     render(<NextActions rows={fixture.next_actions} />);
     expect(screen.getByTestId('next-actions-mode-toggle')).toBeTruthy();
-    // Sankey view should not be visible initially (bar mode is default).
-    expect(screen.queryByTestId('next-actions-sankey')).toBeNull();
-    // Clicking "Sankey" button shows the Sankey view.
-    fireEvent.click(screen.getByRole('button', { name: /sankey/i }));
+    // Sankey is now the default view (changed 2026-04-27 per user feedback —
+    // it's the more informative visualisation of the variant→action flow).
     expect(screen.getByTestId('next-actions-sankey')).toBeTruthy();
+    // Clicking "Stacked bar" switches off the Sankey view.
+    fireEvent.click(screen.getByRole('button', { name: /stacked bar/i }));
+    expect(screen.queryByTestId('next-actions-sankey')).toBeNull();
   });
 
 
